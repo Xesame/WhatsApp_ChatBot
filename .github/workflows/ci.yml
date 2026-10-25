@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      # Real Postgres for the migration and seed integration tests.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: reb
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: reb
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U reb" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://reb:ci-password@localhost:5432/reb
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      # Fails when docs/generated or .env.example is out of date.
+      - run: pnpm docs:check
+      - run: pnpm --filter @reb/web build

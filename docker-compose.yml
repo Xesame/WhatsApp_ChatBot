@@ -1,0 +1,114 @@
+# Runs the whole system: Postgres, a one-shot migration step, and the five
+# services. Start everything with `docker compose up -d --build`.
+#
+# Values like ${POSTGRES_PASSWORD} come from the .env file next to this file.
+
+name: realestate-bot
+
+x-app: &app
+  build: .
+  image: realestate-bot:local
+  restart: unless-stopped
+  environment: &app-env
+    NODE_ENV: production
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Inside Docker the database host is the `postgres` service, not localhost.
+    DATABASE_URL: postgres://${POSTGRES_USER:-reb}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-reb}
+    HEALTH_PORT: 8080
+  depends_on:
+    postgres:
+      condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
+  healthcheck: &app-health
+    test:
+      - CMD
+      - node
+      - -e
+      - "fetch('http://127.0.0.1:8080/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+    interval: 15s
+    timeout: 5s
+    retries: 3
+    start_period: 20s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-reb}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Bound to localhost only: reachable from this machine for local
+    # development and backups, never from the internet.
+    ports:
+      - 127.0.0.1:5432:5432
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Applies database migrations and loads seed data, then exits. Every app
+  # waits for it to finish successfully, so apps never run against an
+  # out-of-date schema. Both steps are safe to repeat on every start.
+  migrate:
+    <<: *app
+    restart: 'no'
+    command: [sh, -c, 'node packages/db/src/migrate.ts && node packages/db/src/seed.ts']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  capture:
+    <<: *app
+    command: [node, apps/capture/src/main.ts]
+
+  worker:
+    <<: *app
+    command: [node, apps/worker/src/main.ts]
+
+  chatbot:
+    <<: *app
+    command: [node, apps/chatbot/src/main.ts]
+
+  api:
+    <<: *app
+    command: [node, apps/api/src/main.ts]
+    environment:
+      <<: *app-env
+      API_PORT: 3000
+    ports:
+      - 127.0.0.1:3000:3000
+    healthcheck:
+      <<: *app-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+
+  # Phase 0: serves the built dashboard with `vite preview`. Phase 8 replaces
+  # this with Caddy serving the static files over HTTPS.
+  web:
+    <<: *app
+    working_dir: /app/apps/web
+    command:
+      [node, node_modules/vite/bin/vite.js, preview, --host, 0.0.0.0, --port, '4173', --strictPort]
+    depends_on: []
+    ports:
+      - 127.0.0.1:4173:4173
+    healthcheck:
+      <<: *app-health
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4173/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+
+volumes:
+  pgdata:
