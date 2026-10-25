@@ -7,6 +7,8 @@ erDiagram
   cities ||--o{ entity_aliases : "city_id"
   developers ||--o{ entity_aliases : "developer_id"
   projects ||--o{ entity_aliases : "project_id"
+  messages ||--o{ media_files : "message_id"
+  wa_groups ||--o{ messages : "group_id"
   developers ||--o{ projects : "developer_id"
   cities ||--o{ projects : "city_id"
   cities {
@@ -33,6 +35,41 @@ erDiagram
     text source
     timestamp_with_time_zone created_at
   }
+  media_files {
+    bigint id PK
+    bigint message_id FK
+    text kind
+    text mime_type
+    text file_name
+    bigint size_bytes
+    text sha256
+    text path
+    text status
+    integer attempts
+    text error
+    jsonb media_ref
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone downloaded_at
+  }
+  messages {
+    bigint id PK
+    integer group_id FK
+    text wa_message_id
+    text sender_hash
+    timestamp_with_time_zone sent_at
+    text text
+    text quoted_wa_message_id
+    text edit_of_wa_message_id
+    text media_type
+    boolean is_forwarded
+    timestamp_with_time_zone deleted_at
+    text status
+    text error
+    integer attempts
+    timestamp_with_time_zone enqueued_at
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
   projects {
     integer id PK
     text name_en
@@ -40,6 +77,35 @@ erDiagram
     integer developer_id FK
     integer city_id FK
     timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
+  wa_auth {
+    text account
+    text category
+    text key_id
+    jsonb value
+    timestamp_with_time_zone updated_at
+  }
+  wa_connections {
+    text account PK
+    text state
+    text qr
+    text pairing_code
+    timestamp_with_time_zone last_connected_at
+    timestamp_with_time_zone last_disconnected_at
+    text last_disconnect_reason
+    timestamp_with_time_zone last_message_at
+    timestamp_with_time_zone updated_at
+  }
+  wa_groups {
+    integer id PK
+    text jid
+    text name
+    boolean watched
+    text source_type
+    boolean is_member
+    timestamp_with_time_zone last_message_at
+    timestamp_with_time_zone added_at
     timestamp_with_time_zone updated_at
   }
 ```
@@ -91,6 +157,67 @@ Alternate spellings (Arabic, English, abbreviations) mapped to one city, develop
 - Index `entity_aliases_alias_trgm_idx` on (expression) using gin
 - Check `entity_aliases_exactly_one_entity`
 
+## `media_files`
+
+The image, video, voice note or document attached to a message. Identical files are stored once on disk (named by hash).
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `message_id` | bigint | no | unique, → messages.id | The message the file belongs to (one file per message). |
+| `kind` | text | no |  | `image`, `video`, `audio` or `document`. |
+| `mime_type` | text | yes |  | File type reported by WhatsApp, e.g. `image/jpeg`, `application/pdf`. |
+| `file_name` | text | yes |  | Original file name, for documents. |
+| `size_bytes` | bigint | yes |  | File size in bytes. |
+| `sha256` | text | yes |  | SHA-256 of the file contents (hex). The same flyer in three groups has one hash. |
+| `path` | text | yes |  | Location relative to MEDIA_DIR, e.g. `ab/cd/abcd...e9.jpg`. |
+| `status` | text | no |  | `pending` (not downloaded yet), `downloaded`, `failed` (gave up after retries) or `skipped` (too large). |
+| `attempts` | integer | no |  | Download attempts so far. |
+| `error` | text | yes |  | Last download error. |
+| `media_ref` | jsonb | no |  | What WhatsApp needs to download the file again. Contains no sender data. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `downloaded_at` | timestamp with time zone | yes |  | When the file was saved to disk. |
+
+**Indexes and constraints**
+
+- Index `media_files_sha256_idx` on (sha256)
+- Index `media_files_status_idx` on (status)
+- Check `media_files_status_check`
+- Check `media_files_kind_check`
+
+## `messages`
+
+Raw messages from watched groups, stored once and never changed by processing except for `status`, `error` and `attempts`.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `group_id` | integer | no | → wa_groups.id | The group the message was posted in. |
+| `wa_message_id` | text | no |  | WhatsApp message ID. Unique per group, which prevents duplicates. |
+| `sender_hash` | text | no |  | HMAC-SHA256 of the sender's WhatsApp ID with SENDER_HASH_SALT. The same sender always gets the same hash; the phone number cannot be recovered from it. |
+| `sent_at` | timestamp with time zone | no |  | When the sender posted the message (WhatsApp timestamp). |
+| `text` | text | yes |  | Message text or media caption, as written. Null for media without a caption. |
+| `quoted_wa_message_id` | text | yes |  | WhatsApp ID of the message this one replies to, if any. |
+| `edit_of_wa_message_id` | text | yes |  | For an edit: WhatsApp ID of the original message. The edited text is stored as a new row. |
+| `media_type` | text | no |  | `none`, `image`, `video`, `audio` (including voice notes) or `document`. |
+| `is_forwarded` | boolean | no |  | Whether WhatsApp marked the message as forwarded. |
+| `deleted_at` | timestamp with time zone | yes |  | When the sender deleted the message for everyone. The row is kept. |
+| `status` | text | no |  | Processing state: `pending` → `processing` → `processed`, or `skipped` (not a listing) / `failed`. |
+| `error` | text | yes |  | Why processing failed or was skipped. |
+| `attempts` | integer | no |  | How many times processing has been attempted. |
+| `enqueued_at` | timestamp with time zone | yes |  | When the `preprocess` job was queued. Null while media is still downloading. |
+| `created_at` | timestamp with time zone | no |  | When capture stored the message. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Unique index `messages_group_wa_message_id_key` on (group_id, wa_message_id)
+- Index `messages_status_idx` on (status)
+- Index `messages_group_sent_at_idx` on (group_id, sent_at)
+- Index `messages_sender_sent_at_idx` on (sender_hash, sent_at)
+- Check `messages_status_check`
+- Check `messages_media_type_check`
+
 ## `projects`
 
 Canonical projects (compounds). Each belongs to one developer and one city.
@@ -109,3 +236,55 @@ Canonical projects (compounds). Each belongs to one developer and one city.
 
 - Unique index `projects_developer_name_en_key` on (developer_id, name_en)
 - Index `projects_city_id_idx` on (city_id)
+
+## `wa_auth`
+
+WhatsApp login keys for each account. Losing this table means pairing the number again. **Secret**: anyone with these rows can act as the WhatsApp account.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `account` | text | no |  | `scraper` (capture) or, from Phase 7, `query-bot`. |
+| `category` | text | no |  | Key type used by Baileys (`creds`, `pre-key`, `session`, ...). |
+| `key_id` | text | no |  | Key identifier within the category. |
+| `value` | jsonb | no |  | The key, as JSON (binary values base64-encoded). |
+| `updated_at` | timestamp with time zone | no |  | When the key was last written. |
+
+## `wa_connections`
+
+Current connection status of each WhatsApp account.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `account` | text | no | primary key | `scraper` or `query-bot`. |
+| `state` | text | no |  | `starting`, `awaiting_pairing` (QR or pairing code shown), `open`, `reconnecting`, `logged_out` or `stopped`. |
+| `qr` | text | yes |  | The current pairing QR code (as text) while awaiting pairing. |
+| `pairing_code` | text | yes |  | The current 8-character pairing code, when pairing by phone number. |
+| `last_connected_at` | timestamp with time zone | yes |  | When the connection last opened. |
+| `last_disconnected_at` | timestamp with time zone | yes |  | When the connection last closed. |
+| `last_disconnect_reason` | text | yes |  | Why it last closed, e.g. `connectionLost (408)`. |
+| `last_message_at` | timestamp with time zone | yes |  | When the last message was received from any group. |
+| `updated_at` | timestamp with time zone | no |  | When the status last changed. |
+
+**Indexes and constraints**
+
+- Check `wa_connections_state_check`
+
+## `wa_groups`
+
+Every WhatsApp group the scraper number is in. Only groups with `watched = true` have their messages stored.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | primary key | Identity primary key. |
+| `jid` | text | no | unique | WhatsApp group ID (ends in `@g.us`). Unique. |
+| `name` | text | yes |  | Group name as shown in WhatsApp. Updated when it changes. |
+| `watched` | boolean | no |  | Whether messages from this group are captured. New groups start unwatched. |
+| `source_type` | text | yes |  | Who posts in the group: `developer` or `broker`. Set by the owner. |
+| `is_member` | boolean | no |  | False once the scraper number has left or been removed from the group. |
+| `last_message_at` | timestamp with time zone | yes |  | When the last stored message from this group was received. |
+| `added_at` | timestamp with time zone | no |  | When capture first saw the group. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Check `wa_groups_source_type_check`

@@ -15,6 +15,13 @@
       "when": 1792932966258,
       "tag": "0001_entities",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792936992660,
+      "tag": "0002_capture",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,12 @@ export interface Database {
   pool: pg.Pool;
   /** Runs `SELECT 1`; throws if the database is unreachable. Used by health checks. */
   ping: () => Promise<void>;
+  /**
+   * Runs `fn` in a transaction on one connection: commits if it resolves,
+   * rolls back if it throws. `client` is the raw connection, for libraries
+   * (like pg-boss) that must join the same transaction.
+   */
+  transaction: <T>(fn: (tx: Db, client: pg.PoolClient) => Promise<T>) => Promise<T>;
   close: () => Promise<void>;
 }
 
@@ -35,6 +41,20 @@ export function createDatabase(
     pool,
     ping: async () => {
       await pool.query('SELECT 1');
+    },
+    transaction: async (fn) => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await fn(drizzle(client, { schema }), client);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     },
     close: () => pool.end(),
   };
