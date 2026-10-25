@@ -5,7 +5,7 @@ import { buildApp } from './app.ts';
 
 // The API has its own HTTP server, so it serves /health on API_PORT instead
 // of using runService's separate health port.
-const config = loadConfigOrExit();
+const config = loadConfigOrExit('api');
 const logger = createLogger('api', config.LOG_LEVEL);
 const database = createDatabase(config.DATABASE_URL, {
   onError: (error) => {

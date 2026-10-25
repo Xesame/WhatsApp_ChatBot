@@ -29,7 +29,7 @@ export async function runService(
   service: string,
   start: (context: ServiceContext) => Promise<ServiceHooks | undefined>,
 ): Promise<void> {
-  const config = loadConfigOrExit();
+  const config = loadConfigOrExit(service);
   const logger = createLogger(service, config.LOG_LEVEL);
 
   process.on('unhandledRejection', (reason) => {

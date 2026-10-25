@@ -5,10 +5,16 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
-    "start": "node src/main.ts"
+    "start": "node src/main.ts",
+    "groups": "node --env-file-if-exists=../../.env src/cli.ts groups"
   },
   "dependencies": {
-    "@reb/runtime": "workspace:*"
+    "@reb/runtime": "workspace:*",
+    "@reb/config": "workspace:*",
+    "@reb/db": "workspace:*",
+    "@reb/ingest": "workspace:*",
+    "@reb/queue": "workspace:*",
+    "@reb/whatsapp": "workspace:*"
   },
   "devDependencies": {}
 }

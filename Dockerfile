@@ -24,3 +24,6 @@ RUN pnpm --filter @reb/web build
 
 FROM build AS runtime
 ENV NODE_ENV=production
+# Created here, owned by `node`, so the `media` volume mounted on it is
+# writable by the app.
+RUN mkdir -p /app/data/media
