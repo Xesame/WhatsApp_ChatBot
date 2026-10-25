@@ -1,0 +1,22 @@
+{
+  "name": "@reb/whatsapp",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@reb/db": "workspace:*",
+    "baileys": "7.0.0-rc14",
+    "drizzle-orm": "0.45.4",
+    "pino": "10.4.0",
+    "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "@types/qrcode": "1.5.6",
+    "@hapi/boom": "9.1.4"
+  }
+}

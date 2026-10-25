@@ -6,3 +6,6 @@ packages:
 # esbuild downloads its platform binary; drizzle-kit and vite need it.
 allowBuilds:
   esbuild: true
+  # baileys only checks the Node version; protobufjs only sets up its CLI.
+  baileys: false
+  protobufjs: false
