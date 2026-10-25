@@ -1,0 +1,26 @@
+{
+  "name": "@reb/db",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./seed-data": "./seed/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "generate": "drizzle-kit generate",
+    "migrate": "node --env-file-if-exists=../../.env src/migrate.ts",
+    "seed": "node --env-file-if-exists=../../.env src/seed.ts",
+    "studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@reb/config": "workspace:*",
+    "@reb/normalize": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  // Shared compiler settings. Every app and package extends this file.
+  // We never emit JavaScript: Node runs the .ts files directly (type stripping),
+  // and `tsc` is only used as a type checker.
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "verbatimModuleSyntax": true,
+    // Node can only strip types it can erase without transforming code,
+    // so TypeScript-only runtime features (enum, namespace, parameter
+    // properties) are rejected at type-check time.
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}

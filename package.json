@@ -1,0 +1,43 @@
+{
+  "name": "realestate-bot",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r --parallel typecheck",
+    "test": "vitest run",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm docs:check",
+    "docs": "node scripts/docs.ts",
+    "docs:check": "node scripts/docs.ts --check",
+    "db:generate": "pnpm --filter @reb/db generate",
+    "db:migrate": "pnpm --filter @reb/db migrate",
+    "db:seed": "pnpm --filter @reb/db seed",
+    "dev:capture": "pnpm --filter @reb/capture dev",
+    "dev:worker": "pnpm --filter @reb/worker dev",
+    "dev:api": "pnpm --filter @reb/api dev",
+    "dev:chatbot": "pnpm --filter @reb/chatbot dev",
+    "dev:web": "pnpm --filter @reb/web dev"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@reb/config": "workspace:*",
+    "@reb/db": "workspace:*",
+    "@types/node": "24.19.2",
+    "drizzle-orm": "0.45.4",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.13.0",
+    "jiti": "2.7.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5",
+    "zod": "4.6.7"
+  }
+}
