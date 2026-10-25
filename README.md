@@ -2,7 +2,7 @@
 
 A service that reads Egyptian developer and broker WhatsApp groups, turns every listing (text, images, PDFs, voice notes) into clean, deduplicated records, and sells access to that listing database to brokerage firms.
 
-> **Status: Phase 0 (Foundation) complete.** The monorepo, database, seed data, logging, config and Docker setup work. All five services start and pass health checks, but they do nothing else yet. See [PROJECT.md](PROJECT.md#build-status) for what each phase adds.
+> **Status: Phase 1 (Capture) complete.** The scraper connection, message and media storage, and job queueing are built and tested. A live WhatsApp test waits for the scraper number. See [PROJECT.md](PROJECT.md#build-status) for what each phase adds.
 
 ## Architecture in one screen
 
@@ -34,7 +34,7 @@ You need Docker with Compose, plus Node.js 24 and pnpm 12 for development.
 
 ```sh
 git clone <repo-url> realestate-bot && cd realestate-bot
-cp .env.example .env            # then change POSTGRES_PASSWORD and the password in DATABASE_URL
+cp .env.example .env            # set POSTGRES_PASSWORD (also in DATABASE_URL) and SENDER_HASH_SALT
 docker compose up -d --build    # Postgres, migrations + seed, and all five services
 docker compose ps               # every service should say "healthy"; migrate says "Exited (0)"
 curl http://localhost:3000/health
