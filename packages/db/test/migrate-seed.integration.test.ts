@@ -18,7 +18,11 @@ const adminUrl = process.env.TEST_DATABASE_URL;
 describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
   const dbName = `reb_test_${randomBytes(4).toString('hex')}`;
   let testUrl = '';
-  let database: Database;
+  let database: Database | undefined;
+  const db = (): Database => {
+    if (!database) throw new Error('Test database was not created');
+    return database;
+  };
 
   const admin = async (statement: string) => {
     const client = new pg.Client({ connectionString: adminUrl });
@@ -40,12 +44,12 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
   });
 
   afterAll(async () => {
-    await database.close();
+    await database?.close();
     await admin(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
   });
 
   const count = async (table: string) => {
-    const result = await database.pool.query<{ n: string }>(`SELECT count(*) AS n FROM ${table}`);
+    const result = await db().pool.query<{ n: string }>(`SELECT count(*) AS n FROM ${table}`);
     return Number(result.rows[0]?.n);
   };
 
@@ -54,7 +58,7 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
   });
 
   it('loads the seed, and a second run adds nothing', async () => {
-    const first = await seed(database.db);
+    const first = await seed(db().db);
     expect(first.aliasesAdded).toBeGreaterThan(0);
     const before = {
       cities: await count('cities'),
@@ -65,7 +69,7 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
     expect(before.cities).toBe(first.cities);
     expect(before.projects).toBe(first.projects);
 
-    const second = await seed(database.db);
+    const second = await seed(db().db);
     expect(second.aliasesAdded).toBe(0);
     expect(await count('cities')).toBe(before.cities);
     expect(await count('developers')).toBe(before.developers);
@@ -74,7 +78,7 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
   });
 
   it('resolves an Arabic alias to its canonical city', async () => {
-    const result = await database.pool.query<{ name_en: string }>(
+    const result = await db().pool.query<{ name_en: string }>(
       `SELECT c.name_en FROM entity_aliases a JOIN cities c ON c.id = a.city_id
        WHERE a.alias_normalized = $1`,
       ['التجمع الخامس'],
@@ -83,7 +87,7 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
   });
 
   it('finds a misspelled project by trigram similarity', async () => {
-    const result = await database.pool.query<{ name_en: string }>(
+    const result = await db().pool.query<{ name_en: string }>(
       `SELECT p.name_en FROM entity_aliases a JOIN projects p ON p.id = a.project_id
        WHERE a.alias_normalized % $1
        ORDER BY similarity(a.alias_normalized, $1) DESC LIMIT 1`,
@@ -94,7 +98,7 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
 
   it('rejects an alias that points at two entities', async () => {
     await expect(
-      database.pool.query(
+      db().pool.query(
         `INSERT INTO entity_aliases (alias, alias_normalized, city_id, developer_id)
          VALUES ('x', 'x', 1, 1)`,
       ),
@@ -102,8 +106,8 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
   });
 
   it('refuses to delete a city that still has projects', async () => {
-    await expect(
-      database.pool.query(`DELETE FROM cities WHERE name_en = 'New Cairo'`),
-    ).rejects.toThrow(/foreign key/);
+    await expect(db().pool.query(`DELETE FROM cities WHERE name_en = 'New Cairo'`)).rejects.toThrow(
+      /foreign key/,
+    );
   });
 });
