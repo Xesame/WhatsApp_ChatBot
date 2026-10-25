@@ -1,9 +1,9 @@
 import type { SeedEntity } from './types.ts';
 
-// Starter list for Hassan to review. Sub-areas that brokers use loosely
-// (Ras El Hekma, El Alamein, Sidi Abdel Rahman) are aliases of North Coast,
-// because the template's City column is coarse. Split them into their own
-// cities here if firms want to filter by them.
+// Starter list, reviewed by Hassan on 2026-10-25. Well-known sub-areas
+// (Katameya, Galala, El Gouna, and the North Coast areas Ras El Hekma,
+// New Alamein and Sidi Abdel Rahman) are their own cities so firms can filter
+// by them. "North Coast" stays for posts that only say "الساحل".
 export const cities: SeedEntity[] = [
   {
     nameEn: 'New Cairo',
@@ -16,8 +16,6 @@ export const cities: SeedEntity[] = [
       'Tagamoa',
       'El Tagamoa',
       'Tagamo3',
-      'Katameya',
-      'القطامية',
     ],
   },
   {
@@ -65,29 +63,46 @@ export const cities: SeedEntity[] = [
   {
     nameEn: 'North Coast',
     nameAr: 'الساحل الشمالي',
-    aliases: [
-      'الساحل',
-      'Sahel',
-      'El Sahel',
-      'رأس الحكمة',
-      'Ras El Hekma',
-      'Ras Elhekma',
-      'العلمين',
-      'العلمين الجديدة',
-      'New Alamein',
-      'El Alamein',
-      'سيدي عبد الرحمن',
-      'Sidi Abdel Rahman',
-    ],
+    aliases: ['الساحل', 'Sahel', 'El Sahel'],
+  },
+  {
+    nameEn: 'Ras El Hekma',
+    nameAr: 'رأس الحكمة',
+    aliases: ['Ras Elhekma', 'Ras El Hikma', 'راس الحكمه'],
+  },
+  {
+    nameEn: 'New Alamein',
+    nameAr: 'العلمين الجديدة',
+    aliases: ['العلمين', 'El Alamein', 'Alamein', 'New Alamein City'],
+  },
+  {
+    nameEn: 'Sidi Abdel Rahman',
+    nameAr: 'سيدي عبد الرحمن',
+    aliases: ['Sidi Abdelrahman', 'Sidi Abd El Rahman'],
   },
   {
     nameEn: 'Ain Sokhna',
     nameAr: 'العين السخنة',
-    aliases: ['السخنة', 'Sokhna', 'El Sokhna', 'Ain El Sokhna', 'الجلالة', 'Galala'],
+    aliases: ['السخنة', 'Sokhna', 'El Sokhna', 'Ain El Sokhna'],
+  },
+  {
+    nameEn: 'Galala City',
+    nameAr: 'مدينة الجلالة',
+    aliases: ['الجلالة', 'Galala', 'El Galala'],
   },
   {
     nameEn: 'Hurghada',
     nameAr: 'الغردقة',
-    aliases: ['Ghardaqa', 'El Gouna', 'الجونة'],
+    aliases: ['Ghardaqa'],
+  },
+  {
+    nameEn: 'El Gouna',
+    nameAr: 'الجونة',
+    aliases: ['Gouna'],
+  },
+  {
+    nameEn: 'Katameya',
+    nameAr: 'القطامية',
+    aliases: ['Kattameya', 'Katameya Heights'],
   },
 ];

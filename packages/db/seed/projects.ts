@@ -40,7 +40,7 @@ export const projects: SeedProject[] = [
     nameEn: 'SouthMED',
     nameAr: 'ساوث ميد',
     developer: 'Talaat Moustafa Group',
-    city: 'North Coast',
+    city: 'Ras El Hekma',
     aliases: ['South Med', 'ساوث ميد الساحل'],
   },
 
@@ -56,7 +56,7 @@ export const projects: SeedProject[] = [
     nameEn: 'Marassi',
     nameAr: 'مراسي',
     developer: 'Emaar Misr',
-    city: 'North Coast',
+    city: 'Sidi Abdel Rahman',
     aliases: ['مراسى'],
   },
   {
@@ -139,14 +139,14 @@ export const projects: SeedProject[] = [
     nameEn: 'Hacienda Bay',
     nameAr: 'هاسيندا باي',
     developer: 'Palm Hills Developments',
-    city: 'North Coast',
+    city: 'Sidi Abdel Rahman',
     aliases: ['هاسيندا بي'],
   },
   {
     nameEn: 'Hacienda West',
     nameAr: 'هاسيندا ويست',
     developer: 'Palm Hills Developments',
-    city: 'North Coast',
+    city: 'Ras El Hekma',
     aliases: [],
   },
 
@@ -176,7 +176,7 @@ export const projects: SeedProject[] = [
     nameEn: 'Mountain View Ras El Hekma',
     nameAr: 'ماونتن فيو رأس الحكمة',
     developer: 'Mountain View',
-    city: 'North Coast',
+    city: 'Ras El Hekma',
     aliases: ['MV Ras El Hekma'],
   },
   {
@@ -238,7 +238,7 @@ export const projects: SeedProject[] = [
     nameEn: 'Il Monte Galala',
     nameAr: 'إل مونت جلالة',
     developer: 'Tatweer Misr',
-    city: 'Ain Sokhna',
+    city: 'Galala City',
     aliases: ['Monte Galala', 'مونت جلالة', 'ال مونتي جلاله'],
   },
   {
@@ -360,14 +360,14 @@ export const projects: SeedProject[] = [
     nameEn: 'North Edge',
     nameAr: 'نورث إيدج',
     developer: 'City Edge Developments',
-    city: 'North Coast',
+    city: 'New Alamein',
     aliases: ['North Edge Towers', 'نورث ايدج'],
   },
   {
     nameEn: 'El Gouna',
     nameAr: 'الجونة',
     developer: 'Orascom Development',
-    city: 'Hurghada',
+    city: 'El Gouna',
     aliases: ['Gouna'],
   },
   {
