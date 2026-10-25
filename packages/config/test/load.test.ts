@@ -36,3 +36,43 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ DATABASE_URL, LOG_LEVEL: 'loud' })).toThrow(/LOG_LEVEL/);
   });
 });
+
+describe('service-specific required variables', () => {
+  const salt = 'x'.repeat(32);
+
+  it('lists SENDER_HASH_SALT as required for capture only', async () => {
+    const { requiredVariables } = await import('../src/index.ts');
+    expect(requiredVariables('capture')).toEqual(['SENDER_HASH_SALT']);
+    expect(requiredVariables('api')).toEqual([]);
+  });
+
+  it('lets the api start without SENDER_HASH_SALT', () => {
+    expect(loadConfig({ DATABASE_URL }, 'api').SENDER_HASH_SALT).toBeUndefined();
+  });
+
+  it('stops capture without SENDER_HASH_SALT', () => {
+    expect(() => loadConfig({ DATABASE_URL }, 'capture')).toThrow(
+      /SENDER_HASH_SALT is required for capture/,
+    );
+  });
+
+  it('rejects a short salt', () => {
+    expect(() => loadConfig({ DATABASE_URL, SENDER_HASH_SALT: 'short' }, 'capture')).toThrow(
+      /at least 32/,
+    );
+  });
+
+  it('accepts a valid capture configuration', () => {
+    const config = loadConfig({ DATABASE_URL, SENDER_HASH_SALT: salt }, 'capture');
+    expect(config.SENDER_HASH_SALT).toBe(salt);
+    expect(config.MEDIA_DIR).toMatch(/data\/media$/);
+    expect(config.MEDIA_MAX_BYTES).toBe(52428800);
+  });
+
+  it('validates the pairing phone format', () => {
+    expect(() => loadConfig({ DATABASE_URL, WA_PAIRING_PHONE: '+20 100' })).toThrow(/digits only/);
+    expect(loadConfig({ DATABASE_URL, WA_PAIRING_PHONE: '201001234567' }).WA_PAIRING_PHONE).toBe(
+      '201001234567',
+    );
+  });
+});

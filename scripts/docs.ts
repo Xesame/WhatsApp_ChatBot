@@ -33,12 +33,14 @@ interface JsonSchemaProperty {
   examples?: (string | number)[];
   secret?: boolean;
   usedBy?: string;
+  requiredFor?: string[];
 }
 
 interface EnvVarDoc {
   name: string;
   description: string;
-  required: boolean;
+  /** "yes", "no", or the services that require it (e.g. "capture") */
+  required: string;
   defaultValue: string;
   example: string;
   secret: boolean;
@@ -58,8 +60,11 @@ function describeEnv(schema: z.ZodObject): EnvVarDoc[] {
     return {
       name,
       description: property.description,
-      required: json.required?.includes(name) ?? false,
-      defaultValue: property.default === undefined ? '' : String(property.default),
+      required: json.required?.includes(name) ? 'yes' : (property.requiredFor?.join(', ') ?? 'no'),
+      // Defaults that are absolute paths are shown relative to the repository,
+      // so the generated docs are identical on every machine.
+      defaultValue:
+        property.default === undefined ? '' : String(property.default).replace(root, '<repo>/'),
       example: property.examples?.[0] === undefined ? '' : String(property.examples[0]),
       secret: property.secret === true,
       allowed: property.enum ? property.enum.map((v) => `\`${v}\``).join(', ') : '',
@@ -76,7 +81,7 @@ function renderEnvMarkdown(): string {
   const rows = envVars.map((v) =>
     [
       `\`${v.name}\``,
-      v.required ? 'yes' : 'no',
+      v.required,
       v.defaultValue ? `\`${v.defaultValue}\`` : '',
       v.example ? `\`${v.example}\`` : '',
       cell(v.description) +
@@ -103,9 +108,13 @@ function renderEnvExample(): string {
   const lines = [`# ${GENERATED_NOTE}`, '# Copy to .env and change every secret value.', ''];
   for (const v of envVars) {
     lines.push(`# ${v.description}`);
-    lines.push(
-      `# ${v.required ? 'Required' : `Optional, default: ${v.defaultValue}`}. Used by: ${v.usedBy}.`,
-    );
+    const requirement =
+      v.required === 'yes'
+        ? 'Required'
+        : v.required === 'no'
+          ? `Optional, default: ${v.defaultValue || '(none)'}`
+          : `Required for ${v.required}`;
+    lines.push(`# ${requirement}. Used by: ${v.usedBy}.`);
     lines.push(`${v.name}=${v.example}`, '');
   }
   return lines.join('\n');

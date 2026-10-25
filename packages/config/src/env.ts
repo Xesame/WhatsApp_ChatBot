@@ -1,4 +1,8 @@
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+
+/** <repo>/data/media, the same place whether run from Docker (/app) or a checkout. */
+const DEFAULT_MEDIA_DIR = fileURLToPath(new URL('../../../data/media', import.meta.url));
 
 /**
  * The single list of environment variables the Node services read.
@@ -12,6 +16,9 @@ import { z } from 'zod';
  * - examples:    first entry is written into .env.example
  * - secret:      true when the value must never be logged or committed
  * - usedBy:      which services read it
+ * - requiredFor: services that refuse to start without it. The variable is
+ *                optional in the schema (other services don't need it);
+ *                `loadConfig(env, service)` enforces it for these services.
  */
 export const envSchema = z.object({
   NODE_ENV: z
@@ -68,6 +75,48 @@ export const envSchema = z.object({
       description: 'Port the API listens on. The API serves `/health` on this same port.',
       usedBy: 'api',
       examples: ['3000'],
+    }),
+  SENDER_HASH_SALT: z
+    .string()
+    .min(32, 'must be at least 32 characters; generate one with `openssl rand -hex 32`')
+    .optional()
+    .meta({
+      description:
+        'Secret mixed into every sender hash, so a stored hash cannot be turned back into a phone number by hashing guesses. Generate with `openssl rand -hex 32`. Never change it after messages are stored: the same sender would get a different hash.',
+      usedBy: 'capture',
+      requiredFor: ['capture'],
+      examples: ['replace-with-output-of-openssl-rand-hex-32'],
+      secret: true,
+    }),
+  MEDIA_DIR: z
+    .string()
+    .default(DEFAULT_MEDIA_DIR)
+    .meta({
+      description:
+        'Folder where downloaded WhatsApp media is stored. Defaults to `data/media` in the repository; Docker keeps it in the `media` volume.',
+      usedBy: 'capture, worker',
+      examples: [''],
+    }),
+  MEDIA_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(50 * 1024 * 1024)
+    .meta({
+      description:
+        'Media files larger than this (in bytes) are not downloaded; the message is still saved. Default 50 MB.',
+      usedBy: 'capture',
+      examples: ['52428800'],
+    }),
+  WA_PAIRING_PHONE: z
+    .string()
+    .regex(/^\d{8,15}$/, 'digits only, in international format without + (e.g. 201001234567)')
+    .optional()
+    .meta({
+      description:
+        "The scraper's own WhatsApp number, digits only (e.g. `201001234567`). When set, capture prints an 8-character pairing code to enter on the phone instead of a QR code. Leave empty to pair by QR.",
+      usedBy: 'capture',
+      examples: [''],
     }),
 });
 

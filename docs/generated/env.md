@@ -12,6 +12,10 @@ Copy `.env.example` to `.env` and fill in the values. Variables marked **Secret*
 | `HEALTH_PORT` | no | `8080` | `8080` | Port for the `/health` endpoint of capture, worker and chatbot. Docker health checks call it. | capture, worker, chatbot |
 | `API_HOST` | no | `0.0.0.0` | `0.0.0.0` | Interface the API listens on. `0.0.0.0` accepts connections from other containers. | api |
 | `API_PORT` | no | `3000` | `3000` | Port the API listens on. The API serves `/health` on this same port. | api |
+| `SENDER_HASH_SALT` | capture |  | `replace-with-output-of-openssl-rand-hex-32` | Secret mixed into every sender hash, so a stored hash cannot be turned back into a phone number by hashing guesses. Generate with `openssl rand -hex 32`. Never change it after messages are stored: the same sender would get a different hash. **Secret.** | capture |
+| `MEDIA_DIR` | no | `<repo>/data/media` |  | Folder where downloaded WhatsApp media is stored. Defaults to `data/media` in the repository; Docker keeps it in the `media` volume. | capture, worker |
+| `MEDIA_MAX_BYTES` | no | `52428800` | `52428800` | Media files larger than this (in bytes) are not downloaded; the message is still saved. Default 50 MB. | capture |
+| `WA_PAIRING_PHONE` | no |  |  | The scraper's own WhatsApp number, digits only (e.g. `201001234567`). When set, capture prints an 8-character pairing code to enter on the phone instead of a QR code. Leave empty to pair by QR. | capture |
 | `POSTGRES_USER` | no | `reb` | `reb` | Database user created by the Postgres container on first start. | docker-compose.yml |
 | `POSTGRES_PASSWORD` | yes |  | `change-me` | Password for POSTGRES_USER. Must match the password inside DATABASE_URL. Only read the first time the database volume is created. **Secret.** | docker-compose.yml |
 | `POSTGRES_DB` | no | `reb` | `reb` | Database name created by the Postgres container on first start. | docker-compose.yml |
