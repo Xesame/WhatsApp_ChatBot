@@ -16,6 +16,14 @@ Copy `.env.example` to `.env` and fill in the values. Variables marked **Secret*
 | `MEDIA_DIR` | no | `<repo>/data/media` |  | Folder where downloaded WhatsApp media is stored. Defaults to `data/media` in the repository; Docker keeps it in the `media` volume. | capture, worker |
 | `MEDIA_MAX_BYTES` | no | `52428800` | `52428800` | Media files larger than this (in bytes) are not downloaded; the message is still saved. Default 50 MB. | capture |
 | `WA_PAIRING_PHONE` | no |  |  | The scraper's own WhatsApp number, digits only (e.g. `201001234567`). When set, capture prints an 8-character pairing code to enter on the phone instead of a QR code. Leave empty to pair by QR. | capture |
+| `CEREBRAS_API_KEY` | no |  |  | API key from cloud.cerebras.ai, used for text classification and extraction. Without any model API key the worker stores and queues messages but does not extract them. **Secret.** | worker |
+| `OPENROUTER_API_KEY` | no |  |  | API key from openrouter.ai, only needed if an `openrouter:` model is listed below. **Secret.** | worker |
+| `LLM_CLASSIFY_MODELS` | no | `cerebras:qwen-3.8-27b,cerebras:gpt-oss-120b` | `cerebras:qwen-3.8-27b,cerebras:gpt-oss-120b` | Models that classify messages, as `provider:model`, comma-separated, in fallback order. A rate limit or error on one moves to the next. | worker |
+| `LLM_EXTRACT_MODELS` | no | `cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b` | `cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b` | Models that extract units, as `provider:model`, comma-separated, in fallback order. | worker |
+| `LLM_REQUESTS_PER_MINUTE` | no | `5` | `5` | Maximum requests per minute to each model. Cerebras free tier allows about 5; raise it on a paid plan. | worker |
+| `LLM_TIMEOUT_MS` | no | `60000` | `60000` | How long to wait for one model answer before trying the next model. | worker |
+| `LLM_FREE_TIER` | no | `true` | `true` | Record model cost as 0 (free tier). Set to `false` on a paid plan so costs are calculated. Allowed: `true`, `false`. | worker |
+| `USD_EGP_RATE` | no |  | `50` | EGP per 1 USD, set by the owner. The Excel export converts USD prices to EGP with it (EGP is the main currency). Exports fail if a unit is in USD and this is not set. | worker (export command) |
 | `POSTGRES_USER` | no | `reb` | `reb` | Database user created by the Postgres container on first start. | docker-compose.yml |
 | `POSTGRES_PASSWORD` | yes |  | `change-me` | Password for POSTGRES_USER. Must match the password inside DATABASE_URL. Only read the first time the database volume is created. **Secret.** | docker-compose.yml |
 | `POSTGRES_DB` | no | `reb` | `reb` | Database name created by the Postgres container on first start. | docker-compose.yml |

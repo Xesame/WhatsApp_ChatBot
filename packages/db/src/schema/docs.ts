@@ -142,4 +142,84 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       updated_at: 'When the status last changed.',
     },
   },
+  extraction_runs: {
+    description:
+      'Every model call (classification or extraction): request, answer, tokens, cost, latency. Reprocessing adds new rows and never deletes old ones.',
+    columns: {
+      id: 'Identity primary key.',
+      message_id: 'The message the model read.',
+      purpose: '`classify` (what the message is about) or `extract` (copy out units).',
+      prompt_version: 'Version string of the prompt used, e.g. `extract-2026-10-26.1`.',
+      provider: '`cerebras`, `openrouter`, ...',
+      model: 'Model name at the provider.',
+      request: 'The request body as sent (no API key). Contact details are removed before sending.',
+      raw_output: 'The answer from the model, unchanged.',
+      parsed: 'The answer after validation, when valid.',
+      input_tokens: 'Tokens sent.',
+      output_tokens: 'Tokens received.',
+      cost_usd: 'Cost in USD (0 on free tiers; null when the price of the model is unknown).',
+      latency_ms: 'Time the call took.',
+      status: '`ok`, `invalid` (answer failed validation), `error`, `rate_limited` or `timeout`.',
+      error: 'Error or validation message.',
+      created_at: 'When the call was made.',
+    },
+  },
+  units: {
+    description:
+      'One row per unit offering: the 26 Primary Units template columns, then internal columns.',
+    columns: {
+      id: 'Identity primary key.',
+      category:
+        'Template: Category (Residential, Commercial, Administrative, Medical). Inferred from unit type when not stated.',
+      developer_id:
+        'Template: Developer (exported as the English name). Filled from the project when only the project was named.',
+      project_id: 'Template: Project (exported as the English name).',
+      city_id: 'Template: City (exported as the English name).',
+      unit_type: 'Template: Unit Type.',
+      unit_code: 'Template: Unit Code, only when the message names a specific unit.',
+      floor: 'Template: Floor, normalized: `Ground`, `Roof`, `3`, or a range `1-5`.',
+      finishing_specs: 'Template: Finishing Specs.',
+      min_area: 'Template: Min Area (m²). A single size fills Min and Max.',
+      max_area: 'Template: Max Area (m²). Empty for "starting from".',
+      land_area: 'Template: Land Area (m²).',
+      garden_area: 'Template: Garden Area (m²).',
+      outdoor_area: 'Template: Outdoor Area (m²), terrace or roof.',
+      min_price:
+        'Template: Min Price, in minor units (piastres/cents) of `price_currency`. 650000000 EGP = EGP 6.5M.',
+      max_price: 'Template: Max Price, minor units. Empty for "starting from".',
+      delivery_year: 'Template: Delivery Year. Empty for ready-to-move units.',
+      maintenance: 'Template: Maintenance, as stated (percent or amount).',
+      maintenance_currency: 'Template: Maintenance Currency: `EGP`, `USD` or `%`.',
+      cash_discount: 'Template: Cash Discount, as stated.',
+      cash_discount_currency: 'Template: Cash Discount Currency, for fixed amounts.',
+      cash_discount_type: 'Template: Cash Discount Type: `Percentage` or `Fixed amount`.',
+      down_payment:
+        'Template: Down Payment, percent 0-100 (computed from the amount when only an amount was stated).',
+      installments_count:
+        'Template: Installments Count = years x payments per year, computed in code.',
+      bedrooms: 'Template: Bedrooms.',
+      bathrooms: 'Template: Bathrooms.',
+      notes:
+        'Template: Notes. Short English note; the export adds "Ready to move" and USD conversion notes.',
+      status: '`active`, `stale` (not seen for a while), `sold` or `withdrawn`.',
+      price_currency:
+        'Currency the prices were stated in (`EGP` or `USD`). The export converts USD to EGP.',
+      down_payment_amount:
+        'Down payment as an amount (minor units), when the message stated an amount.',
+      installment_years: 'Length of the payment plan in years.',
+      installment_frequency: '`monthly`, `quarterly`, `semi-annual` or `annual`.',
+      ready_to_move: 'True for ready-to-move units.',
+      confidence:
+        '0-1, computed in code from which key fields were found and how well names matched.',
+      needs_review: 'True when the review queue should check this unit.',
+      review_reasons: 'Plain-English reasons for review, e.g. `No price`.',
+      extras: 'Other data, e.g. names not in the entity list under `unmatched`.',
+      source_message_id: 'The message the unit was extracted from.',
+      extraction_run_id: 'The model call that produced it.',
+      first_seen_at: 'When the unit was first posted (message time).',
+      last_seen_at: 'When the unit was last posted.',
+      created_at: 'When the row was created.',
+      updated_at: 'When the row was last changed.',
+    },
+  },
 };

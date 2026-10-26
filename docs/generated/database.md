@@ -7,10 +7,16 @@ erDiagram
   cities ||--o{ entity_aliases : "city_id"
   developers ||--o{ entity_aliases : "developer_id"
   projects ||--o{ entity_aliases : "project_id"
+  messages ||--o{ extraction_runs : "message_id"
   messages ||--o{ media_files : "message_id"
   wa_groups ||--o{ messages : "group_id"
   developers ||--o{ projects : "developer_id"
   cities ||--o{ projects : "city_id"
+  developers ||--o{ units : "developer_id"
+  projects ||--o{ units : "project_id"
+  cities ||--o{ units : "city_id"
+  messages ||--o{ units : "source_message_id"
+  extraction_runs ||--o{ units : "extraction_run_id"
   cities {
     integer id PK
     text name_en
@@ -33,6 +39,24 @@ erDiagram
     integer developer_id FK
     integer project_id FK
     text source
+    timestamp_with_time_zone created_at
+  }
+  extraction_runs {
+    bigint id PK
+    bigint message_id FK
+    text purpose
+    text prompt_version
+    text provider
+    text model
+    jsonb request
+    text raw_output
+    jsonb parsed
+    integer input_tokens
+    integer output_tokens
+    numeric(12,_6) cost_usd
+    integer latency_ms
+    text status
+    text error
     timestamp_with_time_zone created_at
   }
   media_files {
@@ -76,6 +100,51 @@ erDiagram
     text name_ar
     integer developer_id FK
     integer city_id FK
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
+  units {
+    bigint id PK
+    text category
+    integer developer_id FK
+    integer project_id FK
+    integer city_id FK
+    text unit_type
+    text unit_code
+    text floor
+    text finishing_specs
+    numeric(12,_2) min_area
+    numeric(12,_2) max_area
+    numeric(12,_2) land_area
+    numeric(12,_2) garden_area
+    numeric(12,_2) outdoor_area
+    bigint min_price
+    bigint max_price
+    smallint delivery_year
+    numeric(12,_2) maintenance
+    text maintenance_currency
+    numeric(12,_2) cash_discount
+    text cash_discount_currency
+    text cash_discount_type
+    numeric(12,_2) down_payment
+    smallint installments_count
+    smallint bedrooms
+    smallint bathrooms
+    text notes
+    text status
+    text price_currency
+    bigint down_payment_amount
+    numeric(12,_2) installment_years
+    text installment_frequency
+    boolean ready_to_move
+    numeric(3,_2) confidence
+    boolean needs_review
+    text[] review_reasons
+    jsonb extras
+    bigint source_message_id FK
+    bigint extraction_run_id FK
+    timestamp_with_time_zone first_seen_at
+    timestamp_with_time_zone last_seen_at
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
@@ -157,6 +226,36 @@ Alternate spellings (Arabic, English, abbreviations) mapped to one city, develop
 - Index `entity_aliases_alias_trgm_idx` on (expression) using gin
 - Check `entity_aliases_exactly_one_entity`
 
+## `extraction_runs`
+
+Every model call (classification or extraction): request, answer, tokens, cost, latency. Reprocessing adds new rows and never deletes old ones.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `message_id` | bigint | no | → messages.id | The message the model read. |
+| `purpose` | text | no |  | `classify` (what the message is about) or `extract` (copy out units). |
+| `prompt_version` | text | no |  | Version string of the prompt used, e.g. `extract-2026-10-26.1`. |
+| `provider` | text | no |  | `cerebras`, `openrouter`, ... |
+| `model` | text | no |  | Model name at the provider. |
+| `request` | jsonb | no |  | The request body as sent (no API key). Contact details are removed before sending. |
+| `raw_output` | text | yes |  | The answer from the model, unchanged. |
+| `parsed` | jsonb | yes |  | The answer after validation, when valid. |
+| `input_tokens` | integer | yes |  | Tokens sent. |
+| `output_tokens` | integer | yes |  | Tokens received. |
+| `cost_usd` | numeric(12, 6) | yes |  | Cost in USD (0 on free tiers; null when the price of the model is unknown). |
+| `latency_ms` | integer | no |  | Time the call took. |
+| `status` | text | no |  | `ok`, `invalid` (answer failed validation), `error`, `rate_limited` or `timeout`. |
+| `error` | text | yes |  | Error or validation message. |
+| `created_at` | timestamp with time zone | no |  | When the call was made. |
+
+**Indexes and constraints**
+
+- Index `extraction_runs_message_idx` on (message_id)
+- Index `extraction_runs_created_at_idx` on (created_at)
+- Check `extraction_runs_purpose_check`
+- Check `extraction_runs_status_check`
+
 ## `media_files`
 
 The image, video, voice note or document attached to a message. Identical files are stored once on disk (named by hash).
@@ -236,6 +335,75 @@ Canonical projects (compounds). Each belongs to one developer and one city.
 
 - Unique index `projects_developer_name_en_key` on (developer_id, name_en)
 - Index `projects_city_id_idx` on (city_id)
+
+## `units`
+
+One row per unit offering: the 26 Primary Units template columns, then internal columns.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `category` | text | yes |  | Template: Category (Residential, Commercial, Administrative, Medical). Inferred from unit type when not stated. |
+| `developer_id` | integer | yes | → developers.id | Template: Developer (exported as the English name). Filled from the project when only the project was named. |
+| `project_id` | integer | yes | → projects.id | Template: Project (exported as the English name). |
+| `city_id` | integer | yes | → cities.id | Template: City (exported as the English name). |
+| `unit_type` | text | yes |  | Template: Unit Type. |
+| `unit_code` | text | yes |  | Template: Unit Code, only when the message names a specific unit. |
+| `floor` | text | yes |  | Template: Floor, normalized: `Ground`, `Roof`, `3`, or a range `1-5`. |
+| `finishing_specs` | text | yes |  | Template: Finishing Specs. |
+| `min_area` | numeric(12, 2) | yes |  | Template: Min Area (m²). A single size fills Min and Max. |
+| `max_area` | numeric(12, 2) | yes |  | Template: Max Area (m²). Empty for "starting from". |
+| `land_area` | numeric(12, 2) | yes |  | Template: Land Area (m²). |
+| `garden_area` | numeric(12, 2) | yes |  | Template: Garden Area (m²). |
+| `outdoor_area` | numeric(12, 2) | yes |  | Template: Outdoor Area (m²), terrace or roof. |
+| `min_price` | bigint | yes |  | Template: Min Price, in minor units (piastres/cents) of `price_currency`. 650000000 EGP = EGP 6.5M. |
+| `max_price` | bigint | yes |  | Template: Max Price, minor units. Empty for "starting from". |
+| `delivery_year` | smallint | yes |  | Template: Delivery Year. Empty for ready-to-move units. |
+| `maintenance` | numeric(12, 2) | yes |  | Template: Maintenance, as stated (percent or amount). |
+| `maintenance_currency` | text | yes |  | Template: Maintenance Currency: `EGP`, `USD` or `%`. |
+| `cash_discount` | numeric(12, 2) | yes |  | Template: Cash Discount, as stated. |
+| `cash_discount_currency` | text | yes |  | Template: Cash Discount Currency, for fixed amounts. |
+| `cash_discount_type` | text | yes |  | Template: Cash Discount Type: `Percentage` or `Fixed amount`. |
+| `down_payment` | numeric(12, 2) | yes |  | Template: Down Payment, percent 0-100 (computed from the amount when only an amount was stated). |
+| `installments_count` | smallint | yes |  | Template: Installments Count = years x payments per year, computed in code. |
+| `bedrooms` | smallint | yes |  | Template: Bedrooms. |
+| `bathrooms` | smallint | yes |  | Template: Bathrooms. |
+| `notes` | text | yes |  | Template: Notes. Short English note; the export adds "Ready to move" and USD conversion notes. |
+| `status` | text | no |  | `active`, `stale` (not seen for a while), `sold` or `withdrawn`. |
+| `price_currency` | text | no |  | Currency the prices were stated in (`EGP` or `USD`). The export converts USD to EGP. |
+| `down_payment_amount` | bigint | yes |  | Down payment as an amount (minor units), when the message stated an amount. |
+| `installment_years` | numeric(12, 2) | yes |  | Length of the payment plan in years. |
+| `installment_frequency` | text | yes |  | `monthly`, `quarterly`, `semi-annual` or `annual`. |
+| `ready_to_move` | boolean | no |  | True for ready-to-move units. |
+| `confidence` | numeric(3, 2) | no |  | 0-1, computed in code from which key fields were found and how well names matched. |
+| `needs_review` | boolean | no |  | True when the review queue should check this unit. |
+| `review_reasons` | text[] | no |  | Plain-English reasons for review, e.g. `No price`. |
+| `extras` | jsonb | no |  | Other data, e.g. names not in the entity list under `unmatched`. |
+| `source_message_id` | bigint | no | → messages.id | The message the unit was extracted from. |
+| `extraction_run_id` | bigint | yes | → extraction_runs.id | The model call that produced it. |
+| `first_seen_at` | timestamp with time zone | no |  | When the unit was first posted (message time). |
+| `last_seen_at` | timestamp with time zone | no |  | When the unit was last posted. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Index `units_source_message_idx` on (source_message_id)
+- Index `units_project_idx` on (project_id)
+- Index `units_city_type_idx` on (city_id, unit_type)
+- Index `units_status_idx` on (status)
+- Index `units_needs_review_idx` on (needs_review)
+- Check `units_category_check`
+- Check `units_unit_type_check`
+- Check `units_finishing_specs_check`
+- Check `units_maintenance_currency_check`
+- Check `units_cash_discount_currency_check`
+- Check `units_cash_discount_type_check`
+- Check `units_status_check`
+- Check `units_price_currency_check`
+- Check `units_installment_frequency_check`
+- Check `units_down_payment_range`
+- Check `units_price_order`
 
 ## `wa_auth`
 

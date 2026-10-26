@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./seed-data": "./seed/index.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./seed-runner": "./src/seed.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
@@ -18,7 +19,8 @@
     "@reb/config": "workspace:*",
     "@reb/normalize": "workspace:*",
     "drizzle-orm": "0.45.4",
-    "pg": "8.23.1"
+    "pg": "8.23.1",
+    "@reb/schema": "workspace:*"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",

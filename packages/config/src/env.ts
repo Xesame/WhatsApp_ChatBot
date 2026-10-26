@@ -118,6 +118,84 @@ export const envSchema = z.object({
       usedBy: 'capture',
       examples: [''],
     }),
+  CEREBRAS_API_KEY: z
+    .string()
+    .optional()
+    .meta({
+      description:
+        'API key from cloud.cerebras.ai, used for text classification and extraction. Without any model API key the worker stores and queues messages but does not extract them.',
+      usedBy: 'worker',
+      examples: [''],
+      secret: true,
+    }),
+  OPENROUTER_API_KEY: z
+    .string()
+    .optional()
+    .meta({
+      description:
+        'API key from openrouter.ai, only needed if an `openrouter:` model is listed below.',
+      usedBy: 'worker',
+      examples: [''],
+      secret: true,
+    }),
+  LLM_CLASSIFY_MODELS: z
+    .string()
+    .default('cerebras:qwen-3.8-27b,cerebras:gpt-oss-120b')
+    .meta({
+      description:
+        'Models that classify messages, as `provider:model`, comma-separated, in fallback order. A rate limit or error on one moves to the next.',
+      usedBy: 'worker',
+      examples: ['cerebras:qwen-3.8-27b,cerebras:gpt-oss-120b'],
+    }),
+  LLM_EXTRACT_MODELS: z
+    .string()
+    .default('cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b')
+    .meta({
+      description:
+        'Models that extract units, as `provider:model`, comma-separated, in fallback order.',
+      usedBy: 'worker',
+      examples: ['cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b'],
+    }),
+  LLM_REQUESTS_PER_MINUTE: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(5)
+    .meta({
+      description:
+        'Maximum requests per minute to each model. Cerebras free tier allows about 5; raise it on a paid plan.',
+      usedBy: 'worker',
+      examples: ['5'],
+    }),
+  LLM_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1000)
+    .default(60_000)
+    .meta({
+      description: 'How long to wait for one model answer before trying the next model.',
+      usedBy: 'worker',
+      examples: ['60000'],
+    }),
+  LLM_FREE_TIER: z
+    .enum(['true', 'false'])
+    .default('true')
+    .meta({
+      description:
+        'Record model cost as 0 (free tier). Set to `false` on a paid plan so costs are calculated.',
+      usedBy: 'worker',
+      examples: ['true'],
+    }),
+  USD_EGP_RATE: z.coerce
+    .number()
+    .positive()
+    .optional()
+    .meta({
+      description:
+        'EGP per 1 USD, set by the owner. The Excel export converts USD prices to EGP with it (EGP is the main currency). Exports fail if a unit is in USD and this is not set.',
+      usedBy: 'worker (export command)',
+      examples: ['50'],
+    }),
 });
 
 /**
