@@ -1,7 +1,12 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { readHeaderRow, writePrimaryUnitsWorkbook } from '../src/export.ts';
+import {
+  readHeaderRow,
+  readSheetName,
+  TEMPLATE_SHEET_NAME,
+  writePrimaryUnitsWorkbook,
+} from '../src/export.ts';
 import {
   extractionResultSchema,
   jsonSchemaFor,
@@ -99,7 +104,17 @@ describe('template columns', () => {
 
   it.skipIf(!existsSync(TEMPLATE_FILE))('matches the committed template file', async () => {
     expect(await readHeaderRow(TEMPLATE_FILE)).toEqual(TEMPLATE_HEADERS);
+    expect(await readSheetName(TEMPLATE_FILE)).toBe(TEMPLATE_SHEET_NAME);
   });
+
+  it.skipIf(!existsSync(TEMPLATE_FILE))(
+    'exports with the same headers and sheet name as the template file',
+    async () => {
+      const file = await writePrimaryUnitsWorkbook([sampleUnit()], ctx);
+      expect(await readHeaderRow(file)).toEqual(await readHeaderRow(TEMPLATE_FILE));
+      expect(await readSheetName(file)).toBe(await readSheetName(TEMPLATE_FILE));
+    },
+  );
 
   it('writes a template row with entity names and EGP prices', () => {
     expect(toTemplateRow(sampleUnit(), ctx)).toEqual([

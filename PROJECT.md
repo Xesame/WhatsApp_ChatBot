@@ -19,7 +19,7 @@ Regenerate them with `pnpm run docs`. CI runs `pnpm docs:check` and fails if the
 - [ ] Scraper WhatsApp number, for the live Phase 1 test (pairing, groups, restart without loss).
 - [x] `GEMINI_API_KEY` added to the cloud environment (2026-10-26); add it to `.env` on the server too. `GROQ_API_KEY`, `OPENROUTER_API_KEY` optional fallbacks.
 - [ ] 20-50 real listing messages for `eval/cases` (chapter 12).
-- [ ] The original `primary-units-template.xlsx`, to commit in `packages/schema/template/`.
+- [x] ~~The original `primary-units-template.xlsx`~~ Committed in `packages/schema/template/` (2026-10-26); the export matches it.
 - [x] ~~Confirm: a lone "من"/"from" before a price means "starting from"~~ Confirmed by Hassan 2026-10-26.
 - [ ] **Reminder for Phase 3:** choose the vision provider (Gemini is the likely choice, same key as text). Sending images that may show phone numbers is approved by Hassan (2026-10-26): the groups are semi-public.
 
@@ -250,7 +250,7 @@ erDiagram
 - `extraction_runs`: every model call, kept forever (reprocessing adds rows, never deletes): purpose (`classify`/`extract`), prompt version, provider, model, the request as sent, the raw answer, the parsed answer, tokens, cost, latency, status.
 - Until Phase 4 (dedup), each listing message produces its own unit rows; re-extracting a message replaces its units. Price updates and sold notices are classified and extracted, and kept in `extraction_runs` for Phase 4 to apply.
 
-**Primary Units template mapping:** generated from the column map in `packages/schema`: **[docs/generated/template.md](docs/generated/template.md)** (header, database column and rule for all 26 columns). The export writes exactly those headers in that order (a test checks it; once the original template file is committed in `packages/schema/template/`, a second test compares against it).
+**Primary Units template mapping:** generated from the column map in `packages/schema`: **[docs/generated/template.md](docs/generated/template.md)** (header, database column and rule for all 26 columns). The export writes exactly those headers in that order (tests compare the headers and sheet name with Hassan's original file in `packages/schema/template/`).
 
 **Template rules agreed with Hassan (2026-10-25)**, implemented in Phase 2:
 

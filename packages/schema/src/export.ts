@@ -6,16 +6,27 @@ import type { Unit } from './unit.ts';
  * Writes units as an Excel workbook in the exact Primary Units template
  * layout: the 26 template headers in order, no internal columns.
  */
+/** Sheet name used by the original template file. */
+export const TEMPLATE_SHEET_NAME = 'Primary Units Template';
+
 export async function writePrimaryUnitsWorkbook(
   units: Unit[],
   ctx: ExportContext,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('Primary Units');
+  const sheet = workbook.addWorksheet(TEMPLATE_SHEET_NAME);
   sheet.addRow(TEMPLATE_HEADERS);
   sheet.getRow(1).font = { bold: true };
   for (const unit of units) sheet.addRow(toTemplateRow(unit, ctx));
   return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+/** Name of the first sheet of a workbook (used by tests). */
+export async function readSheetName(file: Buffer | string): Promise<string | undefined> {
+  const workbook = new ExcelJS.Workbook();
+  if (typeof file === 'string') await workbook.xlsx.readFile(file);
+  else await workbook.xlsx.load(file as unknown as ArrayBuffer);
+  return workbook.worksheets[0]?.name;
 }
 
 /** Reads the header row of the first sheet of a workbook (used by tests). */
