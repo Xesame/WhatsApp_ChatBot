@@ -8,6 +8,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@reb/schema": "workspace:*"
+  },
   "devDependencies": {}
 }

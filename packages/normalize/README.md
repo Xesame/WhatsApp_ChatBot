@@ -1,6 +1,17 @@
 # @reb/normalize
 
-Deterministic text clean-up used before matching names, and later (Phase 2) numbers, currencies and units.
+Everything deterministic between the model's raw phrases and a stored unit: names, numbers, currencies, dates, payment plans, the no-invention check, confidence and review reasons. Pure functions, no I/O, about 130 tests.
+
+| File             | What it does                                                                      |
+| ---------------- | --------------------------------------------------------------------------------- |
+| `src/text.ts`    | `normalizeName()` for matching names                                              |
+| `src/numbers.ts` | `parseAmounts`, `parseRange`, `parseCount`, `parsePercentOrAmount`                |
+| `src/fields.ts`  | `detectCurrency`, `parseDelivery`, `parseInstallments`, `parseFloor`              |
+| `src/unit.ts`    | `normalizeUnit()`: raw model output → template values, confidence, review reasons |
+
+The full rule list with examples is in PROJECT.md, chapter 6.
+
+## Name normalization
 
 **What it does today.** `normalizeName(text)` turns any spelling of a city, developer or project into a comparison key:
 
