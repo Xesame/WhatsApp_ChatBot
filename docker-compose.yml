@@ -82,6 +82,15 @@ services:
     environment:
       <<: *app-env
       MEDIA_DIR: /app/data/media
+      # Empty values fall back to the defaults in packages/config.
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LLM_CLASSIFY_MODELS: ${LLM_CLASSIFY_MODELS:-}
+      LLM_EXTRACT_MODELS: ${LLM_EXTRACT_MODELS:-}
+      LLM_REQUESTS_PER_MINUTE: ${LLM_REQUESTS_PER_MINUTE:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-}
+      LLM_FREE_TIER: ${LLM_FREE_TIER:-}
+      USD_EGP_RATE: ${USD_EGP_RATE:-}
     volumes:
       - media:/app/data/media
 
