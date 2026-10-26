@@ -10,6 +10,13 @@ import { z } from 'zod';
 export const jobPayloads = {
   /** A message (and its media, if any) is stored and ready for processing. */
   preprocess: z.object({ messageId: z.number().int().positive() }),
+  /** Decide what the message is about: listing, price update, sold, or not relevant. */
+  classify: z.object({ messageId: z.number().int().positive() }),
+  /** Copy the units out of a message the classifier kept. */
+  extract: z.object({
+    messageId: z.number().int().positive(),
+    intent: z.enum(['listing', 'price_update', 'sold']),
+  }),
 } as const;
 
 export type QueueName = keyof typeof jobPayloads;
@@ -32,4 +39,8 @@ export const queueSettings: Record<
     // jobs must not expire before it comes back.
     retentionSeconds: 60 * 24 * 3600,
   },
+  // Model calls: a failed call has already tried every model in the
+  // fallback list, so wait longer before trying again (rate limits, outages).
+  classify: { retryLimit: 6, retryDelay: 60, retryBackoff: true, retentionSeconds: 60 * 24 * 3600 },
+  extract: { retryLimit: 6, retryDelay: 60, retryBackoff: true, retentionSeconds: 60 * 24 * 3600 },
 };

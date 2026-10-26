@@ -57,5 +57,5 @@ export async function enqueueInTransaction<Q extends QueueName>(
 
 /** Validates a job's payload when the worker receives it. */
 export function parsePayload<Q extends QueueName>(queue: Q, data: unknown): JobPayload<Q> {
-  return jobPayloads[queue].parse(data);
+  return jobPayloads[queue].parse(data) as unknown as JobPayload<Q>;
 }

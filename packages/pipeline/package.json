@@ -1,0 +1,24 @@
+{
+  "name": "@reb/pipeline",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@reb/db": "workspace:*",
+    "@reb/llm": "workspace:*",
+    "@reb/normalize": "workspace:*",
+    "@reb/queue": "workspace:*",
+    "@reb/schema": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "pino": "10.4.0"
+  },
+  "devDependencies": {
+    "@reb/ingest": "workspace:*",
+    "exceljs": "4.4.0"
+  }
+}
