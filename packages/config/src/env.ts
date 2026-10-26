@@ -177,6 +177,15 @@ export const envSchema = z.object({
       usedBy: 'worker',
       examples: ['gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free'],
     }),
+  LLM_VISION_MODELS: z
+    .string()
+    .default('gemini:gemini-flash-latest,gemini:gemini-flash-lite-latest')
+    .meta({
+      description:
+        'Models that read images and scanned PDF pages, as `provider:model`, in fallback order. They must accept images. The two Gemini models have separate free quotas.',
+      usedBy: 'worker',
+      examples: ['gemini:gemini-flash-latest,gemini:gemini-flash-lite-latest'],
+    }),
   LLM_REQUESTS_PER_MINUTE: z.coerce
     .number()
     .int()
@@ -206,6 +215,38 @@ export const envSchema = z.object({
         'Record model cost as 0 (free tier). Set to `false` on a paid plan so costs are calculated.',
       usedBy: 'worker',
       examples: ['true'],
+    }),
+  PDF_MAX_PAGES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(10)
+    .meta({
+      description: 'Read at most this many pages of a PDF; later pages are noted as not read.',
+      usedBy: 'worker',
+      examples: ['10'],
+    }),
+  PDF_MIN_TEXT_CHARS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(50)
+    .meta({
+      description:
+        'A PDF page with fewer text characters than this is treated as scanned and sent to the vision model; otherwise its text is read directly (free).',
+      usedBy: 'worker',
+      examples: ['50'],
+    }),
+  CAPTION_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(120)
+    .meta({
+      description:
+        'A flyer or file and a text from the same sender posted this close together are read as one message (the text is the caption). Flyers wait this long before classification.',
+      usedBy: 'worker',
+      examples: ['120'],
     }),
   DEDUP_AREA_TOLERANCE_PERCENT: z.coerce
     .number()

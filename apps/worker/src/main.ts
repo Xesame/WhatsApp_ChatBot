@@ -5,14 +5,16 @@ import {
   markStale,
   preprocess,
   RetryableError,
+  transcribe,
   type PipelineDeps,
 } from '@reb/pipeline';
-import { parsePayload, startQueue, type QueueName } from '@reb/queue';
+import { parsePayload, queueSettings, startQueue, type QueueName } from '@reb/queue';
 import { runService } from '@reb/runtime';
 
 // The worker runs the pipeline jobs. Logic lives in packages/pipeline; this
 // file only connects queues to it.
-//   preprocess → classify → extract (with dedup), plus a daily lifecycle job
+//   preprocess → (transcribe, for files) → classify → extract (with dedup),
+//   plus a daily lifecycle job
 await runService('worker', async ({ config, logger, database }) => {
   const boss = await startQueue(config.DATABASE_URL, {
     supervise: true,
@@ -36,17 +38,29 @@ await runService('worker', async ({ config, logger, database }) => {
     areaMinimumM2: config.DEDUP_AREA_TOLERANCE_M2,
     priceFraction: config.DEDUP_PRICE_TOLERANCE_PERCENT / 100,
   };
-  const deps: PipelineDeps = { database, boss, llm, models, logger, tolerances };
+  const media = {
+    mediaDir: config.MEDIA_DIR,
+    visionModels: parseModelList(config.LLM_VISION_MODELS),
+    pdfMaxPages: config.PDF_MAX_PAGES,
+    pdfMinTextChars: config.PDF_MIN_TEXT_CHARS,
+    captionWindowSeconds: config.CAPTION_WINDOW_SECONDS,
+  };
+  const deps: PipelineDeps = { database, boss, llm, models, logger, tolerances, media };
 
   /** Runs one job; expected failures are logged briefly and retried by pg-boss. */
   const handle = <Q extends QueueName>(
     queue: Q,
-    run: (data: ReturnType<typeof parsePayload<Q>>) => Promise<unknown>,
+    run: (
+      data: ReturnType<typeof parsePayload<Q>>,
+      job: { lastAttempt: boolean },
+    ) => Promise<unknown>,
   ) =>
     boss.work(queue, { batchSize: 1, localConcurrency: 2 }, async ([job]) => {
       if (!job) return;
       try {
-        await run(parsePayload(queue, job.data));
+        await run(parsePayload(queue, job.data), {
+          lastAttempt: job.retryCount >= queueSettings[queue].retryLimit,
+        });
       } catch (error) {
         if (error instanceof RetryableError)
           logger.warn({ queue, reason: error.message }, 'Job will be retried');
@@ -67,10 +81,16 @@ await runService('worker', async ({ config, logger, database }) => {
   // Without a model API key, messages wait in the classify queue (kept 60
   // days) until a key is added and the worker restarts.
   if (llm.canUse(models.classify) && llm.canUse(models.extract)) {
+    // Files: read the text in images, PDFs and spreadsheets first.
+    await handle('transcribe', ({ messageId }, job) => transcribe(deps, messageId, job));
     await handle('classify', ({ messageId }) => classify(deps, messageId));
     await handle('extract', ({ messageId, intent }) => extract(deps, messageId, intent));
     logger.info(
-      { classify: config.LLM_CLASSIFY_MODELS, extract: config.LLM_EXTRACT_MODELS },
+      {
+        vision: config.LLM_VISION_MODELS,
+        classify: config.LLM_CLASSIFY_MODELS,
+        extract: config.LLM_EXTRACT_MODELS,
+      },
       'Pipeline ready',
     );
   } else {
