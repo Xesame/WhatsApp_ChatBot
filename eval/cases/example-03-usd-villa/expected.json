@@ -1,0 +1,25 @@
+{
+  "source": "example",
+  "kind": "text",
+  "sentAt": "2026-10-26T09:00:00Z",
+  "intent": "listing",
+  "units": [
+    {
+      "category": "Residential",
+      "developer": "Palm Hills Developments",
+      "project": "Hacienda Bay",
+      "city": "Sidi Abdel Rahman",
+      "unitType": "Villa",
+      "finishingSpecs": "Fully finished",
+      "minArea": 320,
+      "maxArea": 320,
+      "landArea": 600,
+      "minPrice": 950000,
+      "maxPrice": 950000,
+      "priceCurrency": "USD",
+      "deliveryYear": null,
+      "readyToMove": true,
+      "bedrooms": 4
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "source": "example",
+  "kind": "text",
+  "sentAt": "2026-10-26T09:00:00Z",
+  "intent": "listing",
+  "units": [
+    {
+      "category": "Residential",
+      "developer": "Palm Hills Developments",
+      "project": "Palm Hills New Cairo",
+      "city": "New Cairo",
+      "unitType": "Apartment",
+      "minArea": 175,
+      "maxArea": 175,
+      "minPrice": 12500000,
+      "maxPrice": null,
+      "priceCurrency": "EGP",
+      "deliveryYear": 2029,
+      "readyToMove": false,
+      "maintenance": 8,
+      "maintenanceCurrency": "%",
+      "downPayment": 5,
+      "installmentsCount": 36,
+      "bedrooms": 3
+    },
+    {
+      "category": "Residential",
+      "developer": "Palm Hills Developments",
+      "project": "Palm Hills New Cairo",
+      "city": "New Cairo",
+      "unitType": "Duplex",
+      "minArea": 250,
+      "maxArea": 250,
+      "minPrice": 19000000,
+      "maxPrice": 19000000,
+      "priceCurrency": "EGP",
+      "deliveryYear": 2029,
+      "readyToMove": false,
+      "maintenance": 8,
+      "maintenanceCurrency": "%",
+      "downPayment": 5,
+      "installmentsCount": 36
+    },
+    {
+      "category": "Residential",
+      "developer": "Palm Hills Developments",
+      "project": "Palm Hills New Cairo",
+      "city": "New Cairo",
+      "unitType": "Townhouse",
+      "minArea": 270,
+      "maxArea": 270,
+      "minPrice": 24000000,
+      "maxPrice": 26000000,
+      "priceCurrency": "EGP",
+      "deliveryYear": 2029,
+      "readyToMove": false,
+      "maintenance": 8,
+      "maintenanceCurrency": "%",
+      "downPayment": 5,
+      "installmentsCount": 36
+    }
+  ]
+}

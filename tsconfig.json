@@ -1,5 +1,5 @@
 {
   // Root config: lets editors and ESLint type-check scripts/ and config files.
   "extends": "./tsconfig.base.json",
-  "include": ["scripts/**/*.ts", "*.ts"]
+  "include": ["scripts/**/*.ts", "eval/**/*.ts", "*.ts"]
 }

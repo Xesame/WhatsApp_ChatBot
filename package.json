@@ -22,12 +22,16 @@
     "dev:worker": "pnpm --filter @reb/worker dev",
     "dev:api": "pnpm --filter @reb/api dev",
     "dev:chatbot": "pnpm --filter @reb/chatbot dev",
-    "dev:web": "pnpm --filter @reb/web dev"
+    "dev:web": "pnpm --filter @reb/web dev",
+    "eval": "node --env-file-if-exists=.env eval/run.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@reb/config": "workspace:*",
     "@reb/db": "workspace:*",
+    "@reb/llm": "workspace:*",
+    "@reb/pipeline": "workspace:*",
+    "@reb/schema": "workspace:*",
     "@types/node": "24.19.2",
     "drizzle-orm": "0.45.4",
     "eslint": "10.13.0",

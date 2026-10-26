@@ -1,0 +1,5 @@
+{
+  "handwritten": true,
+  "classification": "{\"intent\": \"listing\"}",
+  "extraction": "{\"units\": [{\"category\": null, \"developer\": null, \"project\": \"Hacienda Bay\", \"city\": \"Sidi Abdel Rahman\", \"unit_code\": null, \"floor\": null, \"finishing\": \"Fully finished\", \"bathrooms\": null, \"land_area\": \"land 600 m\", \"garden_area\": null, \"outdoor_area\": null, \"delivery\": \"ready to move\", \"maintenance\": null, \"down_payment\": null, \"installments\": null, \"cash_discount\": null, \"notes\": \"Resale\", \"unit_type\": \"Villa\", \"bedrooms\": \"4 bedrooms\", \"area\": \"BUA 320 m\", \"price\": \"950,000 $ cash\", \"evidence\": {\"project\": \"Hacienda Bay\", \"unit_type\": \"Standalone villa\", \"area\": \"BUA 320 m\", \"price\": \"950,000 $ cash\"}}]}"
+}
