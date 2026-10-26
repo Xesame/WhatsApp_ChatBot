@@ -2,9 +2,38 @@ import { containsPersonalData } from './privacy.ts';
 import { costOf, modelLabel, PROVIDERS, type ModelRef, type ProviderName } from './models.ts';
 import { RateLimiter } from './rate-limit.ts';
 
+/** One part of a message: text, or an image (Phase 3, vision). */
+export type ContentPart =
+  { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | ContentPart[];
+}
+
+/** The text parts of a message (images have none). */
+const textOf = (content: ChatMessage['content']) =>
+  typeof content === 'string'
+    ? content
+    : content.map((p) => (p.type === 'text' ? p.text : '')).join('\n');
+
+/**
+ * The request as stored in `extraction_runs`: images are replaced by a short
+ * note, so a 2 MB flyer isn't copied into the database with every call.
+ */
+function forRecord(body: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(
+    JSON.stringify(body, (key, value: unknown) =>
+      key === 'url' && typeof value === 'string' && value.startsWith('data:')
+        ? `${value.slice(0, value.indexOf(',') + 1)}[${Math.round((value.length * 3) / 4 / 1024)} KB image omitted]`
+        : value,
+    ),
+  ) as Record<string, unknown>;
+}
+
+export interface TextCall {
+  promptVersion: string;
+  messages: ChatMessage[];
 }
 
 export type AttemptStatus = 'ok' | 'invalid' | 'error' | 'rate_limited' | 'timeout';
@@ -93,17 +122,17 @@ export class LlmClient {
     models: ModelRef[],
     call: JsonCall<T>,
   ): Promise<{ data: T | null; attempts: Attempt[] }> {
-    for (const message of call.messages) {
-      if (containsPersonalData(message.content)) {
-        throw new Error('Refusing to send personal data to a model; scrub the text first');
-      }
-    }
+    this.refusePersonalData(call.messages);
+    const format = {
+      type: 'json_schema',
+      json_schema: { name: call.schemaName, strict: true, schema: call.jsonSchema },
+    };
     const attempts: Attempt[] = [];
     for (const ref of models) {
       if (!this.options.apiKeys[ref.provider]) continue;
       let messages = call.messages;
       for (let retry = 0; retry < 2; retry++) {
-        const attempt = await this.request(ref, call, messages);
+        const attempt = await this.request(ref, call.promptVersion, messages, format);
         attempts.push(attempt);
         if (attempt.status !== 'ok' && attempt.status !== 'invalid') break; // next model
         const checked = this.check(attempt, call);
@@ -123,6 +152,39 @@ export class LlmClient {
     return { data: null, attempts };
   }
 
+  /**
+   * Plain-text answer (used to transcribe images). Tries each model in
+   * order until one returns non-empty text.
+   */
+  async callText(
+    models: ModelRef[],
+    call: TextCall,
+  ): Promise<{ text: string | null; attempts: Attempt[] }> {
+    this.refusePersonalData(call.messages);
+    const attempts: Attempt[] = [];
+    for (const ref of models) {
+      if (!this.options.apiKeys[ref.provider]) continue;
+      const attempt = await this.request(ref, call.promptVersion, call.messages, undefined);
+      attempts.push(attempt);
+      const text = attempt.rawOutput?.trim();
+      if (attempt.status === 'ok' && text) return { text, attempts };
+      if (attempt.status === 'ok') {
+        attempt.status = 'invalid';
+        attempt.error = 'empty answer';
+      }
+    }
+    return { text: null, attempts };
+  }
+
+  /** Text parts must be scrubbed; images are sent as they are (approved by Hassan). */
+  private refusePersonalData(messages: ChatMessage[]): void {
+    for (const message of messages) {
+      if (containsPersonalData(textOf(message.content))) {
+        throw new Error('Refusing to send personal data to a model; scrub the text first');
+      }
+    }
+  }
+
   private check<T>(
     attempt: Attempt,
     call: JsonCall<T>,
@@ -138,8 +200,9 @@ export class LlmClient {
 
   private async request(
     ref: ModelRef,
-    call: JsonCall<unknown>,
+    promptVersion: string,
     messages: ChatMessage[],
+    responseFormat: Record<string, unknown> | undefined,
   ): Promise<Attempt> {
     const provider = PROVIDERS[ref.provider];
     const extraBody = 'extraBody' in provider ? provider.extraBody : {};
@@ -148,16 +211,13 @@ export class LlmClient {
       model: ref.model,
       messages,
       temperature: 0,
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: call.schemaName, strict: true, schema: call.jsonSchema },
-      },
+      ...(responseFormat ? { response_format: responseFormat } : {}),
     };
     const base: Omit<Attempt, 'status' | 'error' | 'latencyMs' | 'rawOutput'> = {
       provider: ref.provider,
       model: ref.model,
-      promptVersion: call.promptVersion,
-      request: body,
+      promptVersion,
+      request: forRecord(body),
       inputTokens: null,
       outputTokens: null,
       costUsd: null,

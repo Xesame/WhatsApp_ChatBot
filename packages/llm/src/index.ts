@@ -1,10 +1,13 @@
 export * as classifyPrompt from '../prompts/classify.ts';
 export * as extractPrompt from '../prompts/extract.ts';
+export * as transcribePrompt from '../prompts/transcribe.ts';
 export {
   LlmClient,
   type Attempt,
   type AttemptStatus,
   type ChatMessage,
+  type ContentPart,
+  type TextCall,
   type JsonCall,
   type LlmClientOptions,
 } from './client.ts';
