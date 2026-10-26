@@ -8,7 +8,7 @@ _Last updated: 26 October 2026 · Status: core system built and tested; first li
 
 ## The problem
 
-Egypt's primary real estate market runs on WhatsApp. Developers and brokers post new launches, price lists, payment plans and price changes in hundreds of groups, all day, in Arabic, English and Franco-Arabic, as text, flyers, PDFs and voice notes.
+Egypt's primary real estate market runs on WhatsApp. Developers and brokers post new launches, price lists, payment plans and price changes in hundreds of groups, all day, in Arabic, English and Franco-Arabic, as text, flyers, screenshots and PDFs.
 
 For a brokerage firm, that means:
 
@@ -40,41 +40,48 @@ Every change in price or payment plan is recorded with its date and source. When
 
 "Sold" replies mark the unit as sold. Listings nobody has posted for 45 days are automatically marked **stale**, and come back to life if they are posted again. The database reflects what is actually available today.
 
-### 4. Built for how Egyptians actually write
+### 4. Reads flyers, price sheets and brochures, not just text
+
+Most new launches arrive as a designed flyer, a screenshot of a price table or a PDF brochure. The system **reads the text and tables inside images and PDFs**, including Arabic, and turns every row of a price sheet into its own listing: one flyer with four unit types becomes four searchable units. Excel price lists are read directly. A caption the broker sends right after the flyer is read together with it, so nothing is split.
+
+It is also economical: PDFs that contain real text are read for free, and only scanned pages go to the AI. Every image read is logged with its cost and time.
+
+### 5. Built for how Egyptians actually write
 
 Listings are messy: "٣٫٥ مليون", "مليون ونص", "3.5M", "من 120 ل 180 متر", "على 8 سنين ربع سنوي", Arabic and Western digits, Franco-Arabic, typos in project names. The system understands all of these. It already knows **17 cities and areas, 20 major developers and 57 projects, under 360 different spellings**, and it learns new ones.
 
-### 5. Accuracy you can trust
+### 6. Accuracy you can trust
 
 - **The AI reads, the system calculates.** AI copies what the message says; all numbers, currencies, payment calculations and dates are worked out by tested code, so the AI cannot make arithmetic mistakes.
 - **Nothing is invented.** Every value must actually appear in the original message. If the AI produces something that isn't there, it is thrown out and the listing is flagged.
+- **Images get the same safeguards as text**: the AI first copies the text out of the image, then the same checks apply.
 - **Every listing gets a confidence score** and plain-English reasons when something needs a human check ("no price stated", "project name unclear").
 - **Accuracy is measured, not assumed.** A test set of real messages checks every field before any change to the AI or its instructions goes live.
 
-### 6. Fits the way firms already work
+### 7. Fits the way firms already work
 
 Exports come out **exactly in the firm's existing Excel template** (the 26-column Primary Units sheet), ready to use. Prices are shown in **Egyptian pounds**; units priced in dollars are converted at a rate the operator sets, and marked as such.
 
-### 7. Never misses a message
+### 8. Never misses a message
 
 Messages are saved the moment they arrive, before any processing. If the AI is slow, down or out of quota, nothing is lost: listings wait and are processed later. If the system restarts, it catches up on its own. Old messages can be **re-processed at any time** with improved logic, without creating duplicates.
 
-### 8. Privacy by design
+### 9. Privacy by design
 
 - The people posting are **never identified**: no names, no phone numbers are stored. Each sender is reduced to an anonymous code.
 - Phone numbers and e-mails inside messages are **removed before any text reaches an AI service**.
 - Only groups the operator chooses are read; private chats are never stored.
 - Built with Egypt's Personal Data Protection Law (Law 151 of 2020) in mind; a formal legal review is scheduled before onboarding paying firms.
 
-### 9. Low running cost, no lock-in
+### 10. Low running cost, no lock-in
 
 - Runs on **free tiers of three independent AI providers** (Google Gemini first, then Groq, then OpenRouter), switching automatically if one is busy or down.
 - Changing provider is a settings change, not a rebuild, so the business is never tied to one vendor's pricing.
 - The whole system runs on **one small server**, with one database that holds everything and is easy to back up.
 
-### 10. Built to be operated and trusted
+### 11. Built to be operated and trusted
 
-- **More than 320 automated tests** check the system on every change.
+- **More than 350 automated tests** check the system on every change.
 - A complete operator manual covers setup from zero, daily operations and what to do when something goes wrong.
 - Every AI decision is logged (what was asked, what came back, cost and time), so any listing can be traced back to its source message.
 

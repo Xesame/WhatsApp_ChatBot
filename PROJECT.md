@@ -23,13 +23,13 @@ Regenerate them with `pnpm run docs`.
 - [ ] 20-50 real listing messages for `eval/cases` (chapter 12).
 - [x] ~~The original `primary-units-template.xlsx`~~ Committed in `packages/schema/template/` (2026-10-26); the export matches it.
 - [x] ~~Confirm: a lone "من"/"from" before a price means "starting from"~~ Confirmed by Hassan 2026-10-26.
-- [ ] **Reminder for Phase 3:** choose the vision provider (Gemini is the likely choice, same key as text). Sending images that may show phone numbers is approved by Hassan (2026-10-26): the groups are semi-public.
+- [x] ~~Phase 3 vision provider~~ Gemini chosen (2026-10-26); images may be sent as they are.
 
 ----- | ------------------------------------------------------------- | ---------------------------------------------------------- |
 | 0 | Foundation: monorepo, config, logging, Docker, database, seed | **Done** |
 | 1 | Capture (Baileys, raw messages, media) | **Done** (live WhatsApp test waits for the scraper number) |
 | 2 | Text extraction and eval harness | **Built** (accuracy run waits for real cases and a Gemini key) |
-| 3 | Media extraction (vision, PDF, speech-to-text) | Not started |
+| 3 | Media extraction (vision, PDF; voice notes dropped) | **Built** (accuracy on real flyers waits for real cases) |
 | 4 | Dedup, price history, lifecycle | **Done** (tolerances to tune on real data) |
 | 5 | API and owner admin | Not started |
 | 6 | Multi-tenant firm dashboard | Not started |
@@ -145,6 +145,7 @@ realestate-bot/
     llm/       model client (fallback, rate limits, privacy scrub) and versioned prompts
     pipeline/  preprocess / classify / extract steps, entity matching, dedup/merge, lifecycle, reprocess, export
     dedup/     when two listings are the same unit; which unit a reply means; price changes
+    media/     reads text in images (vision), PDFs (text layer, vision for scans) and Excel sheets
   eval/        labeled cases, recordings, scoring and the `pnpm eval` runner
   scripts/docs.ts           generates docs/generated/* and .env.example
   docs/generated/           generated reference docs (do not edit)
@@ -166,10 +167,11 @@ realestate-bot/
 | `@reb/llm`       | Model calls: fallback, rate limits, privacy scrub; prompts                                             | `src/client.ts`, `src/privacy.ts`, `prompts/*.ts`                     | pipeline, eval                     |
 | `@reb/pipeline`  | Processing steps, entity matching, dedup/merge and price history (apply), lifecycle, reprocess, export | `src/steps.ts`, `src/apply.ts`, `src/entities.ts`, `src/admin.ts`     | worker, eval                       |
 | `@reb/dedup`     | Same-unit rules, reply targeting, price-change detection (pure)                                        | `src/match.ts`, `src/prices.ts`                                       | pipeline                           |
+| `@reb/media`     | Text inside images (vision), PDFs (text layer, vision for scans) and Excel sheets                      | `src/describe.ts`, `src/image.ts`, `src/pdf.ts`, `src/sheet.ts`       | pipeline, eval                     |
 
-Packages planned for later phases and not created yet: `media` (Phase 3), `chat-core` (Phase 7).
+Packages planned for later phases and not created yet: `chat-core` (Phase 7).
 
-**Dependency direction:** `apps → (runtime, ingest, pipeline) → (whatsapp, queue, llm, dedup, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
+**Dependency direction:** `apps → (runtime, ingest, pipeline) → (whatsapp, queue, llm, media, dedup, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
 
 **Library versions** (checked 2026-10-25):
 
@@ -231,7 +233,7 @@ erDiagram
 
 - `wa_groups`: every group the scraper number is in. `watched` (default false) decides whether messages are stored; `source_type` is developer or broker; `is_member` turns false when the number leaves.
 - `messages`: one row per stored message, unique per (group, WhatsApp ID). Holds the text or caption, `sender_hash`, `quoted_wa_message_id` (reply context), `edit_of_wa_message_id` (edits are new rows), `deleted_at` ("delete for everyone"), `is_forwarded`, and processing fields: `status` (`pending` → `processing` → `processed` / `skipped` / `failed`), `error`, `attempts`, `enqueued_at`.
-- `media_files`: at most one per message. `status`: `pending` → `downloaded`, or `failed` (5 attempts) / `skipped` (over the size limit). `sha256` and `path` (content-addressed under MEDIA_DIR). `media_ref` lets the file be downloaded again.
+- `media_files`: at most one per message. `status`: `pending` → `downloaded`, or `failed` (5 attempts) / `skipped` (over the size limit). `sha256` and `path` (content-addressed under MEDIA_DIR). `media_ref` lets the file be downloaded again. From Phase 3: `derived_text` (the text found in the file), `derived_method` (`vision`, `pdf`, `spreadsheet`, `skipped`, `failed`), `derived_at` and `derived_error`.
 - `wa_auth`: WhatsApp login keys per account. **Treat as a secret**: whoever has these rows can act as the number.
 - `wa_connections`: live status per account (`state`, QR/pairing code while pairing, last connect/disconnect and reason, last message time).
 - Status and type columns have CHECK constraints, so the database rejects unknown values.
@@ -308,13 +310,22 @@ Each step is its own pg-boss job type, idempotent, with retries and backoff. Job
 | Restart     | Messages that arrived while capture was down are delivered by WhatsApp on reconnect. On start, a sweep finishes interrupted downloads and queues anything never queued.                    |
 | Known gap   | WhatsApp acknowledges a message before we store it. If the database is down for more than ~2 minutes while messages arrive, those messages are lost (their IDs are logged at error level). |
 
-**Job: `preprocess`** (Phase 2)
+**Job: `preprocess`** (step 2, routing)
 
-|         |                                                                                                                                                                                                                     |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Payload | `{ messageId }`                                                                                                                                                                                                     |
-| Does    | Text messages → `processing`, queues `classify`. Voice notes → `skipped` ("Voice notes are not processed"). Images, PDFs, videos → `skipped` ("Media extraction arrives in Phase 3"). Deleted or empty → `skipped`. |
-| Retries | 8, exponential backoff from 30 s                                                                                                                                                                                    |
+|         |                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Payload | `{ messageId }`                                                                                                                                                                                                                                                                                                                                                                           |
+| Does    | Images and documents → `transcribe`. Voice notes and videos → only their caption is read ("Voice notes are not processed" / "Videos are not processed" when there is none). A text the same sender posted within `CAPTION_WINDOW_SECONDS` (2 min) of an image or file → `skipped` ("Caption of message N; read together with it"). Other text → `classify`. Deleted or empty → `skipped`. |
+| Retries | 8, exponential backoff from 30 s                                                                                                                                                                                                                                                                                                                                                          |
+
+**Job: `transcribe`** (Phase 3, step 2 for files)
+
+|         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Payload | `{ messageId }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Does    | Reads the file from `MEDIA_DIR` and saves its text on `media_files.derived_text`: images by vision, PDFs by their text layer (vision only for pages without text, up to `PDF_MAX_PAGES`), Excel by its cells. Each vision call is an `extraction_runs` row (`purpose = transcribe`, `media_file_id`) with tokens, cost and latency. Then queues `classify`, **delayed until the caption window has passed**, so a caption sent after the flyer is included. A file that never downloaded goes on with its caption. |
+| Retries | 4, backoff from 2 min. On the **last** attempt a file that still can't be read goes on with its caption instead of being lost.                                                                                                                                                                                                                                                                                                                                                                                     |
+| Context | The model then reads: the caption, `[Text in the attached file]` + the transcription, and `[Same sender, posted right before or after]` + nearby texts. Replies under a flyer see the flyer's text too.                                                                                                                                                                                                                                                                                                            |
 
 **Job: `classify`** (Phase 2, step 4)
 
@@ -354,7 +365,7 @@ Matching messages go back to `pending` and through every step again with the cur
 
 **Job: `lifecycle`** (daily, 03:17 Cairo time): `active` units whose `last_seen_at` is older than `STALE_AFTER_DAYS` become `stale`. Retries 3.
 
-_(Phase 3)_ media preprocessing and caption linking. _(Phase 7)_ alerts.
+_(Phase 7)_ alerts.
 
 ## 6. Extraction
 
@@ -449,7 +460,7 @@ Among several matches, the closest area wins. When unsure, the rules say "differ
 | Listing "2BR 120 m² + 3BR 150 m²"    | Reply "الـ3 غرف بقت 8 مليون"                   | 3BR gets a price row           | The reply names the unit                    |
 | Listing (one unit)                   | Reply "تم البيع"                               | Unit `sold`                    | Only one unit                               |
 
-_(Phase 3)_ vision for images and PDFs.
+**Vision (Phase 3).** Images and scanned PDF pages are transcribed by `LLM_VISION_MODELS` (default `gemini:gemini-flash-latest,gemini:gemini-flash-lite-latest`; the two have separate free quotas) with the prompt in `packages/llm/prompts/transcribe.ts` (`transcribe-2026-10-26.1`): copy all text and tables exactly, one table row per line with `|` between cells, `[unreadable]` for illegible parts, `[no text]` for images without text. The transcription then goes through the same extraction, no-invention check and parsing as text. Images are sent as they are (approved by Hassan); photos larger than 2,000 px are scaled down. Text PDFs and Excel sheets need no model call. Details: `packages/media/README.md`.
 
 ## 7. Interfaces
 
@@ -625,6 +636,8 @@ docker compose exec postgres psql -U reb -d reb -c "select unit_type, min_area, 
 docker compose exec worker node apps/worker/src/cli.ts export --out /tmp/units.xlsx && docker compose cp worker:/tmp/units.xlsx ./units.xlsx
 ```
 
+**Flyers and PDFs:** post one in a watched group; after about 2 minutes (the caption window) its units appear. Check what was read: `docker compose exec postgres psql -U reb -d reb -c "select message_id, derived_method, left(derived_text, 200) from media_files order by id desc limit 5"`.
+
 **12. Run the first eval** (chapter 12): `pnpm eval` on your machine with the key in `.env`, or `docker compose exec worker node eval/run.ts`.
 
 **Later steps:** create the owner account _(Phase 5)_ · pairing and group choice from the browser _(Phase 5)_ · pair the query bot and create the Telegram bot _(Phase 7)_ · create the first firm _(Phase 6)_.
@@ -754,6 +767,14 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 
 - Set `USD_EGP_RATE` in `.env` (then `docker compose up -d`) or pass `--usd-egp-rate`.
 
+**Flyers or PDFs not producing units**
+
+- `select derived_method, derived_error, count(*) from media_files group by 1, 2;`
+- `failed` with "Vision failed": the vision models are rate-limited or down; jobs retry 4 times, then the caption alone is used. `reprocess --message <id>` once the quota resets.
+- `skipped` "Document type not supported": Word files and similar are not read yet.
+- Long brochures: only the first `PDF_MAX_PAGES` pages are read; the text ends with "[N more page(s) not read]".
+- A caption processed separately from its flyer: the sender posted it more than `CAPTION_WINDOW_SECONDS` apart; raise it if that is common.
+
 **The same unit shows up twice (missed duplicate)**
 
 - Usually one post lacked the project, the area or the unit type, or the areas differ by more than the tolerance. Check both rows: `select id, project_id, unit_type, bedrooms, min_area, max_area, unit_code from units where id in (..)`.
@@ -805,7 +826,9 @@ The eval set is the accuracy gate: prompts and models change only when the numbe
 }
 ```
 
-Prices are whole currency units (9500000 = 9.5 million), names are the English canonical names. Fields left out count as "expected empty". `source` is `real` (from a group), `review` (from a review-queue correction, Phase 5) or `example` (hand-written, never counted).
+Prices are whole currency units (9500000 = 9.5 million), names are the English canonical names. Fields left out count as "expected empty", except `readyToMove` (assumed `false`) and `priceCurrency` (assumed `EGP`). `source` is `real` (from a group), `review` (from a review-queue correction, Phase 5) or `example` (hand-written, never counted).
+
+**Media cases** (Phase 3): put one file next to `message.txt`, named `image.jpg` / `image.png` / `image.webp` / `document.pdf` / `document.xlsx`; `message.txt` then holds the caption (it may be empty) and `"kind"` is `image`, `pdf` or `spreadsheet`. The runner reads the file exactly as the pipeline does (vision, PDF text layer, Excel cells) and records vision answers under `transcriptions` for `--replay`. The report splits accuracy by kind.
 
 **Adding cases:** paste messages into new folders; a first `expected.json` can be produced by running the pipeline and checking every field by hand. Aim for variety (chapter 9 of the plan): single and multi-unit listings, price updates (with `quoted.txt`), sold notices, chatter, USD prices, "starting from", payment plans, Franco-Arabic. From Phase 5, review corrections become cases automatically.
 
@@ -822,7 +845,7 @@ pnpm eval --case <id>     # one case
 
 **Approval rule.** Any prompt or model change must be run against the eval set, and the report attached to the checkpoint summary. A drop of more than 2 points on a key field (price, area, city, project, developer, unit type) is marked "⚠ needs approval" and needs Hassan's approval. With fewer than 50 real cases one mistake moves a field by more than 2 points, so until the set reaches 50, **any new mistake on a key field** needs approval.
 
-**Current state:** no real cases yet. The three `example-*` cases (hand-written messages and hand-written model answers, marked `"handwritten": true`) only prove the runner works; they found and fixed one real bug ("320 m" read as 320 million).
+**Current state:** no real cases yet. The four `example-*` cases (three text, one two-page PDF) (hand-written messages and hand-written model answers, marked `"handwritten": true`) only prove the runner works; they found and fixed one real bug ("320 m" read as 320 million).
 
 ## 13. Testing
 
@@ -853,6 +876,8 @@ TEST_DATABASE_URL=postgres://reb:<pw>@localhost:5432/reb pnpm test   # plus data
 | `packages/pipeline/test`                                    | preprocess skips, keyword filter, classification, multi-unit extraction to rows, Excel export headers and values, **no phone number in any stored model request**, idempotent re-extraction, reply context, entity matching (exact/contained/fuzzy)                                                                                                                | `TEST_DATABASE_URL`; a fake model                                                               |
 | `eval/test`                                                 | eval scoring: tolerance, unit pairing, missing units, totals                                                                                                                                                                                                                                                                                                       | nothing                                                                                         |
 | `packages/dedup/test`                                       | every matching rule and tolerance edge (5% gap, 3 m² floor, price fallback, codes, bedrooms), closest-match choice, reply targeting, price-change detection                                                                                                                                                                                                        | nothing                                                                                         |
+| `packages/media/test`                                       | PDF text layer vs vision per page, page limit, failed pages, Excel to text, image resizing, transcription request (image sent, image data kept out of the log, `[no text]`), vision fallback, skipped types                                                                                                                                                        | nothing (a real PDF fixture; fake vision API)                                                   |
+| `packages/pipeline/test/media.integration.test.ts`          | **a price-sheet image with many units gives one row per unit type**; caption linking and the delayed classification; **cost and latency of media calls recorded**; PDF without model calls; Excel; vision retry then caption on the last attempt; file never downloaded; empty image; video caption; replies under a flyer                                         | `TEST_DATABASE_URL`; files on disk; fake models                                                 |
 | `packages/pipeline/test/dedup.integration.test.ts`          | **same unit in three groups → one unit, three sources**; **reply with a new price → price row, not a new unit**; units kept apart; repost at a new price; late older message; sold reply and reprocessing it; ambiguous reply flagged; reprocessing never duplicates and retracting the last source removes the unit; no project → no merge; stale job and revival | `TEST_DATABASE_URL`                                                                             |
 
 No test calls WhatsApp, Telegram or a paid API. WhatsApp is replaced by a fake socket (connection tests) and hand-built raw messages (parser tests). The model API is replaced by a fake HTTP layer returning fixed answers (client and pipeline tests), and `pnpm eval --replay` replays saved answers.
@@ -990,3 +1015,11 @@ Docker Hub's anonymous pull limit. Run `docker login`, or wait and retry.
 | 2026-10-26 | **One advisory lock around the dedup step**                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Simultaneous reposts in several groups must not create twins; the step has no model calls, so it takes milliseconds                                                                                                                 | Locks per project                                                |
 | 2026-10-26 | **Stale and sold units are kept**; a repost revives a stale unit, not a sold one                                                                                                                                                                                                                                                                                                                                                                                                              | History and price trends stay available; a sold unit reposted is suspicious and becomes a new unit                                                                                                                                  | Deleting stale units                                             |
 | 2026-10-26 | `units.source_message_id` **replaced by `unit_sources`** (migration 0005 copies existing links and prices)                                                                                                                                                                                                                                                                                                                                                                                    | One unit can now have many messages                                                                                                                                                                                                 | Keeping a "first source" column                                  |
+| 2026-10-26 | **Gemini for vision** (`gemini-flash-latest`, then `gemini-flash-lite-latest`)                                                                                                                                                                                                                                                                                                                                                                                                                | Hassan's choice; same key as text, good Arabic and table reading; two models with separate free quotas                                                                                                                              | Groq or OpenRouter vision models                                 |
+| 2026-10-26 | **Transcribe, then extract** (two steps for images)                                                                                                                                                                                                                                                                                                                                                                                                                                           | Images get the same extraction prompt, no-invention check and parsing as text; transcriptions are stored and reusable when the extraction prompt changes                                                                            | One vision call that extracts units directly                     |
+| 2026-10-26 | **PDF text layer first, vision only for pages without text** (the plan's design), max 10 pages                                                                                                                                                                                                                                                                                                                                                                                                | Free and exact for most developer PDFs                                                                                                                                                                                              | Rendering every page                                             |
+| 2026-10-26 | **Excel price lists read directly** (not in the plan)                                                                                                                                                                                                                                                                                                                                                                                                                                         | Price sheets are often shared as .xlsx; reading cells is exact and free                                                                                                                                                             | Skipping them                                                    |
+| 2026-10-26 | **Flyers wait out the 2-minute caption window** before classification; a text within the window of a sender's flyer is read with it, not alone                                                                                                                                                                                                                                                                                                                                                | Handles "flyer, then caption" without double processing; dedup covers the "caption, then flyer" order                                                                                                                               | Processing both separately                                       |
+| 2026-10-26 | **On the last vision retry, go on with the caption**                                                                                                                                                                                                                                                                                                                                                                                                                                          | A listing's caption is better than losing the message                                                                                                                                                                               | Failing the message                                              |
+| 2026-10-26 | **Videos and Word documents not processed**                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Not in scope (videos) or rare (Word); skipped with a reason so they can be added later                                                                                                                                              |                                                                  |
+| 2026-10-26 | Call log stores **"[NN KB image omitted]"** instead of image data                                                                                                                                                                                                                                                                                                                                                                                                                             | Images would bloat `extraction_runs`                                                                                                                                                                                                | Storing images twice                                             |
