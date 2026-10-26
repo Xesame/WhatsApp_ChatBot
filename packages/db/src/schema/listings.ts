@@ -24,7 +24,7 @@ import {
   timestamp,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
-import { messages } from './capture.ts';
+import { mediaFiles, messages } from './capture.ts';
 import { cities, developers, projects } from './entities.ts';
 
 /**
@@ -44,7 +44,7 @@ const oneOf = (name: string, column: AnyPgColumn, values: readonly string[]) =>
 
 const decimal = (name: string) => numeric(name, { precision: 12, scale: 2, mode: 'number' });
 
-export const EXTRACTION_PURPOSES = ['classify', 'extract'] as const;
+export const EXTRACTION_PURPOSES = ['classify', 'extract', 'transcribe'] as const;
 export const RUN_STATUSES = ['ok', 'invalid', 'error', 'rate_limited', 'timeout'] as const;
 
 /** Every model call: what was sent, what came back, cost and timing. */
@@ -55,6 +55,10 @@ export const extractionRuns = pgTable(
     messageId: bigint('message_id', { mode: 'number' })
       .notNull()
       .references(() => messages.id, { onDelete: 'cascade' }),
+    /** For `transcribe` runs: the media file that was read. */
+    mediaFileId: bigint('media_file_id', { mode: 'number' }).references(() => mediaFiles.id, {
+      onDelete: 'cascade',
+    }),
     purpose: text('purpose', { enum: EXTRACTION_PURPOSES }).notNull(),
     promptVersion: text('prompt_version').notNull(),
     provider: text('provider').notNull(),

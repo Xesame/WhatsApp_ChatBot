@@ -107,6 +107,7 @@ export const messages = pgTable(
 );
 
 export const MEDIA_STATUSES = ['pending', 'downloaded', 'failed', 'skipped'] as const;
+export const DERIVED_METHODS = ['vision', 'pdf', 'spreadsheet', 'skipped', 'failed'] as const;
 export const MEDIA_KINDS = ['image', 'video', 'audio', 'document'] as const;
 
 export const mediaFiles = pgTable(
@@ -129,6 +130,12 @@ export const mediaFiles = pgTable(
     // What WhatsApp needs to download the file again (url, directPath,
     // mediaKey). Contains no sender information.
     mediaRef: jsonb('media_ref').notNull(),
+    // Phase 3: the text found in the file (vision transcription, PDF text,
+    // spreadsheet cells), read by extraction together with the message.
+    derivedText: text('derived_text'),
+    derivedMethod: text('derived_method', { enum: DERIVED_METHODS }),
+    derivedAt: timestamp('derived_at', { withTimezone: true }),
+    derivedError: text('derived_error'),
     createdAt,
     downloadedAt: timestamp('downloaded_at', { withTimezone: true }),
   },
@@ -139,6 +146,7 @@ export const mediaFiles = pgTable(
       .where(sql`${t.status} in ('pending', 'failed')`),
     oneOf('media_files_status_check', t.status, MEDIA_STATUSES),
     oneOf('media_files_kind_check', t.kind, MEDIA_KINDS),
+    oneOf('media_files_derived_method_check', t.derivedMethod, DERIVED_METHODS),
   ],
 );
 

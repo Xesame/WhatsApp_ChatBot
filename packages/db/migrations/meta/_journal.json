@@ -43,6 +43,13 @@
       "when": 1793018125882,
       "tag": "0005_drop_unit_source_column",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793019381892,
+      "tag": "0006_media_text",
+      "breakpoints": true
     }
   ]
 }

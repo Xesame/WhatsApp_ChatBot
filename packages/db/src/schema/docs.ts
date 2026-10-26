@@ -112,6 +112,12 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       attempts: 'Download attempts so far.',
       error: 'Last download error.',
       media_ref: 'What WhatsApp needs to download the file again. Contains no sender data.',
+      derived_text:
+        'Text found in the file: vision transcription of an image, PDF text (vision for scanned pages), or spreadsheet cells. Extraction reads it with the message.',
+      derived_method:
+        '`vision`, `pdf`, `spreadsheet`, `skipped` (voice note, video, unsupported type) or `failed`.',
+      derived_at: 'When the text was read.',
+      derived_error: 'Why reading failed or was skipped.',
       created_at: 'When the row was created.',
       downloaded_at: 'When the file was saved to disk.',
     },
@@ -148,9 +154,11 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
     columns: {
       id: 'Identity primary key.',
       message_id: 'The message the model read.',
-      purpose: '`classify` (what the message is about) or `extract` (copy out units).',
+      media_file_id: 'For `transcribe` calls: the image or PDF that was read.',
+      purpose:
+        '`transcribe` (copy text out of an image or PDF page), `classify` (what the message is about) or `extract` (copy out units).',
       prompt_version: 'Version string of the prompt used, e.g. `extract-2026-10-26.1`.',
-      provider: '`cerebras`, `openrouter`, ...',
+      provider: '`gemini`, `groq`, `openrouter`, `cerebras`.',
       model: 'Model name at the provider.',
       request: 'The request body as sent (no API key). Contact details are removed before sending.',
       raw_output: 'The answer from the model, unchanged.',

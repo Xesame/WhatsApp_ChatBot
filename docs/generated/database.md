@@ -8,6 +8,7 @@ erDiagram
   developers ||--o{ entity_aliases : "developer_id"
   projects ||--o{ entity_aliases : "project_id"
   messages ||--o{ extraction_runs : "message_id"
+  media_files ||--o{ extraction_runs : "media_file_id"
   messages ||--o{ media_files : "message_id"
   wa_groups ||--o{ messages : "group_id"
   developers ||--o{ projects : "developer_id"
@@ -48,6 +49,7 @@ erDiagram
   extraction_runs {
     bigint id PK
     bigint message_id FK
+    bigint media_file_id FK
     text purpose
     text prompt_version
     text provider
@@ -76,6 +78,10 @@ erDiagram
     integer attempts
     text error
     jsonb media_ref
+    text derived_text
+    text derived_method
+    timestamp_with_time_zone derived_at
+    text derived_error
     timestamp_with_time_zone created_at
     timestamp_with_time_zone downloaded_at
   }
@@ -262,9 +268,10 @@ Every model call (classification or extraction): request, answer, tokens, cost, 
 | --- | --- | --- | --- | --- |
 | `id` | bigint | no | primary key | Identity primary key. |
 | `message_id` | bigint | no | → messages.id | The message the model read. |
-| `purpose` | text | no |  | `classify` (what the message is about) or `extract` (copy out units). |
+| `media_file_id` | bigint | yes | → media_files.id | For `transcribe` calls: the image or PDF that was read. |
+| `purpose` | text | no |  | `transcribe` (copy text out of an image or PDF page), `classify` (what the message is about) or `extract` (copy out units). |
 | `prompt_version` | text | no |  | Version string of the prompt used, e.g. `extract-2026-10-26.1`. |
-| `provider` | text | no |  | `cerebras`, `openrouter`, ... |
+| `provider` | text | no |  | `gemini`, `groq`, `openrouter`, `cerebras`. |
 | `model` | text | no |  | Model name at the provider. |
 | `request` | jsonb | no |  | The request body as sent (no API key). Contact details are removed before sending. |
 | `raw_output` | text | yes |  | The answer from the model, unchanged. |
@@ -302,6 +309,10 @@ The image, video, voice note or document attached to a message. Identical files 
 | `attempts` | integer | no |  | Download attempts so far. |
 | `error` | text | yes |  | Last download error. |
 | `media_ref` | jsonb | no |  | What WhatsApp needs to download the file again. Contains no sender data. |
+| `derived_text` | text | yes |  | Text found in the file: vision transcription of an image, PDF text (vision for scanned pages), or spreadsheet cells. Extraction reads it with the message. |
+| `derived_method` | text | yes |  | `vision`, `pdf`, `spreadsheet`, `skipped` (voice note, video, unsupported type) or `failed`. |
+| `derived_at` | timestamp with time zone | yes |  | When the text was read. |
+| `derived_error` | text | yes |  | Why reading failed or was skipped. |
 | `created_at` | timestamp with time zone | no |  | When the row was created. |
 | `downloaded_at` | timestamp with time zone | yes |  | When the file was saved to disk. |
 
@@ -311,6 +322,7 @@ The image, video, voice note or document attached to a message. Identical files 
 - Index `media_files_status_idx` on (status)
 - Check `media_files_status_check`
 - Check `media_files_kind_check`
+- Check `media_files_derived_method_check`
 
 ## `messages`
 
