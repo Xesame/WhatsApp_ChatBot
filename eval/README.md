@@ -14,7 +14,7 @@ eval/
 ```
 
 ```sh
-pnpm eval                 # call the models (needs CEREBRAS_API_KEY)
+pnpm eval                 # call the models (needs GEMINI_API_KEY or another model key)
 pnpm eval --record        # call the models and save their answers
 pnpm eval --replay        # use saved answers: free, offline, repeatable
 pnpm eval --case <id>     # one case

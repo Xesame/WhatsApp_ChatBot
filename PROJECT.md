@@ -17,7 +17,7 @@ Regenerate them with `pnpm run docs`. CI runs `pnpm docs:check` and fails if the
 | **Waiting on Hassan**
 
 - [ ] Scraper WhatsApp number, for the live Phase 1 test (pairing, groups, restart without loss).
-- [ ] `CEREBRAS_API_KEY` in `.env`, for live extraction and the first eval run.
+- [ ] `GEMINI_API_KEY` (primary), plus `GROQ_API_KEY` and `OPENROUTER_API_KEY` (fallbacks) in `.env`, for live extraction and the first eval run.
 - [ ] 20-50 real listing messages for `eval/cases` (chapter 12).
 - [ ] The original `primary-units-template.xlsx`, to commit in `packages/schema/template/`.
 - [ ] Confirm: a lone "من"/"from" before a price means "starting from" (Min only) (decision log).
@@ -26,7 +26,7 @@ Regenerate them with `pnpm run docs`. CI runs `pnpm docs:check` and fails if the
 ----- | ------------------------------------------------------------- | ---------------------------------------------------------- |
 | 0 | Foundation: monorepo, config, logging, Docker, database, seed | **Done** |
 | 1 | Capture (Baileys, raw messages, media) | **Done** (live WhatsApp test waits for the scraper number) |
-| 2 | Text extraction and eval harness | **Built** (accuracy run waits for real cases and a Cerebras key) |
+| 2 | Text extraction and eval harness | **Built** (accuracy run waits for real cases and a Gemini key) |
 | 3 | Media extraction (vision, PDF, speech-to-text) | Not started |
 | 4 | Dedup, price history, lifecycle | Not started |
 | 5 | API and owner admin | Not started |
@@ -325,7 +325,7 @@ _(Phases 3-4)_ media preprocessing, caption linking, dedup/merge, lifecycle, ale
 
 **The split (build plan, section 7).** The model reads messy text and copies phrases; code does everything deterministic.
 
-| The model (Cerebras)                                                                  | Code (`@reb/normalize`, `@reb/pipeline`)                                  |
+| The model (Gemini, then Groq, then OpenRouter)                                        | Code (`@reb/normalize`, `@reb/pipeline`)                                  |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | Says what a message is about (classify)                                               | Free keyword check before calling it                                      |
 | Returns one entry per unit type, with phrases copied as written ("يبدأ من 6.5 مليون") | Turns phrases into numbers, currencies, years, counts                     |
@@ -337,10 +337,19 @@ _(Phases 3-4)_ media preprocessing, caption linking, dedup/merge, lifecycle, ale
 
 **Models and fallback.** Set in `.env` as `provider:model` lists in fallback order:
 
-- Classification: `LLM_CLASSIFY_MODELS`, default `cerebras:qwen-3.8-27b,cerebras:gpt-oss-120b`
-- Extraction: `LLM_EXTRACT_MODELS`, default `cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b`
+- Classification: `LLM_CLASSIFY_MODELS`, default `gemini:gemini-flash-lite-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free`
+- Extraction: `LLM_EXTRACT_MODELS`, default `gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free`
 
-Both models are on Cerebras' public tier and support strict JSON Schema output. Requests use `response_format: json_schema, strict: true`. A rate limit, timeout, server error or refusal moves to the next model; an answer that fails validation gets one retry on the same model with the error appended. Different first models for the two steps spread the free tier's per-model limit (about 5 requests a minute, `LLM_REQUESTS_PER_MINUTE`). The client waits for a free slot instead of failing.
+| Order | Provider                                                                                 | Key                                    | Why                                                                                                                                                                                                    |
+| ----- | ---------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | Google Gemini (`gemini-flash-lite-latest` to classify, `gemini-flash-latest` to extract) | `GEMINI_API_KEY` (aistudio.google.com) | Free tier, good Arabic, full JSON Schema support; likely also the vision model in Phase 3. The `-latest` names are Google's aliases for the current Flash models, so model retirements need no change. |
+| 2     | Groq (`openai/gpt-oss-120b`)                                                             | `GROQ_API_KEY` (console.groq.com)      | Free tier, a different company, very fast. Users report it sometimes ignores the schema; our validation turns that into a retry or the next model.                                                     |
+| 3     | OpenRouter (`openrouter/free`)                                                           | `OPENROUTER_API_KEY` (openrouter.ai)   | Free router across many models; sent with `require_parameters: true` so it only picks models that honour the JSON schema. About 50 free requests a day (1,000 after a one-time $10 top-up).            |
+| (off) | Cerebras                                                                                 | `CEREBRAS_API_KEY`                     | Paid since late October 2026; add `cerebras:gpt-oss-120b` to a list to use it.                                                                                                                         |
+
+A model whose provider has no key is skipped, so any one key is enough to run.
+
+Requests use `response_format: json_schema, strict: true`. A rate limit, timeout, server error or refusal moves to the next model; an answer that fails validation gets one retry on the same model with the error appended. Each model has its own requests-per-minute limit (`LLM_REQUESTS_PER_MINUTE`, default 10); classification and extraction use different Gemini models so they don't share one limit. The client waits for a free slot instead of failing; a daily quota error (429) moves on to the next provider.
 
 **Normalization rules** (each has tests in `packages/normalize/test`):
 
@@ -533,10 +542,10 @@ docker compose exec postgres psql -U reb -d reb -c "select id, sent_at, media_ty
 docker compose exec postgres psql -U reb -d reb -c "select status, count(*) from media_files group by 1"
 ```
 
-**10. Turn on extraction (Cerebras)**
+**10. Turn on extraction (Gemini, Groq, OpenRouter)**
 
-1. Create an account at cloud.cerebras.ai and an API key.
-2. Add it to `.env`: `CEREBRAS_API_KEY=...` (never commit or paste it anywhere else).
+1. Create API keys (all have free tiers): Gemini at aistudio.google.com → Get API key; Groq at console.groq.com → API Keys; OpenRouter at openrouter.ai → Keys. Gemini alone is enough to start; the other two are fallbacks.
+2. Add them to `.env`: `GEMINI_API_KEY=...`, `GROQ_API_KEY=...`, `OPENROUTER_API_KEY=...` (never commit or paste them anywhere else).
 3. Set the exchange rate for exports: `USD_EGP_RATE=50` (update it by hand when it changes).
 4. `docker compose up -d` (restarts the worker with the key). Expected log: `Pipeline ready`.
 5. Messages stored earlier without a key are already waiting in the queue and are processed now.
@@ -652,7 +661,8 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 
 - `select status, error, count(*) from messages group by 1, 2 order by 3 desc;` and `select model, status, count(*), max(error) from extraction_runs where created_at > now() - interval '1 hour' group by 1, 2;`
 - `rate_limited`: the free tier's per-minute limit. The worker already waits and retries; lower `LLM_REQUESTS_PER_MINUTE` if it happens often, or add a second model to the lists.
-- `error` with `HTTP 401`: the API key is wrong or expired. Fix `CEREBRAS_API_KEY`, then `docker compose up -d`.
+- `error` with `HTTP 401` or `403`: that provider's API key is wrong or expired (see the `provider` column). Fix `GEMINI_API_KEY`, `GROQ_API_KEY` or `OPENROUTER_API_KEY`, then `docker compose up -d`.
+- `rate_limited` on Gemini every day around the same time: its free daily quota is used up; Groq and OpenRouter take over until it resets.
 - `error` with `HTTP 404` or `model_not_found`: the model was retired. Change `LLM_*_MODELS` to a current model.
 - `invalid` repeatedly: the model ignores the schema; check the `raw_output`, consider another model.
 - Failed messages are retried automatically 6 times. Afterwards: `reprocess --status failed`.
@@ -711,7 +721,7 @@ Prices are whole currency units (9500000 = 9.5 million), names are the English c
 **Running it:**
 
 ```sh
-pnpm eval                 # live: calls the configured models (needs CEREBRAS_API_KEY)
+pnpm eval                 # live: calls the configured models (needs GEMINI_API_KEY or another key)
 pnpm eval --record        # live, and saves every model answer to eval/recordings/
 pnpm eval --replay        # uses saved answers: free, offline, repeatable
 pnpm eval --case <id>     # one case
@@ -754,7 +764,7 @@ TEST_DATABASE_URL=postgres://reb:<pw>@localhost:5432/reb pnpm test   # plus data
 
 No test calls WhatsApp, Telegram or a paid API. WhatsApp is replaced by a fake socket (connection tests) and hand-built raw messages (parser tests). The model API is replaced by a fake HTTP layer returning fixed answers (client and pipeline tests), and `pnpm eval --replay` replays saved answers.
 
-**Recording model fixtures:** with `CEREBRAS_API_KEY` set, `pnpm eval --record` calls the models for every case and saves their answers in `eval/recordings/<case>.json`; commit them, and `pnpm eval --replay` (and CI, if added) reproduces that run for free.
+**Recording model fixtures:** with a model API key set, `pnpm eval --record` calls the models for every case and saves their answers in `eval/recordings/<case>.json`; commit them, and `pnpm eval --replay` (and CI, if added) reproduces that run for free.
 
 CI (`.github/workflows/ci.yml`) runs lint, format check, type check, all tests against a real Postgres service, the generated-docs check and the web build on every push and pull request.
 
@@ -817,14 +827,14 @@ Should not happen: the initial history sync must stay on (decision log). If you 
 **`WebSocket Error (getaddrinfo ENOTFOUND web.whatsapp.com)`**
 No DNS/internet route to WhatsApp from the server. See runbook "WhatsApp disconnected".
 
-**Worker logs `No model API key set (CEREBRAS_API_KEY): messages are queued but not extracted`**
-Add `CEREBRAS_API_KEY` to `.env` and run `docker compose up -d`. Queued messages are then processed.
+**Worker logs `No model API key set (GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY): messages are queued but not extracted`**
+Add at least `GEMINI_API_KEY` to `.env` and run `docker compose up -d`. Queued messages are then processed.
 
 **`Refusing to send personal data to a model; scrub the text first`**
 A code path built a prompt without `scrubPersonalData()`. It's a bug: find the caller in the stack trace.
 
-**`Bad model "...": use provider:model with provider one of cerebras, openrouter`**
-A model list in `.env` is malformed: `LLM_EXTRACT_MODELS=cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b`.
+**`Bad model "...": use provider:model with provider one of gemini, groq, openrouter, cerebras`**
+A model list in `.env` is malformed. Example: `LLM_EXTRACT_MODELS=gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free`.
 
 **`toomanyrequests` / `429 Too Many Requests` while pulling images**
 Docker Hub's anonymous pull limit. Run `docker login`, or wait and retry.
@@ -875,3 +885,7 @@ Docker Hub's anonymous pull limit. Run `docker login`, or wait and retry.
 | 2026-10-26 | **Images/PDFs/videos skipped until Phase 3**, reprocessable                                                                                                                                                                                                                                                                                                                                                                                                                                   | A caption alone ("details in the photo") would create poor rows                                                                                                                                                                     | Extracting captions only                                         |
 | 2026-10-26 | USD→EGP rate as a **setting (`USD_EGP_RATE`)** for now; editable in the admin page from Phase 5                                                                                                                                                                                                                                                                                                                                                                                               | Hassan chose a rate he sets by hand                                                                                                                                                                                                 | Database setting table now                                       |
 | 2026-10-26 | Classification uses a **different first model** than extraction                                                                                                                                                                                                                                                                                                                                                                                                                               | Cerebras free limits are per model; this doubles throughput                                                                                                                                                                         | Same model for both                                              |
+| 2026-10-26 | **Cerebras replaced by Gemini → Groq → OpenRouter** (free tiers, in that order); Cerebras kept as a paid option                                                                                                                                                                                                                                                                                                                                                                               | Cerebras ended its free tier. Hassan chose Gemini as primary (good Arabic, likely the vision model too), Groq then OpenRouter as fallbacks from different companies. Supersedes the Cerebras entry above.                           | Paid Cerebras; Mistral                                           |
+| 2026-10-26 | Gemini models referenced by Google's **`-latest` aliases**                                                                                                                                                                                                                                                                                                                                                                                                                                    | Model names change often; the aliases always point at the current Flash and Flash-Lite. The eval set will show if a change hurts accuracy.                                                                                          | Pinning a version                                                |
+| 2026-10-26 | OpenRouter requests carry **`require_parameters: true`**                                                                                                                                                                                                                                                                                                                                                                                                                                      | Some models silently ignore `response_format`; this restricts routing to models that honour it                                                                                                                                      | Relying on validation alone                                      |
+| 2026-10-26 | Default **10 requests per minute per model**                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Free tiers allow roughly 10-30 per minute; one setting for all, the client waits rather than fails                                                                                                                                  | Per-provider limits (more settings)                              |

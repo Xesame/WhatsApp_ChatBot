@@ -14,5 +14,5 @@ The single definition of the listing fields (build plan, rule 1). Everything els
 **Why it is designed this way**
 
 - **Raw phrases from the model, numbers from code.** The model returns `"يبدأ من 6.5 مليون"`, not `6500000`; `@reb/normalize` does the arithmetic. Parsing bugs can then be fixed and re-run without calling the model again, and the model can't make arithmetic mistakes.
-- **Strict schemas.** Every object forbids extra fields and lists every field as required (nullable), which strict structured output on Cerebras and OpenAI requires. A test checks this at every nesting level.
+- **Strict schemas.** Every object forbids extra fields and lists every field as required (nullable), which strict structured output (Gemini, Groq, OpenRouter, OpenAI) requires. A test checks this at every nesting level.
 - **Money as integers in minor units** (650000000 = EGP 6,500,000.00) with the currency stored alongside, so no floating-point rounding. EGP is the main currency: the export converts USD prices with the owner-set `USD_EGP_RATE` and says so in Notes.
