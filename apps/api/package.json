@@ -5,13 +5,23 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
-    "start": "node src/main.ts"
+    "start": "node src/main.ts",
+    "create-owner": "node --env-file-if-exists=../../.env src/create-owner.ts"
   },
   "dependencies": {
+    "@fastify/swagger": "9.9.2",
+    "@reb/admin": "workspace:*",
+    "@reb/auth": "workspace:*",
     "@reb/config": "workspace:*",
     "@reb/db": "workspace:*",
+    "@reb/pipeline": "workspace:*",
+    "@reb/queue": "workspace:*",
     "@reb/runtime": "workspace:*",
-    "fastify": "5.12.7"
+    "better-auth": "1.7.13",
+    "drizzle-orm": "0.45.4",
+    "fastify": "5.12.7",
+    "fastify-type-provider-zod": "7.0.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {}
 }
