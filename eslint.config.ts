@@ -21,6 +21,10 @@ export default defineConfig(
   {
     files: ['apps/web/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
+    // `onClick={() => setOpen(true)}` is the normal React idiom
+    rules: {
+      '@typescript-eslint/no-confusing-void-expression': ['error', { ignoreArrowShorthand: true }],
+    },
   },
   prettier,
 );
