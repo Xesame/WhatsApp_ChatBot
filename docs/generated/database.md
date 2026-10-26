@@ -12,10 +12,14 @@ erDiagram
   wa_groups ||--o{ messages : "group_id"
   developers ||--o{ projects : "developer_id"
   cities ||--o{ projects : "city_id"
+  units ||--o{ unit_prices : "unit_id"
+  messages ||--o{ unit_prices : "source_message_id"
+  units ||--o{ unit_sources : "unit_id"
+  messages ||--o{ unit_sources : "message_id"
   developers ||--o{ units : "developer_id"
   projects ||--o{ units : "project_id"
   cities ||--o{ units : "city_id"
-  messages ||--o{ units : "source_message_id"
+  messages ||--o{ units : "sold_by_message_id"
   extraction_runs ||--o{ units : "extraction_run_id"
   cities {
     integer id PK
@@ -103,6 +107,30 @@ erDiagram
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
+  unit_prices {
+    bigint id PK
+    bigint unit_id FK
+    bigint min_price
+    bigint max_price
+    text price_currency
+    numeric(12,_2) down_payment
+    bigint down_payment_amount
+    smallint installments_count
+    numeric(12,_2) installment_years
+    text installment_frequency
+    numeric(12,_2) cash_discount
+    text cash_discount_type
+    text cash_discount_currency
+    timestamp_with_time_zone observed_at
+    bigint source_message_id FK
+    timestamp_with_time_zone created_at
+  }
+  unit_sources {
+    bigint unit_id FK
+    bigint message_id FK
+    text role
+    timestamp_with_time_zone created_at
+  }
   units {
     bigint id PK
     text category
@@ -141,7 +169,7 @@ erDiagram
     boolean needs_review
     text[] review_reasons
     jsonb extras
-    bigint source_message_id FK
+    bigint sold_by_message_id FK
     bigint extraction_run_id FK
     timestamp_with_time_zone first_seen_at
     timestamp_with_time_zone last_seen_at
@@ -336,6 +364,51 @@ Canonical projects (compounds). Each belongs to one developer and one city.
 - Unique index `projects_developer_name_en_key` on (developer_id, name_en)
 - Index `projects_city_id_idx` on (city_id)
 
+## `unit_prices`
+
+Price history: one row each time the price or payment terms of a unit were seen to change (the first listing included). Reposts with the same terms add no row.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `unit_id` | bigint | no | → units.id | The unit. |
+| `min_price` | bigint | yes |  | Min price, minor units of `price_currency`. |
+| `max_price` | bigint | yes |  | Max price, minor units. |
+| `price_currency` | text | no |  | `EGP` or `USD`. |
+| `down_payment` | numeric(12, 2) | yes |  | Down payment percent. |
+| `down_payment_amount` | bigint | yes |  | Down payment amount (minor units), when stated. |
+| `installments_count` | smallint | yes |  | Number of installments. |
+| `installment_years` | numeric(12, 2) | yes |  | Length of the plan in years. |
+| `installment_frequency` | text | yes |  | `monthly`, `quarterly`, `semi-annual` or `annual`. |
+| `cash_discount` | numeric(12, 2) | yes |  | Cash discount, as stated. |
+| `cash_discount_type` | text | yes |  | `Percentage` or `Fixed amount`. |
+| `cash_discount_currency` | text | yes |  | Currency of a fixed cash discount. |
+| `observed_at` | timestamp with time zone | no |  | When the message stating these terms was posted. |
+| `source_message_id` | bigint | no | → messages.id | The message that stated them. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+
+**Indexes and constraints**
+
+- Index `unit_prices_unit_observed_idx` on (unit_id, observed_at)
+- Index `unit_prices_message_idx` on (source_message_id)
+- Check `unit_prices_price_currency_check`
+
+## `unit_sources`
+
+Every message that mentioned a unit: the original listing, reposts in other groups, price updates and sold notices. Dedup keeps one unit with many sources.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `unit_id` | bigint | no | → units.id | The unit. |
+| `message_id` | bigint | no | → messages.id | The message that mentioned it. |
+| `role` | text | no |  | `listing` (posted or reposted), `price_update` or `sold`. |
+| `created_at` | timestamp with time zone | no |  | When the link was made. |
+
+**Indexes and constraints**
+
+- Index `unit_sources_message_idx` on (message_id)
+- Check `unit_sources_role_check`
+
 ## `units`
 
 One row per unit offering: the 26 Primary Units template columns, then internal columns.
@@ -379,17 +452,16 @@ One row per unit offering: the 26 Primary Units template columns, then internal 
 | `needs_review` | boolean | no |  | True when the review queue should check this unit. |
 | `review_reasons` | text[] | no |  | Plain-English reasons for review, e.g. `No price`. |
 | `extras` | jsonb | no |  | Other data, e.g. names not in the entity list under `unmatched`. |
-| `source_message_id` | bigint | no | → messages.id | The message the unit was extracted from. |
-| `extraction_run_id` | bigint | yes | → extraction_runs.id | The model call that produced it. |
-| `first_seen_at` | timestamp with time zone | no |  | When the unit was first posted (message time). |
-| `last_seen_at` | timestamp with time zone | no |  | When the unit was last posted. |
+| `sold_by_message_id` | bigint | yes | → messages.id | The sold notice that marked the unit sold, if any (lets reprocessing undo it). |
+| `extraction_run_id` | bigint | yes | → extraction_runs.id | The latest model call that created or updated it. |
+| `first_seen_at` | timestamp with time zone | no |  | When the unit was first posted (earliest source message). |
+| `last_seen_at` | timestamp with time zone | no |  | When the unit was last posted or updated (latest source message). Units not seen for STALE_AFTER_DAYS become `stale`. |
 | `created_at` | timestamp with time zone | no |  | When the row was created. |
 | `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
 
 **Indexes and constraints**
 
-- Index `units_source_message_idx` on (source_message_id)
-- Index `units_project_idx` on (project_id)
+- Index `units_project_type_status_idx` on (project_id, unit_type, status)
 - Index `units_city_type_idx` on (city_id, unit_type)
 - Index `units_status_idx` on (status)
 - Index `units_needs_review_idx` on (needs_review)

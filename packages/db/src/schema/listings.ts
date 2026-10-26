@@ -18,6 +18,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -127,9 +128,14 @@ export const units = pgTable(
       .notNull()
       .default(sql`'{}'::text[]`),
     extras: jsonb('extras').notNull().default({}),
-    sourceMessageId: bigint('source_message_id', { mode: 'number' })
-      .notNull()
-      .references(() => messages.id, { onDelete: 'restrict' }),
+    // Set when a sold notice marked the unit sold, so reprocessing that
+    // notice can undo it.
+    soldByMessageId: bigint('sold_by_message_id', { mode: 'number' }).references(
+      () => messages.id,
+      {
+        onDelete: 'set null',
+      },
+    ),
     extractionRunId: bigint('extraction_run_id', { mode: 'number' }).references(
       () => extractionRuns.id,
       {
@@ -145,8 +151,8 @@ export const units = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    index('units_source_message_idx').on(t.sourceMessageId),
-    index('units_project_idx').on(t.projectId),
+    // Dedup looks up candidates by project and unit type.
+    index('units_project_type_status_idx').on(t.projectId, t.unitType, t.status),
     index('units_city_type_idx').on(t.cityId, t.unitType),
     index('units_status_idx').on(t.status),
     index('units_needs_review_idx')
@@ -166,5 +172,66 @@ export const units = pgTable(
       'units_price_order',
       sql`${t.maxPrice} is null or ${t.minPrice} is null or ${t.minPrice} <= ${t.maxPrice}`,
     ),
+  ],
+);
+
+export const SOURCE_ROLES = ['listing', 'price_update', 'sold'] as const;
+
+/**
+ * Every message that mentioned a unit. Dedup keeps one unit and adds a row
+ * here for each repost, price update or sold notice.
+ */
+export const unitSources = pgTable(
+  'unit_sources',
+  {
+    unitId: bigint('unit_id', { mode: 'number' })
+      .notNull()
+      .references(() => units.id, { onDelete: 'cascade' }),
+    messageId: bigint('message_id', { mode: 'number' })
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: SOURCE_ROLES }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.unitId, t.messageId] }),
+    index('unit_sources_message_idx').on(t.messageId),
+    oneOf('unit_sources_role_check', t.role, SOURCE_ROLES),
+  ],
+);
+
+/**
+ * Price history: one row per observed change of price or payment terms.
+ * A repost with the same terms adds a source, not a price row. The unit's
+ * own price columns always hold the latest observation.
+ */
+export const unitPrices = pgTable(
+  'unit_prices',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    unitId: bigint('unit_id', { mode: 'number' })
+      .notNull()
+      .references(() => units.id, { onDelete: 'cascade' }),
+    minPrice: bigint('min_price', { mode: 'number' }),
+    maxPrice: bigint('max_price', { mode: 'number' }),
+    priceCurrency: text('price_currency', { enum: CURRENCIES }).notNull(),
+    downPayment: decimal('down_payment'),
+    downPaymentAmount: bigint('down_payment_amount', { mode: 'number' }),
+    installmentsCount: smallint('installments_count'),
+    installmentYears: decimal('installment_years'),
+    installmentFrequency: text('installment_frequency', { enum: INSTALLMENT_FREQUENCIES }),
+    cashDiscount: decimal('cash_discount'),
+    cashDiscountType: text('cash_discount_type', { enum: CASH_DISCOUNT_TYPES }),
+    cashDiscountCurrency: text('cash_discount_currency', { enum: CURRENCIES }),
+    observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
+    sourceMessageId: bigint('source_message_id', { mode: 'number' })
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('unit_prices_unit_observed_idx').on(t.unitId, t.observedAt),
+    index('unit_prices_message_idx').on(t.sourceMessageId),
+    oneOf('unit_prices_price_currency_check', t.priceCurrency, CURRENCIES),
   ],
 );

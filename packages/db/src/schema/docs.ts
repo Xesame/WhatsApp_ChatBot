@@ -214,12 +214,46 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       needs_review: 'True when the review queue should check this unit.',
       review_reasons: 'Plain-English reasons for review, e.g. `No price`.',
       extras: 'Other data, e.g. names not in the entity list under `unmatched`.',
-      source_message_id: 'The message the unit was extracted from.',
-      extraction_run_id: 'The model call that produced it.',
-      first_seen_at: 'When the unit was first posted (message time).',
-      last_seen_at: 'When the unit was last posted.',
+      sold_by_message_id:
+        'The sold notice that marked the unit sold, if any (lets reprocessing undo it).',
+      extraction_run_id: 'The latest model call that created or updated it.',
+      first_seen_at: 'When the unit was first posted (earliest source message).',
+      last_seen_at:
+        'When the unit was last posted or updated (latest source message). Units not seen for STALE_AFTER_DAYS become `stale`.',
       created_at: 'When the row was created.',
       updated_at: 'When the row was last changed.',
+    },
+  },
+  unit_sources: {
+    description:
+      'Every message that mentioned a unit: the original listing, reposts in other groups, price updates and sold notices. Dedup keeps one unit with many sources.',
+    columns: {
+      unit_id: 'The unit.',
+      message_id: 'The message that mentioned it.',
+      role: '`listing` (posted or reposted), `price_update` or `sold`.',
+      created_at: 'When the link was made.',
+    },
+  },
+  unit_prices: {
+    description:
+      'Price history: one row each time the price or payment terms of a unit were seen to change (the first listing included). Reposts with the same terms add no row.',
+    columns: {
+      id: 'Identity primary key.',
+      unit_id: 'The unit.',
+      min_price: 'Min price, minor units of `price_currency`.',
+      max_price: 'Max price, minor units.',
+      price_currency: '`EGP` or `USD`.',
+      down_payment: 'Down payment percent.',
+      down_payment_amount: 'Down payment amount (minor units), when stated.',
+      installments_count: 'Number of installments.',
+      installment_years: 'Length of the plan in years.',
+      installment_frequency: '`monthly`, `quarterly`, `semi-annual` or `annual`.',
+      cash_discount: 'Cash discount, as stated.',
+      cash_discount_type: '`Percentage` or `Fixed amount`.',
+      cash_discount_currency: 'Currency of a fixed cash discount.',
+      observed_at: 'When the message stating these terms was posted.',
+      source_message_id: 'The message that stated them.',
+      created_at: 'When the row was created.',
     },
   },
 };
