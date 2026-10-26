@@ -1,4 +1,4 @@
-import { extractionRuns, messages, type Database, type Db } from '@reb/db';
+import { extractionRuns, mediaFiles, messages, type Database, type Db } from '@reb/db';
 import type { Tolerances } from '@reb/dedup';
 import {
   classifyPrompt,
@@ -8,7 +8,10 @@ import {
   type ModelRef,
 } from '@reb/llm';
 import { normalizeUnit } from '@reb/normalize';
+import { describeMedia } from '@reb/media';
 import { enqueueInTransaction, type PgBoss } from '@reb/queue';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   classificationSchema,
   extractionResultSchema,
@@ -22,12 +25,23 @@ import { eq, sql } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import type { z } from 'zod';
 import { applyExtraction, type ApplyResult } from './apply.ts';
-import { assembleContext, type MessageContext } from './context.ts';
+import { assembleContext, nearbyTexts, type MessageContext } from './context.ts';
 import { matchEntities } from './entities.ts';
 import { mightBeListing } from './prefilter.ts';
 
+export interface MediaSettings {
+  /** Where capture saved the files (MEDIA_DIR). */
+  mediaDir: string;
+  visionModels: ModelRef[];
+  pdfMaxPages: number;
+  pdfMinTextChars: number;
+  /** A flyer and a text from the same sender this close together are read as one (seconds). */
+  captionWindowSeconds: number;
+}
+
 export interface PipelineDeps {
   database: Database;
+  media: MediaSettings;
   /** How close two listings must be to count as the same unit (dedup). */
   tolerances: Tolerances;
   boss: PgBoss;
@@ -50,9 +64,10 @@ async function setStatus(db: Db, messageId: number, status: Status, error: strin
 async function recordAttempts(
   db: Db,
   messageId: number,
-  purpose: 'classify' | 'extract',
+  purpose: 'classify' | 'extract' | 'transcribe',
   attempts: Attempt[],
   parsed: unknown,
+  mediaFileId: number | null = null,
 ): Promise<number | null> {
   let lastOkId: number | null = null;
   for (const attempt of attempts) {
@@ -60,6 +75,7 @@ async function recordAttempts(
       .insert(extractionRuns)
       .values({
         messageId,
+        mediaFileId,
         purpose,
         promptVersion: attempt.promptVersion,
         provider: attempt.provider,
@@ -146,10 +162,13 @@ export async function runExtraction(
 }
 
 /**
- * Step 2 (preprocess): decides whether a message can be processed now.
- * Text goes on to classification. Voice notes are not processed (decided
- * with Hassan). Images, PDFs and videos wait for media extraction in Phase 3;
- * they are marked `skipped` and can be reprocessed then.
+ * Step 2 (preprocess): routes a message.
+ * - Images and documents → `transcribe` (read the text in the file).
+ * - Voice notes and videos → only their caption is read, if any (decided
+ *   with Hassan).
+ * - A text posted by the same sender right before or after an image or file
+ *   is that file's caption: it is read together with the file, not alone.
+ * - Other text → `classify`.
  */
 export async function preprocess(deps: PipelineDeps, messageId: number): Promise<string> {
   const { db } = deps.database;
@@ -159,17 +178,41 @@ export async function preprocess(deps: PipelineDeps, messageId: number): Promise
     await setStatus(db, messageId, 'skipped', 'Deleted by the sender');
     return 'skipped';
   }
-  if (message.mediaType === 'audio') {
-    await setStatus(db, messageId, 'skipped', 'Voice notes are not processed');
+  const hasText = Boolean(message.text?.trim());
+
+  if (message.mediaType === 'image' || message.mediaType === 'document') {
+    await deps.database.transaction(async (tx, client) => {
+      await tx
+        .update(messages)
+        .set({ status: 'processing', error: null })
+        .where(eq(messages.id, messageId));
+      await enqueueInTransaction(deps.boss, client, 'transcribe', { messageId });
+    });
+    return 'queued';
+  }
+  if (!hasText) {
+    const reason =
+      message.mediaType === 'audio'
+        ? 'Voice notes are not processed'
+        : message.mediaType === 'video'
+          ? 'Videos are not processed'
+          : 'No text';
+    await setStatus(db, messageId, 'skipped', reason);
     return 'skipped';
   }
-  if (message.mediaType !== 'none') {
-    await setStatus(db, messageId, 'skipped', 'Media extraction arrives in Phase 3');
-    return 'skipped';
-  }
-  if (!message.text?.trim()) {
-    await setStatus(db, messageId, 'skipped', 'No text');
-    return 'skipped';
+  if (message.mediaType === 'none') {
+    const file = (await nearbyTexts(db, message, deps.media.captionWindowSeconds)).find(
+      (m) => m.mediaType === 'image' || m.mediaType === 'document',
+    );
+    if (file) {
+      await setStatus(
+        db,
+        messageId,
+        'skipped',
+        `Caption of message ${file.id} (${file.mediaType}); read together with it`,
+      );
+      return 'skipped';
+    }
   }
   await deps.database.transaction(async (tx, client) => {
     await tx
@@ -181,13 +224,107 @@ export async function preprocess(deps: PipelineDeps, messageId: number): Promise
   return 'queued';
 }
 
+/**
+ * Step 2 for files: reads the text in a message's image, PDF or spreadsheet
+ * and saves it on `media_files.derived_text`, then queues classification.
+ *
+ * Classification waits until the caption window has passed, so a caption
+ * sent just after the flyer is read with it. If vision keeps failing, the
+ * last retry goes on with the caption alone rather than losing the message.
+ */
+export async function transcribe(
+  deps: PipelineDeps,
+  messageId: number,
+  options: { lastAttempt: boolean },
+): Promise<string> {
+  const { db } = deps.database;
+  const [message] = await db.select().from(messages).where(eq(messages.id, messageId));
+  if (!message) return 'missing';
+  const [file] = await db.select().from(mediaFiles).where(eq(mediaFiles.messageId, messageId));
+
+  let derived: Partial<typeof mediaFiles.$inferInsert> = {};
+  if (!file) {
+    derived = {};
+  } else if (file.status !== 'downloaded' || !file.path) {
+    derived = {
+      derivedMethod: file.status === 'skipped' ? 'skipped' : 'failed',
+      derivedError: `File not downloaded (${file.status}${file.error ? `: ${file.error}` : ''})`,
+    };
+  } else {
+    const result = await describeMedia(
+      {
+        kind: file.kind,
+        mimeType: file.mimeType,
+        fileName: file.fileName,
+        data: await readFile(join(deps.media.mediaDir, file.path)),
+      },
+      {
+        llm: deps.llm,
+        visionModels: deps.media.visionModels,
+        pdfMaxPages: deps.media.pdfMaxPages,
+        pdfMinTextChars: deps.media.pdfMinTextChars,
+      },
+    );
+    if (result.status !== 'skipped') {
+      await recordAttempts(db, messageId, 'transcribe', result.attempts, null, file.id);
+    }
+    if (result.status === 'failed' && !options.lastAttempt) {
+      await setStatus(db, messageId, 'failed', `Reading the file failed: ${result.reason}`);
+      throw new RetryableError(`Transcription failed for message ${messageId}: ${result.reason}`);
+    }
+    derived =
+      result.status === 'ok'
+        ? { derivedText: result.text, derivedMethod: result.method, derivedError: null }
+        : { derivedMethod: result.status, derivedError: result.reason };
+  }
+
+  const startAfter = new Date(message.sentAt.getTime() + deps.media.captionWindowSeconds * 1000);
+  const anyText = Boolean(message.text?.trim()) || Boolean(derived.derivedText?.trim());
+  const nearby = (await nearbyTexts(db, message, deps.media.captionWindowSeconds)).some(
+    (m) => m.mediaType === 'none' && m.text?.trim(),
+  );
+  await deps.database.transaction(async (tx, client) => {
+    if (file)
+      await tx
+        .update(mediaFiles)
+        .set({ ...derived, derivedAt: new Date() })
+        .where(eq(mediaFiles.id, file.id));
+    // A caption may still arrive within the window, so an empty file is only
+    // final once the window has passed and nothing came.
+    if (!anyText && !nearby && startAfter <= new Date()) {
+      await tx
+        .update(messages)
+        .set({
+          status: 'skipped',
+          error: derived.derivedError ?? 'No text in the message or its file',
+        })
+        .where(eq(messages.id, messageId));
+      return;
+    }
+    await tx
+      .update(messages)
+      .set({ status: 'processing', error: null })
+      .where(eq(messages.id, messageId));
+    await enqueueInTransaction(
+      deps.boss,
+      client,
+      'classify',
+      { messageId },
+      {
+        startAfter: startAfter > new Date() ? startAfter : undefined,
+      },
+    );
+  });
+  return derived.derivedMethod ?? 'none';
+}
+
 /** Step 4 (classify): keyword filter, then a small model call. */
 export async function classify(
   deps: PipelineDeps,
   messageId: number,
 ): Promise<MessageIntent | 'missing'> {
   const { db } = deps.database;
-  const context = await assembleContext(db, messageId);
+  const context = await assembleContext(db, messageId, deps.media);
   if (!context) return 'missing';
 
   if (!mightBeListing([context.text, context.quoted ?? ''].join(' '))) {
@@ -237,7 +374,7 @@ export async function extract(
   intent: Exclude<MessageIntent, 'not_relevant'>,
 ): Promise<ApplyResult | null> {
   const { db } = deps.database;
-  const context = await assembleContext(db, messageId);
+  const context = await assembleContext(db, messageId, deps.media);
   if (!context) return null;
 
   const result = await runExtraction(db, deps.llm, deps.models.extract, {

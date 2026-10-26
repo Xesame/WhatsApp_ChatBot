@@ -16,10 +16,12 @@
     "@reb/schema": "workspace:*",
     "drizzle-orm": "0.45.4",
     "pino": "10.4.0",
-    "@reb/dedup": "workspace:*"
+    "@reb/dedup": "workspace:*",
+    "@reb/media": "workspace:*"
   },
   "devDependencies": {
     "@reb/ingest": "workspace:*",
-    "exceljs": "4.4.0"
+    "exceljs": "4.4.0",
+    "@napi-rs/canvas": "1.0.13"
   }
 }

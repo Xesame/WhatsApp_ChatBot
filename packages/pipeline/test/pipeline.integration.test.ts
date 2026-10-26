@@ -1,15 +1,19 @@
-import { extractionRuns, mediaFiles, messages, units, unitSources, waGroups } from '@reb/db';
+import { extractionRuns, messages, units, unitSources, waGroups } from '@reb/db';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
 import { DEFAULT_TOLERANCES } from '@reb/dedup';
-import { LlmClient, parseModelList } from '@reb/llm';
+import { parseModelList, type LlmClient } from '@reb/llm';
 import { startQueue, type PgBoss } from '@reb/queue';
 import { TEMPLATE_HEADERS, unitSchema, type RawUnit } from '@reb/schema';
 import { readHeaderRow } from '@reb/schema/export';
 import { asc, eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { pino } from 'pino';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { fakeModel } from './fake-model.ts';
 import {
   classify,
   exportUnits,
@@ -20,6 +24,8 @@ import {
   RetryableError,
   type PipelineDeps,
 } from '../src/index.ts';
+
+let mediaDir = '';
 
 const blank: RawUnit = {
   category: null,
@@ -53,39 +59,6 @@ const MULTI_UNIT = `لانش جديد في ميفيدا - اعمار
 مقدم 10% وتقسيط 8 سنين ربع سنوي، استلام 2029
 للتواصل 01001234567`;
 
-/** A stand-in for the model API: answers by schema name with canned replies. */
-function fakeModel(replies: { classification?: unknown; extraction?: unknown; fail?: boolean }) {
-  const bodies: string[] = [];
-  const fetchFn = ((_url: string, init: RequestInit) => {
-    const body = init.body as string;
-    bodies.push(body);
-    if (replies.fail) return Promise.resolve(new Response('{}', { status: 503 }));
-    const name = (JSON.parse(body) as { response_format: { json_schema: { name: string } } })
-      .response_format.json_schema.name;
-    const content = JSON.stringify(
-      name === 'classification' ? replies.classification : replies.extraction,
-    );
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          choices: [{ message: { content } }],
-          usage: { prompt_tokens: 500, completion_tokens: 200 },
-        }),
-      ),
-    );
-  }) as unknown as typeof fetch;
-  return {
-    bodies,
-    llm: new LlmClient({
-      apiKeys: { cerebras: 'test' },
-      requestsPerMinute: 1000,
-      timeoutMs: 1000,
-      freeTier: true,
-      fetch: fetchFn,
-    }),
-  };
-}
-
 describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake model)', () => {
   let testDb: TestDatabase;
   let boss: PgBoss;
@@ -102,6 +75,13 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
     models,
     logger,
     tolerances: DEFAULT_TOLERANCES,
+    media: {
+      mediaDir,
+      visionModels: parseModelList('gemini:vision-a,gemini:vision-b'),
+      pdfMaxPages: 10,
+      pdfMinTextChars: 20,
+      captionWindowSeconds: 120,
+    },
   });
 
   const addMessage = async (values: Partial<typeof messages.$inferInsert>) => {
@@ -130,6 +110,7 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
 
   beforeAll(async () => {
     testDb = await createTestDatabase(testDatabaseUrl ?? '');
+    mediaDir = await mkdtemp(join(tmpdir(), 'reb-pipeline-media-'));
     await seed(testDb.database.db);
     boss = await startQueue(testDb.url, { supervise: false, onError: () => undefined });
     const [group] = await testDb.database.db
@@ -158,20 +139,11 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
 
     it.each<[string, Partial<typeof messages.$inferInsert>, string]>([
       ['voice notes', { mediaType: 'audio' }, 'Voice notes are not processed'],
-      [
-        'images until Phase 3',
-        { mediaType: 'image', text: 'caption' },
-        'Media extraction arrives in Phase 3',
-      ],
+      ['videos without a caption', { mediaType: 'video' }, 'Videos are not processed'],
       ['deleted messages', { text: 'x', deletedAt: new Date() }, 'Deleted by the sender'],
       ['empty messages', { text: '  ' }, 'No text'],
     ])('skips %s', async (_label, values, reason) => {
       const id = await addMessage(values);
-      if (values.mediaType === 'image') {
-        await testDb.database.db
-          .insert(mediaFiles)
-          .values({ messageId: id, kind: 'image', mediaRef: {} });
-      }
       expect(await preprocess(deps(fakeModel({}).llm), id)).toBe('skipped');
       expect(await message(id)).toMatchObject({ status: 'skipped', error: reason });
       expect(await jobs('classify')).toEqual([]);

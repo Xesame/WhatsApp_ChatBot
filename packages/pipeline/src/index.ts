@@ -1,4 +1,9 @@
-export { assembleContext, type MessageContext } from './context.ts';
+export {
+  assembleContext,
+  composeMessageText,
+  nearbyTexts,
+  type MessageContext,
+} from './context.ts';
 export { FUZZY_THRESHOLD, matchEntities, type EntityMatches } from './entities.ts';
 export { mightBeListing } from './prefilter.ts';
 export {
@@ -6,6 +11,8 @@ export {
   extract,
   preprocess,
   RetryableError,
+  transcribe,
+  type MediaSettings,
   runClassification,
   runExtraction,
   type ModelResult,

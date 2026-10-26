@@ -46,9 +46,11 @@ export async function enqueueInTransaction<Q extends QueueName>(
   client: TransactionClient,
   queue: Q,
   payload: JobPayload<Q>,
+  options: { startAfter?: Date } = {},
 ): Promise<void> {
   const data = jobPayloads[queue].parse(payload);
   await boss.send(queue, data, {
+    ...(options.startAfter ? { startAfter: options.startAfter } : {}),
     db: {
       executeSql: async (text: string, values?: unknown[]) => client.query(text, values),
     },
