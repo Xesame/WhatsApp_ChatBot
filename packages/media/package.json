@@ -1,0 +1,17 @@
+{
+  "name": "@reb/media",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "1.0.13",
+    "@reb/llm": "workspace:*",
+    "exceljs": "4.4.0",
+    "pdfjs-dist": "6.4.299"
+  }
+}
