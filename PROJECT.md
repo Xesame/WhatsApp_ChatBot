@@ -28,7 +28,7 @@ Regenerate them with `pnpm run docs`. CI runs `pnpm docs:check` and fails if the
 | 1 | Capture (Baileys, raw messages, media) | **Done** (live WhatsApp test waits for the scraper number) |
 | 2 | Text extraction and eval harness | **Built** (accuracy run waits for real cases and a Gemini key) |
 | 3 | Media extraction (vision, PDF, speech-to-text) | Not started |
-| 4 | Dedup, price history, lifecycle | Not started |
+| 4 | Dedup, price history, lifecycle | **Done** (tolerances to tune on real data) |
 | 5 | API and owner admin | Not started |
 | 6 | Multi-tenant firm dashboard | Not started |
 | 7 | Chat bots and alerts | Not started |
@@ -141,7 +141,8 @@ realestate-bot/
     ingest/    storing messages and media, groups, exactly-once queueing, crash recovery
     schema/    the listing fields (Zod), enums, model JSON schema, template column map, Excel export
     llm/       model client (fallback, rate limits, privacy scrub) and versioned prompts
-    pipeline/  preprocess / classify / extract steps, entity matching, reprocess, export
+    pipeline/  preprocess / classify / extract steps, entity matching, dedup/merge, lifecycle, reprocess, export
+    dedup/     when two listings are the same unit; which unit a reply means; price changes
   eval/        labeled cases, recordings, scoring and the `pnpm eval` runner
   scripts/docs.ts           generates docs/generated/* and .env.example
   docs/generated/           generated reference docs (do not edit)
@@ -150,22 +151,23 @@ realestate-bot/
   .github/workflows/ci.yml  lint, format, types, tests (with real Postgres), docs check, web build
 ```
 
-| Package          | Owns                                                                    | Main files                                                            | Used by                            |
-| ---------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------- |
-| `@reb/config`    | Environment variables: schema, defaults, validation                     | `src/env.ts`, `src/load.ts`                                           | db, runtime, api, scripts          |
-| `@reb/normalize` | Deterministic text normalization                                        | `src/text.ts`                                                         | db (seed) and, later, the pipeline |
-| `@reb/db`        | Tables, migrations, pool, seed                                          | `src/schema/*`, `migrations/*`, `src/seed.ts`, `seed/*`               | runtime, api, scripts              |
-| `@reb/runtime`   | Logging, health checks, service lifecycle                               | `src/logger.ts`, `src/health.ts`, `src/service.ts`                    | all Node apps                      |
-| `@reb/queue`     | Job queue (pg-boss): queues, payload schemas, retries                   | `src/queues.ts`, `src/boss.ts`                                        | capture, worker, ingest            |
-| `@reb/whatsapp`  | WhatsApp connection, login keys, message parsing, sender hashing        | `src/connection.ts`, `src/parse.ts`, `src/auth-store.ts`              | capture; chatbot (Phase 7)         |
-| `@reb/ingest`    | Storing messages and media, group management, queueing                  | `src/ingestor.ts`, `src/files.ts`, `src/groups.ts`                    | capture; api (Phase 5)             |
-| `@reb/schema`    | The listing fields, enums, model schema, template columns, Excel export | `src/unit.ts`, `src/extraction.ts`, `src/columns.ts`, `src/export.ts` | db, normalize, llm, pipeline, eval |
-| `@reb/llm`       | Model calls: fallback, rate limits, privacy scrub; prompts              | `src/client.ts`, `src/privacy.ts`, `prompts/*.ts`                     | pipeline, eval                     |
-| `@reb/pipeline`  | Processing steps, entity matching, reprocess, export                    | `src/steps.ts`, `src/entities.ts`, `src/admin.ts`                     | worker, eval                       |
+| Package          | Owns                                                                                                   | Main files                                                            | Used by                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ---------------------------------- |
+| `@reb/config`    | Environment variables: schema, defaults, validation                                                    | `src/env.ts`, `src/load.ts`                                           | db, runtime, api, scripts          |
+| `@reb/normalize` | Deterministic text normalization                                                                       | `src/text.ts`                                                         | db (seed) and, later, the pipeline |
+| `@reb/db`        | Tables, migrations, pool, seed                                                                         | `src/schema/*`, `migrations/*`, `src/seed.ts`, `seed/*`               | runtime, api, scripts              |
+| `@reb/runtime`   | Logging, health checks, service lifecycle                                                              | `src/logger.ts`, `src/health.ts`, `src/service.ts`                    | all Node apps                      |
+| `@reb/queue`     | Job queue (pg-boss): queues, payload schemas, retries                                                  | `src/queues.ts`, `src/boss.ts`                                        | capture, worker, ingest            |
+| `@reb/whatsapp`  | WhatsApp connection, login keys, message parsing, sender hashing                                       | `src/connection.ts`, `src/parse.ts`, `src/auth-store.ts`              | capture; chatbot (Phase 7)         |
+| `@reb/ingest`    | Storing messages and media, group management, queueing                                                 | `src/ingestor.ts`, `src/files.ts`, `src/groups.ts`                    | capture; api (Phase 5)             |
+| `@reb/schema`    | The listing fields, enums, model schema, template columns, Excel export                                | `src/unit.ts`, `src/extraction.ts`, `src/columns.ts`, `src/export.ts` | db, normalize, llm, pipeline, eval |
+| `@reb/llm`       | Model calls: fallback, rate limits, privacy scrub; prompts                                             | `src/client.ts`, `src/privacy.ts`, `prompts/*.ts`                     | pipeline, eval                     |
+| `@reb/pipeline`  | Processing steps, entity matching, dedup/merge and price history (apply), lifecycle, reprocess, export | `src/steps.ts`, `src/apply.ts`, `src/entities.ts`, `src/admin.ts`     | worker, eval                       |
+| `@reb/dedup`     | Same-unit rules, reply targeting, price-change detection (pure)                                        | `src/match.ts`, `src/prices.ts`                                       | pipeline                           |
 
-Packages planned for later phases and not created yet: `media` (Phase 3), `dedup` (Phase 4), `chat-core` (Phase 7).
+Packages planned for later phases and not created yet: `media` (Phase 3), `chat-core` (Phase 7).
 
-**Dependency direction:** `apps → (runtime, ingest, pipeline) → (whatsapp, queue, llm, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
+**Dependency direction:** `apps → (runtime, ingest, pipeline) → (whatsapp, queue, llm, dedup, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
 
 **Library versions** (checked 2026-10-25):
 
@@ -232,7 +234,7 @@ erDiagram
 - `wa_connections`: live status per account (`state`, QR/pairing code while pairing, last connect/disconnect and reason, last message time).
 - Status and type columns have CHECK constraints, so the database rejects unknown values.
 
-**Tables added by later phases:** `units`, `extraction_runs` (Phase 2); `unit_prices`, `unit_sources` (Phase 4); `review_corrections`, `audit_log` (Phase 5); `firms`, `users`, `chat_identities`, `saved_searches`, `firm_notes`, `usage_events` (Phase 6); `alert_deliveries` (Phase 7). Each arrives as its own migration in the phase that uses it.
+**Tables added by later phases:** `review_corrections`, `audit_log` (Phase 5); `firms`, `users`, `chat_identities`, `saved_searches`, `firm_notes`, `usage_events` (Phase 6); `alert_deliveries` (Phase 7). Each arrives as its own migration in the phase that uses it.
 
 **Listing tables (Phase 2)**
 
@@ -248,7 +250,30 @@ erDiagram
 
 - `units`: one row per unit offering. The 26 template columns in template order, then internal columns: `status`, `price_currency`, `down_payment_amount`, `installment_years`, `installment_frequency`, `ready_to_move`, `confidence`, `needs_review`, `review_reasons`, `extras` (unmatched names), `source_message_id`, `extraction_run_id`, `first_seen_at`, `last_seen_at`. Every allowed value is enforced by a CHECK constraint generated from `@reb/schema`.
 - `extraction_runs`: every model call, kept forever (reprocessing adds rows, never deletes): purpose (`classify`/`extract`), prompt version, provider, model, the request as sent, the raw answer, the parsed answer, tokens, cost, latency, status.
-- Until Phase 4 (dedup), each listing message produces its own unit rows; re-extracting a message replaces its units. Price updates and sold notices are classified and extracted, and kept in `extraction_runs` for Phase 4 to apply.
+  **Dedup and price history (Phase 4)**
+
+```mermaid
+erDiagram
+  units ||--o{ unit_sources : "mentioned by"
+  messages ||--o{ unit_sources : mentions
+  units ||--o{ unit_prices : "price history"
+  messages ||--o{ unit_prices : "stated by"
+```
+
+- One unit per real offering. `unit_sources` links it to every message that mentioned it, with a role: `listing` (posted or reposted), `price_update`, `sold`.
+- `unit_prices` is the price history: one row for the first price, then one each time the price or payment terms change. A repost with the same terms adds a source, not a price row. The unit's own price columns always hold the most recent observation.
+- `units.first_seen_at` / `last_seen_at` are the earliest and latest source messages.
+
+**Unit statuses**
+
+| Status      | Meaning                                                    | Set by                                                |
+| ----------- | ---------------------------------------------------------- | ----------------------------------------------------- |
+| `active`    | Currently on offer                                         | New listing; a repost or price update of a stale unit |
+| `stale`     | Not posted or updated for `STALE_AFTER_DAYS` (45) days     | Daily lifecycle job (03:17 Cairo time)                |
+| `sold`      | A sold notice said so (`sold_by_message_id` records which) | Sold reply or matching sold notice                    |
+| `withdrawn` | Taken off the market                                       | Owner, from the admin page (Phase 5)                  |
+
+Stale and sold units are kept, with their history; exports include only `active` units unless `--all` is given.
 
 **Primary Units template mapping:** generated from the column map in `packages/schema`: **[docs/generated/template.md](docs/generated/template.md)** (header, database column and rule for all 26 columns). The export writes exactly those headers in that order (tests compare the headers and sheet name with Hassan's original file in `packages/schema/template/`).
 
@@ -319,7 +344,15 @@ docker compose exec worker node apps/worker/src/cli.ts reprocess --message 120,1
 
 Matching messages go back to `pending` and through every step again with the current prompts and models. Old model calls stay in `extraction_runs` for comparison.
 
-_(Phases 3-4)_ media preprocessing, caption linking, dedup/merge, lifecycle, alerts.
+**Steps 7-8: dedup, price history, sold** (inside the `extract` job, one transaction, one advisory lock so simultaneous reposts can't create twins)
+
+- **Listing:** for each unit, find an `active` or `stale` unit that matches (chapter 6). Match: add a source, fill in details the unit lacked, add a price row if the terms changed, `stale` → `active`. No match: create a unit with its first source and price row. Two units in one message never merge into the same existing unit.
+- **Price update:** if it replies to (or edits) an earlier message, the target is among that message's units: the only one, or the one the update names (type, bedrooms, area). If it can't tell which, nothing changes and the units are flagged for review. Without a reply, the matching rules find the unit. The new terms are merged into the current ones (unstated terms are kept) and a price row is added.
+- **Sold:** same targeting; the unit becomes `sold`. Reprocessing the notice undoes and reapplies it.
+
+**Job: `lifecycle`** (daily, 03:17 Cairo time): `active` units whose `last_seen_at` is older than `STALE_AFTER_DAYS` become `stale`. Retries 3.
+
+_(Phase 3)_ media preprocessing and caption linking. _(Phase 7)_ alerts.
 
 ## 6. Extraction
 
@@ -384,7 +417,37 @@ A matched project fills in its developer and city; if the message names a differ
 
 **Cost per message.** Each message costs 0, 1 or 2 model calls (keyword filter, classification, extraction). On the free tier cost is recorded as 0 (`LLM_FREE_TIER=true`); tokens and latency are always recorded. Daily cost and call counts: `select date(created_at), purpose, count(*), sum(input_tokens), sum(output_tokens), sum(cost_usd) from extraction_runs group by 1, 2 order by 1;`
 
-_(Phase 3)_ vision for images and PDFs. _(Phase 4)_ dedup algorithm with worked examples.
+**Dedup algorithm** (`packages/dedup`). Two listings are the same unit when all of these hold:
+
+1. same project (listings without a known project are never merged);
+2. same developer, when both are known;
+3. same unit type;
+4. unit codes: a named unit only matches the same code, and never matches a unit-type offering;
+5. same bedrooms, when both are known;
+6. close areas: the gap between the two area ranges is at most 5% of the larger area (`DEDUP_AREA_TOLERANCE_PERCENT`), or 3 m² (`DEDUP_AREA_TOLERANCE_M2`), whichever is bigger. If neither states an area, prices must be within 10% (`DEDUP_PRICE_TOLERANCE_PERCENT`). If only one states an area: different.
+
+Among several matches, the closest area wins. When unsure, the rules say "different": a missed duplicate shows twice and can be merged in review, but a wrong merge loses a real unit.
+
+**Worked examples** (all in the tests):
+
+| Existing unit                        | New post                                       | Result                         | Why                                         |
+| ------------------------------------ | ---------------------------------------------- | ------------------------------ | ------------------------------------------- |
+| Mivida, Apartment, 3BR, 150 m², 9.5M | Same, in another group                         | Merged: 2 sources, 1 price row | Identical                                   |
+| Mivida, Apartment, 3BR, 150 m²       | Mivida, Apartment, bedrooms not stated, 152 m² | Merged                         | Gap 2 m² ≤ 7.6 m²; unknown bedrooms allowed |
+| Mivida, Apartment, 3BR, 150 m²       | Mivida, Apartment, 3BR, 157 m²                 | Merged                         | Gap 7 ≤ 5% of 157 (7.85)                    |
+| Mivida, Apartment, 3BR, 150 m²       | Mivida, Apartment, 3BR, 158 m²                 | New unit                       | Gap 8 > 7.9                                 |
+| Mivida, Apartment, 3BR, 150 m²       | Mivida, Apartment, 3BR, 120-180 m²             | Merged                         | Ranges overlap                              |
+| Mivida, Apartment, 3BR, 150 m²       | Mivida, Apartment, **2BR**, 150 m²             | New unit                       | Bedrooms differ                             |
+| Mivida, Apartment, 3BR, 150 m²       | Mivida, **Duplex**, 150 m²                     | New unit                       | Type differs                                |
+| Mivida, Apartment, 150 m²            | Mivida, Apartment, unit **B12-305**            | New unit                       | Named unit vs offering                      |
+| Studio 40 m²                         | Studio 43 m² / 44 m²                           | Merged / new                   | 3 m² minimum applies                        |
+| Mivida Apartment 3BR, no area, 9.5M  | Same, no area, 10M                             | Merged                         | No areas: prices within 10%                 |
+| Mivida, Apartment, 3BR, 150 m², 9.5M | Same unit at **9.9M**                          | Merged, new price row          | Terms changed                               |
+| Listing "2BR 120 m² + 3BR 150 m²"    | Reply "السعر بقى 8 مليون"                      | No change, both flagged        | Can't tell which unit                       |
+| Listing "2BR 120 m² + 3BR 150 m²"    | Reply "الـ3 غرف بقت 8 مليون"                   | 3BR gets a price row           | The reply names the unit                    |
+| Listing (one unit)                   | Reply "تم البيع"                               | Unit `sold`                    | Only one unit                               |
+
+_(Phase 3)_ vision for images and PDFs.
 
 ## 7. Interfaces
 
@@ -585,6 +648,19 @@ docker compose exec postgres psql -U reb -d reb -c "select id, unit_type, min_pr
 
 **After changing a prompt or the models:** run `pnpm eval` first; if accepted, `reprocess` the messages you want redone.
 
+**Price history of a unit:**
+
+```sh
+docker compose exec postgres psql -U reb -d reb -c "select observed_at, min_price/100 as min_egp, max_price/100 as max_egp, down_payment, installments_count from unit_prices where unit_id = 42 order by observed_at"
+docker compose exec postgres psql -U reb -d reb -c "select s.role, m.sent_at, g.name from unit_sources s join messages m on m.id = s.message_id join wa_groups g on g.id = m.group_id where s.unit_id = 42 order by m.sent_at"
+```
+
+**Most reposted units and recent price drops:**
+
+```sh
+docker compose exec postgres psql -U reb -d reb -c "select unit_id, count(*) as sources from unit_sources group by 1 order by 2 desc limit 10"
+```
+
 **Is capture receiving messages?**
 
 ```sh
@@ -676,6 +752,19 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 
 - Set `USD_EGP_RATE` in `.env` (then `docker compose up -d`) or pass `--usd-egp-rate`.
 
+**The same unit shows up twice (missed duplicate)**
+
+- Usually one post lacked the project, the area or the unit type, or the areas differ by more than the tolerance. Check both rows: `select id, project_id, unit_type, bedrooms, min_area, max_area, unit_code from units where id in (..)`.
+- If many duplicates differ only slightly in area, raise `DEDUP_AREA_TOLERANCE_PERCENT` (then `docker compose up -d`) and `reprocess` the affected messages. Merging single pairs by hand comes with the review page (Phase 5).
+
+**Two different units were merged (wrong merge)**
+
+- Lower `DEDUP_AREA_TOLERANCE_PERCENT`, then `reprocess --message <ids of the unit's sources>` (`select message_id from unit_sources where unit_id = ..`). Reprocessing undoes and redoes those messages with the new tolerance.
+
+**A price update or sold notice did nothing**
+
+- `select id, error from messages where error like 'price_update%' or error like 'sold%'`. "no matching unit found": the original listing wasn't captured or didn't match. "does not say which": the reply was ambiguous and the units are flagged for review.
+
 _(Later phases)_ cost spike, restoring a backup, rotating secrets.
 
 ## 12. Evaluation
@@ -742,25 +831,27 @@ pnpm vitest --watch                           # re-run on save
 TEST_DATABASE_URL=postgres://reb:<pw>@localhost:5432/reb pnpm test   # plus database integration tests
 ```
 
-| Suite                                                       | Covers                                                                                                                                                                                                                                                                                                       | Needs                                                                                           |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `packages/config/test`                                      | defaults, coercion, readable errors                                                                                                                                                                                                                                                                          | nothing                                                                                         |
-| `packages/normalize/test`                                   | every normalization rule, Arabic and mixed-script                                                                                                                                                                                                                                                            | nothing                                                                                         |
-| `packages/db/test/seed-data.test.ts`                        | seed data has no duplicates, bad references or ambiguous aliases                                                                                                                                                                                                                                             | nothing                                                                                         |
-| `packages/db/test/client.test.ts`                           | a lost connection does not crash the process                                                                                                                                                                                                                                                                 | nothing                                                                                         |
-| `packages/db/test/migrate-seed.integration.test.ts`         | migrations on a clean database, rerun is a no-op, seed twice adds nothing, alias lookup, trigram lookup, constraints                                                                                                                                                                                         | `TEST_DATABASE_URL`. Creates and drops a throwaway `reb_test_*` database. Skipped when not set. |
-| `packages/runtime/test`                                     | health server 200/503/404, log redaction                                                                                                                                                                                                                                                                     | nothing                                                                                         |
-| `apps/api/test`                                             | `/health` 200 and 503 (database mocked)                                                                                                                                                                                                                                                                      | nothing                                                                                         |
-| `packages/config/test` (Phase 1 part)                       | per-service required variables (`SENDER_HASH_SALT` for capture), salt length, pairing phone format                                                                                                                                                                                                           | nothing                                                                                         |
-| `packages/whatsapp/test/parse.test.ts`                      | text, replies, forwarding, images, PDFs with captions, voice notes, disappearing/view-once, edits, deletions, everything ignored, LID-preferred sender hashing                                                                                                                                               | nothing                                                                                         |
-| `packages/whatsapp/test/connection.integration.test.ts`     | QR and pairing-code flow, open/close states, backoff timings, restart-required, logged-out key wipe, connection replaced, in-order delivery, retry during DB outage, health check; auth store round trip with binary keys                                                                                    | `TEST_DATABASE_URL`; a fake WhatsApp socket                                                     |
-| `packages/ingest/test/ingestor.integration.test.ts`         | store + queue once, duplicates after restart, unwatched groups, replies/edits/deletions, media hashed and stored once, download retries and give-up, size limit (announced and actual), crash mid-download recovery, stragglers, and a raw-message-to-database run proving no phone number or name is stored | `TEST_DATABASE_URL`; fake downloads                                                             |
-| `packages/schema/test`                                      | the 26 template headers in order, export rows, USD conversion and missing-rate error, ready-to-move, strict JSON schema at every level                                                                                                                                                                       | nothing (template-file comparison skipped until the file is committed)                          |
-| `packages/normalize/test/numbers.test.ts`, `fields.test.ts` | every number, range, currency, delivery, installment, floor and room rule in chapter 6                                                                                                                                                                                                                       | nothing                                                                                         |
-| `packages/normalize/test/unit.test.ts`                      | raw → unit, no-invention drops, evidence check, bare prices, USD, down-payment amount → percent, ready to move, unknown and fuzzy names, conflicts, category inference, price per m²                                                                                                                         | nothing                                                                                         |
-| `packages/llm/test`                                         | phone/e-mail/mention scrubbing, model lists, rate limiter, strict request shape, fallback on 429/timeout, retry with validation error, refusing personal data                                                                                                                                                | a fake HTTP layer                                                                               |
-| `packages/pipeline/test`                                    | preprocess skips, keyword filter, classification, multi-unit extraction to rows, Excel export headers and values, **no phone number in any stored model request**, idempotent re-extraction, reply context, entity matching (exact/contained/fuzzy)                                                          | `TEST_DATABASE_URL`; a fake model                                                               |
-| `eval/test`                                                 | eval scoring: tolerance, unit pairing, missing units, totals                                                                                                                                                                                                                                                 | nothing                                                                                         |
+| Suite                                                       | Covers                                                                                                                                                                                                                                                                                                                                                             | Needs                                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `packages/config/test`                                      | defaults, coercion, readable errors                                                                                                                                                                                                                                                                                                                                | nothing                                                                                         |
+| `packages/normalize/test`                                   | every normalization rule, Arabic and mixed-script                                                                                                                                                                                                                                                                                                                  | nothing                                                                                         |
+| `packages/db/test/seed-data.test.ts`                        | seed data has no duplicates, bad references or ambiguous aliases                                                                                                                                                                                                                                                                                                   | nothing                                                                                         |
+| `packages/db/test/client.test.ts`                           | a lost connection does not crash the process                                                                                                                                                                                                                                                                                                                       | nothing                                                                                         |
+| `packages/db/test/migrate-seed.integration.test.ts`         | migrations on a clean database, rerun is a no-op, seed twice adds nothing, alias lookup, trigram lookup, constraints                                                                                                                                                                                                                                               | `TEST_DATABASE_URL`. Creates and drops a throwaway `reb_test_*` database. Skipped when not set. |
+| `packages/runtime/test`                                     | health server 200/503/404, log redaction                                                                                                                                                                                                                                                                                                                           | nothing                                                                                         |
+| `apps/api/test`                                             | `/health` 200 and 503 (database mocked)                                                                                                                                                                                                                                                                                                                            | nothing                                                                                         |
+| `packages/config/test` (Phase 1 part)                       | per-service required variables (`SENDER_HASH_SALT` for capture), salt length, pairing phone format                                                                                                                                                                                                                                                                 | nothing                                                                                         |
+| `packages/whatsapp/test/parse.test.ts`                      | text, replies, forwarding, images, PDFs with captions, voice notes, disappearing/view-once, edits, deletions, everything ignored, LID-preferred sender hashing                                                                                                                                                                                                     | nothing                                                                                         |
+| `packages/whatsapp/test/connection.integration.test.ts`     | QR and pairing-code flow, open/close states, backoff timings, restart-required, logged-out key wipe, connection replaced, in-order delivery, retry during DB outage, health check; auth store round trip with binary keys                                                                                                                                          | `TEST_DATABASE_URL`; a fake WhatsApp socket                                                     |
+| `packages/ingest/test/ingestor.integration.test.ts`         | store + queue once, duplicates after restart, unwatched groups, replies/edits/deletions, media hashed and stored once, download retries and give-up, size limit (announced and actual), crash mid-download recovery, stragglers, and a raw-message-to-database run proving no phone number or name is stored                                                       | `TEST_DATABASE_URL`; fake downloads                                                             |
+| `packages/schema/test`                                      | the 26 template headers in order, export rows, USD conversion and missing-rate error, ready-to-move, strict JSON schema at every level                                                                                                                                                                                                                             | nothing (template-file comparison skipped until the file is committed)                          |
+| `packages/normalize/test/numbers.test.ts`, `fields.test.ts` | every number, range, currency, delivery, installment, floor and room rule in chapter 6                                                                                                                                                                                                                                                                             | nothing                                                                                         |
+| `packages/normalize/test/unit.test.ts`                      | raw → unit, no-invention drops, evidence check, bare prices, USD, down-payment amount → percent, ready to move, unknown and fuzzy names, conflicts, category inference, price per m²                                                                                                                                                                               | nothing                                                                                         |
+| `packages/llm/test`                                         | phone/e-mail/mention scrubbing, model lists, rate limiter, strict request shape, fallback on 429/timeout, retry with validation error, refusing personal data                                                                                                                                                                                                      | a fake HTTP layer                                                                               |
+| `packages/pipeline/test`                                    | preprocess skips, keyword filter, classification, multi-unit extraction to rows, Excel export headers and values, **no phone number in any stored model request**, idempotent re-extraction, reply context, entity matching (exact/contained/fuzzy)                                                                                                                | `TEST_DATABASE_URL`; a fake model                                                               |
+| `eval/test`                                                 | eval scoring: tolerance, unit pairing, missing units, totals                                                                                                                                                                                                                                                                                                       | nothing                                                                                         |
+| `packages/dedup/test`                                       | every matching rule and tolerance edge (5% gap, 3 m² floor, price fallback, codes, bedrooms), closest-match choice, reply targeting, price-change detection                                                                                                                                                                                                        | nothing                                                                                         |
+| `packages/pipeline/test/dedup.integration.test.ts`          | **same unit in three groups → one unit, three sources**; **reply with a new price → price row, not a new unit**; units kept apart; repost at a new price; late older message; sold reply and reprocessing it; ambiguous reply flagged; reprocessing never duplicates and retracting the last source removes the unit; no project → no merge; stale job and revival | `TEST_DATABASE_URL`                                                                             |
 
 No test calls WhatsApp, Telegram or a paid API. WhatsApp is replaced by a fake socket (connection tests) and hand-built raw messages (parser tests). The model API is replaced by a fake HTTP layer returning fixed answers (client and pipeline tests), and `pnpm eval --replay` replays saved answers.
 
@@ -890,3 +981,10 @@ Docker Hub's anonymous pull limit. Run `docker login`, or wait and retry.
 | 2026-10-26 | OpenRouter requests carry **`require_parameters: true`**                                                                                                                                                                                                                                                                                                                                                                                                                                      | Some models silently ignore `response_format`; this restricts routing to models that honour it                                                                                                                                      | Relying on validation alone                                      |
 | 2026-10-26 | Default **10 requests per minute per model**                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Free tiers allow roughly 10-30 per minute; one setting for all, the client waits rather than fails                                                                                                                                  | Per-provider limits (more settings)                              |
 | 2026-10-26 | **Images may be sent to the vision model as they are**, even if they show phone numbers                                                                                                                                                                                                                                                                                                                                                                                                       | Hassan: the groups are semi-public and the flyers are already shared there. Text still has contact details removed before sending.                                                                                                  | Blurring or cropping contact details first                       |
+| 2026-10-26 | **Dedup rules are conservative** (project required, only-one-side-has-area = different, named units only match their code)                                                                                                                                                                                                                                                                                                                                                                    | A wrong merge loses a real unit; a missed duplicate only shows twice and can be merged in review                                                                                                                                    | Looser matching on developer + city                              |
+| 2026-10-26 | **Area tolerance = gap ≤ 5% of the larger area, min 3 m²**; price tolerance 10% when no area                                                                                                                                                                                                                                                                                                                                                                                                  | Repost rounding (150 vs 152) must merge, 150 vs 165 must not; studios need an absolute floor. Settings, to be tuned on real data (plan, section 14).                                                                                | Widening both sides by 5% (effectively 10%)                      |
+| 2026-10-26 | **Reprocessing = retract then reapply**                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Makes every message's effect undoable and repeatable, so prompt changes and fixes can be re-run safely                                                                                                                              | Append-only updates                                              |
+| 2026-10-26 | **Ambiguous replies change nothing and flag the units**                                                                                                                                                                                                                                                                                                                                                                                                                                       | Guessing which of several units a reply means could put a price on the wrong unit                                                                                                                                                   | Applying to all units of the earlier message                     |
+| 2026-10-26 | **One advisory lock around the dedup step**                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Simultaneous reposts in several groups must not create twins; the step has no model calls, so it takes milliseconds                                                                                                                 | Locks per project                                                |
+| 2026-10-26 | **Stale and sold units are kept**; a repost revives a stale unit, not a sold one                                                                                                                                                                                                                                                                                                                                                                                                              | History and price trends stay available; a sold unit reposted is suspicious and becomes a new unit                                                                                                                                  | Deleting stale units                                             |
+| 2026-10-26 | `units.source_message_id` **replaced by `unit_sources`** (migration 0005 copies existing links and prices)                                                                                                                                                                                                                                                                                                                                                                                    | One unit can now have many messages                                                                                                                                                                                                 | Keeping a "first source" column                                  |

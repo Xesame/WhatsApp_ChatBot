@@ -2,7 +2,7 @@
 
 A service that reads Egyptian developer and broker WhatsApp groups, turns every listing (text, images, PDFs, voice notes) into clean, deduplicated records, and sells access to that listing database to brokerage firms.
 
-> **Status: Phase 2 (text extraction) built.** Capture stores messages; the worker classifies and extracts text listings with Gemini (Groq and OpenRouter as fallbacks) into the Primary Units template; `pnpm eval` measures accuracy. Live runs wait for the scraper number, a Gemini API key and real test messages. See [PROJECT.md](PROJECT.md#build-status).
+> **Status: Phases 0-2 and 4 built.** Capture stores messages; the worker extracts text listings with Gemini (Groq and OpenRouter as fallbacks) into the Primary Units template, merges reposts into one unit, keeps price history and handles price updates and sold notices. Phase 3 (media) is next. Live runs wait for the scraper number, API keys and real test messages. See [PROJECT.md](PROJECT.md#build-status).
 
 ## Architecture in one screen
 
