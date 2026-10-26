@@ -118,12 +118,22 @@ export const envSchema = z.object({
       usedBy: 'capture',
       examples: [''],
     }),
-  CEREBRAS_API_KEY: z
+  GEMINI_API_KEY: z
     .string()
     .optional()
     .meta({
       description:
-        'API key from cloud.cerebras.ai, used for text classification and extraction. Without any model API key the worker stores and queues messages but does not extract them.',
+        'API key from Google AI Studio (aistudio.google.com). Gemini is the primary model for classification and extraction. Without any model API key the worker stores and queues messages but does not extract them.',
+      usedBy: 'worker',
+      examples: [''],
+      secret: true,
+    }),
+  GROQ_API_KEY: z
+    .string()
+    .optional()
+    .meta({
+      description:
+        'API key from console.groq.com. Groq is the first fallback when Gemini is rate-limited or down.',
       usedBy: 'worker',
       examples: [''],
       secret: true,
@@ -132,40 +142,51 @@ export const envSchema = z.object({
     .string()
     .optional()
     .meta({
+      description: 'API key from openrouter.ai. OpenRouter (free models) is the last fallback.',
+      usedBy: 'worker',
+      examples: [''],
+      secret: true,
+    }),
+  CEREBRAS_API_KEY: z
+    .string()
+    .optional()
+    .meta({
       description:
-        'API key from openrouter.ai, only needed if an `openrouter:` model is listed below.',
+        'API key from cloud.cerebras.ai. Only needed if a `cerebras:` model is listed (Cerebras is paid).',
       usedBy: 'worker',
       examples: [''],
       secret: true,
     }),
   LLM_CLASSIFY_MODELS: z
     .string()
-    .default('cerebras:qwen-3.8-27b,cerebras:gpt-oss-120b')
+    .default('gemini:gemini-flash-lite-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free')
     .meta({
       description:
-        'Models that classify messages, as `provider:model`, comma-separated, in fallback order. A rate limit or error on one moves to the next.',
+        'Models that classify messages, as `provider:model`, comma-separated, in fallback order (providers: gemini, groq, openrouter, cerebras). A rate limit or error on one moves to the next; models without an API key are skipped.',
       usedBy: 'worker',
-      examples: ['cerebras:qwen-3.8-27b,cerebras:gpt-oss-120b'],
+      examples: [
+        'gemini:gemini-flash-lite-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free',
+      ],
     }),
   LLM_EXTRACT_MODELS: z
     .string()
-    .default('cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b')
+    .default('gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free')
     .meta({
       description:
         'Models that extract units, as `provider:model`, comma-separated, in fallback order.',
       usedBy: 'worker',
-      examples: ['cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b'],
+      examples: ['gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free'],
     }),
   LLM_REQUESTS_PER_MINUTE: z.coerce
     .number()
     .int()
     .min(1)
-    .default(5)
+    .default(10)
     .meta({
       description:
-        'Maximum requests per minute to each model. Cerebras free tier allows about 5; raise it on a paid plan.',
+        "Maximum requests per minute to each model. Free tiers allow roughly 10-30 per minute depending on provider and model (see each provider's console); the lowest one you use is the safe value.",
       usedBy: 'worker',
-      examples: ['5'],
+      examples: ['10'],
     }),
   LLM_TIMEOUT_MS: z.coerce
     .number()

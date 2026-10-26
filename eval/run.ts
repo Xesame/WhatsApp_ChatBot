@@ -1,7 +1,7 @@
 /**
  * pnpm eval: measures extraction accuracy on the labeled cases in eval/cases.
  *
- *   pnpm eval                  call the configured models (needs CEREBRAS_API_KEY)
+ *   pnpm eval                  call the configured models (needs GEMINI_API_KEY or another key)
  *   pnpm eval --record         same, and save each model answer to eval/recordings/
  *   pnpm eval --replay         use saved answers instead of calling models (free, offline)
  *   pnpm eval --case <id>      run one case
@@ -17,7 +17,14 @@
  */
 import { loadConfigOrExit } from '@reb/config';
 import { cities, createDatabase, developers, projects } from '@reb/db';
-import { LlmClient, parseModelList, scrubPersonalData, type Attempt } from '@reb/llm';
+import {
+  apiKeysFrom,
+  LlmClient,
+  parseModelList,
+  PROVIDERS,
+  scrubPersonalData,
+  type Attempt,
+} from '@reb/llm';
 import { mightBeListing, runClassification, runExtraction } from '@reb/pipeline';
 import type { Unit } from '@reb/schema';
 import { existsSync } from 'node:fs';
@@ -174,8 +181,8 @@ async function runCase(id: string): Promise<CaseResult> {
     throw new Error(`No recording for case ${id}; run with --record first`);
   const llm = new LlmClient({
     apiKeys: values.replay
-      ? { cerebras: 'replay', openrouter: 'replay' }
-      : { cerebras: config.CEREBRAS_API_KEY, openrouter: config.OPENROUTER_API_KEY },
+      ? Object.fromEntries(Object.keys(PROVIDERS).map((p) => [p, 'replay']))
+      : apiKeysFrom(config),
     requestsPerMinute: values.replay ? 10_000 : config.LLM_REQUESTS_PER_MINUTE,
     timeoutMs: config.LLM_TIMEOUT_MS,
     freeTier: config.LLM_FREE_TIER === 'true',
@@ -267,8 +274,10 @@ try {
     .map((d) => d.name)
     .sort();
   if (ids.length === 0) throw new Error('No cases found in eval/cases');
-  if (!values.replay && !config.CEREBRAS_API_KEY && !config.OPENROUTER_API_KEY) {
-    throw new Error('No model API key set. Set CEREBRAS_API_KEY in .env, or use --replay.');
+  if (!values.replay && Object.keys(apiKeysFrom(config)).length === 0) {
+    throw new Error(
+      'No model API key set. Set GEMINI_API_KEY (and GROQ_API_KEY, OPENROUTER_API_KEY) in .env, or use --replay.',
+    );
   }
 
   const results: CaseResult[] = [];

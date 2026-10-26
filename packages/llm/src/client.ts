@@ -141,7 +141,10 @@ export class LlmClient {
     call: JsonCall<unknown>,
     messages: ChatMessage[],
   ): Promise<Attempt> {
+    const provider = PROVIDERS[ref.provider];
+    const extraBody = 'extraBody' in provider ? provider.extraBody : {};
     const body = {
+      ...extraBody,
       model: ref.model,
       messages,
       temperature: 0,

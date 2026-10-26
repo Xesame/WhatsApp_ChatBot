@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  apiKeysFrom,
   containsPersonalData,
   LlmClient,
   parseModelList,
@@ -203,5 +204,83 @@ describe('LlmClient', () => {
       }),
     ).rejects.toThrow(/personal data/);
     expect(requests).toEqual([]);
+  });
+});
+
+describe('providers: Gemini → Groq → OpenRouter', () => {
+  const chain = parseModelList(
+    'gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free',
+  );
+  const keys = { gemini: 'g-key', groq: 'q-key', openrouter: 'o-key' };
+  const make = (fetchFn: typeof fetch, apiKeys: Record<string, string> = keys) =>
+    new LlmClient({
+      apiKeys,
+      requestsPerMinute: 100,
+      timeoutMs: 1000,
+      freeTier: true,
+      fetch: fetchFn,
+    });
+
+  it('reads the default model lists', () => {
+    expect(chain.map((m) => m.provider)).toEqual(['gemini', 'groq', 'openrouter']);
+    expect(chain[1]?.model).toBe('openai/gpt-oss-120b');
+  });
+
+  it('collects API keys from settings by provider, skipping empty ones', () => {
+    expect(
+      apiKeysFrom({
+        GEMINI_API_KEY: 'g',
+        GROQ_API_KEY: '',
+        OPENROUTER_API_KEY: undefined,
+        OTHER: 'x',
+      }),
+    ).toEqual({ gemini: 'g' });
+  });
+
+  it('calls Gemini first, at its OpenAI-compatible address, with its own key', async () => {
+    const { fetchFn, requests } = fakeFetch([completion('{"intent":"listing"}')]);
+    expect((await make(fetchFn).callJson(chain, call)).data).toEqual({ intent: 'listing' });
+    expect(requests[0]?.url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    );
+    expect(requests[0]?.auth).toBe('Bearer g-key');
+    expect(requests[0]?.body.model).toBe('gemini-flash-latest');
+  });
+
+  it('falls back Gemini → Groq → OpenRouter, each with its own key and address', async () => {
+    const { fetchFn, requests } = fakeFetch([
+      { status: 429, body: { error: 'quota' } },
+      { status: 503, body: {} },
+      completion('{"intent":"sold"}'),
+    ]);
+    const result = await make(fetchFn).callJson(chain, call);
+    expect(result.data).toEqual({ intent: 'sold' });
+    expect(requests.map((r) => [r.url.split('/chat')[0], r.auth])).toEqual([
+      ['https://generativelanguage.googleapis.com/v1beta/openai', 'Bearer g-key'],
+      ['https://api.groq.com/openai/v1', 'Bearer q-key'],
+      ['https://openrouter.ai/api/v1', 'Bearer o-key'],
+    ]);
+    expect(result.attempts.map((a) => `${a.provider}:${a.status}`)).toEqual([
+      'gemini:rate_limited',
+      'groq:error',
+      'openrouter:ok',
+    ]);
+  });
+
+  it('asks OpenRouter to route only to models that honour the JSON schema', async () => {
+    const { fetchFn, requests } = fakeFetch([completion('{"intent":"listing"}')]);
+    await make(fetchFn, { openrouter: 'o-key' }).callJson(chain, call);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.body).toMatchObject({
+      model: 'openrouter/free',
+      provider: { require_parameters: true },
+      response_format: { type: 'json_schema' },
+    });
+  });
+
+  it('skips providers without a key', async () => {
+    const { fetchFn, requests } = fakeFetch([completion('{"intent":"listing"}')]);
+    await make(fetchFn, { groq: 'q-key' }).callJson(chain, call);
+    expect(requests.map((r) => r.body.model)).toEqual(['openai/gpt-oss-120b']);
   });
 });

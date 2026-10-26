@@ -1,4 +1,4 @@
-import { LlmClient, parseModelList } from '@reb/llm';
+import { apiKeysFrom, LlmClient, parseModelList } from '@reb/llm';
 import { classify, extract, preprocess, RetryableError, type PipelineDeps } from '@reb/pipeline';
 import { parsePayload, startQueue, type QueueName } from '@reb/queue';
 import { runService } from '@reb/runtime';
@@ -15,7 +15,7 @@ await runService('worker', async ({ config, logger, database }) => {
   });
 
   const llm = new LlmClient({
-    apiKeys: { cerebras: config.CEREBRAS_API_KEY, openrouter: config.OPENROUTER_API_KEY },
+    apiKeys: apiKeysFrom(config),
     requestsPerMinute: config.LLM_REQUESTS_PER_MINUTE,
     timeoutMs: config.LLM_TIMEOUT_MS,
     freeTier: config.LLM_FREE_TIER === 'true',
@@ -55,7 +55,9 @@ await runService('worker', async ({ config, logger, database }) => {
       'Pipeline ready',
     );
   } else {
-    logger.warn('No model API key set (CEREBRAS_API_KEY): messages are queued but not extracted');
+    logger.warn(
+      'No model API key set (GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY): messages are queued but not extracted',
+    );
   }
 
   return {

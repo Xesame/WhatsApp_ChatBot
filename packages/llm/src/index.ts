@@ -9,6 +9,7 @@ export {
   type LlmClientOptions,
 } from './client.ts';
 export {
+  apiKeysFrom,
   costOf,
   modelLabel,
   parseModelList,

@@ -83,8 +83,10 @@ services:
       <<: *app-env
       MEDIA_DIR: /app/data/media
       # Empty values fall back to the defaults in packages/config.
-      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
       LLM_CLASSIFY_MODELS: ${LLM_CLASSIFY_MODELS:-}
       LLM_EXTRACT_MODELS: ${LLM_EXTRACT_MODELS:-}
       LLM_REQUESTS_PER_MINUTE: ${LLM_REQUESTS_PER_MINUTE:-}
