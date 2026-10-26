@@ -23,10 +23,12 @@
     "dev:api": "pnpm --filter @reb/api dev",
     "dev:chatbot": "pnpm --filter @reb/chatbot dev",
     "dev:web": "pnpm --filter @reb/web dev",
-    "eval": "node --env-file-if-exists=.env eval/run.ts"
+    "eval": "node --env-file-if-exists=.env eval/run.ts",
+    "eval:from-review": "node --env-file-if-exists=.env eval/from-review.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@reb/admin": "workspace:*",
     "@reb/config": "workspace:*",
     "@reb/db": "workspace:*",
     "@reb/llm": "workspace:*",
