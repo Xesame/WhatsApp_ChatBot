@@ -1,0 +1,16 @@
+{
+  "name": "@reb/schema",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./export": "./src/export.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "exceljs": "4.4.0",
+    "zod": "4.6.7"
+  }
+}
