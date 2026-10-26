@@ -1,11 +1,18 @@
 import { apiKeysFrom, LlmClient, parseModelList } from '@reb/llm';
-import { classify, extract, preprocess, RetryableError, type PipelineDeps } from '@reb/pipeline';
+import {
+  classify,
+  extract,
+  markStale,
+  preprocess,
+  RetryableError,
+  type PipelineDeps,
+} from '@reb/pipeline';
 import { parsePayload, startQueue, type QueueName } from '@reb/queue';
 import { runService } from '@reb/runtime';
 
 // The worker runs the pipeline jobs. Logic lives in packages/pipeline; this
 // file only connects queues to it.
-//   preprocess → classify → extract
+//   preprocess → classify → extract (with dedup), plus a daily lifecycle job
 await runService('worker', async ({ config, logger, database }) => {
   const boss = await startQueue(config.DATABASE_URL, {
     supervise: true,
@@ -24,7 +31,12 @@ await runService('worker', async ({ config, logger, database }) => {
     classify: parseModelList(config.LLM_CLASSIFY_MODELS),
     extract: parseModelList(config.LLM_EXTRACT_MODELS),
   };
-  const deps: PipelineDeps = { database, boss, llm, models, logger };
+  const tolerances = {
+    areaFraction: config.DEDUP_AREA_TOLERANCE_PERCENT / 100,
+    areaMinimumM2: config.DEDUP_AREA_TOLERANCE_M2,
+    priceFraction: config.DEDUP_PRICE_TOLERANCE_PERCENT / 100,
+  };
+  const deps: PipelineDeps = { database, boss, llm, models, logger, tolerances };
 
   /** Runs one job; expected failures are logged briefly and retried by pg-boss. */
   const handle = <Q extends QueueName>(
@@ -44,6 +56,13 @@ await runService('worker', async ({ config, logger, database }) => {
     });
 
   await handle('preprocess', ({ messageId }) => preprocess(deps, messageId));
+
+  // Step 8 (lifecycle): once a day, mark units nobody has posted for a while.
+  await handle('lifecycle', async () => {
+    const count = await markStale(database.db, config.STALE_AFTER_DAYS);
+    logger.info({ count, days: config.STALE_AFTER_DAYS }, 'Marked units stale');
+  });
+  await boss.schedule('lifecycle', '17 3 * * *', {}, { tz: 'Africa/Cairo' });
 
   // Without a model API key, messages wait in the classify queue (kept 60
   // days) until a key is added and the worker restarts.

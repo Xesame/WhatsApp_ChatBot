@@ -334,6 +334,15 @@ importers:
         specifier: 0.31.11
         version: 0.31.11
 
+  packages/dedup:
+    dependencies:
+      '@reb/normalize':
+        specifier: workspace:*
+        version: link:../normalize
+      '@reb/schema':
+        specifier: workspace:*
+        version: link:../schema
+
   packages/ingest:
     dependencies:
       '@reb/db':
@@ -375,6 +384,9 @@ importers:
       '@reb/db':
         specifier: workspace:*
         version: link:../db
+      '@reb/dedup':
+        specifier: workspace:*
+        version: link:../dedup
       '@reb/llm':
         specifier: workspace:*
         version: link:../llm

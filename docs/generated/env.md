@@ -25,6 +25,10 @@ Copy `.env.example` to `.env` and fill in the values. Variables marked **Secret*
 | `LLM_REQUESTS_PER_MINUTE` | no | `10` | `10` | Maximum requests per minute to each model. Free tiers allow roughly 10-30 per minute depending on provider and model (see each provider's console); the lowest one you use is the safe value. | worker |
 | `LLM_TIMEOUT_MS` | no | `60000` | `60000` | How long to wait for one model answer before trying the next model. | worker |
 | `LLM_FREE_TIER` | no | `true` | `true` | Record model cost as 0 (free tier). Set to `false` on a paid plan so costs are calculated. Allowed: `true`, `false`. | worker |
+| `DEDUP_AREA_TOLERANCE_PERCENT` | no | `5` | `5` | Two listings of the same project, unit type and bedrooms are the same unit when their areas are within this percent of each other (at least DEDUP_AREA_TOLERANCE_M2). Tune on real data. | worker |
+| `DEDUP_AREA_TOLERANCE_M2` | no | `3` | `3` | Minimum area difference (m²) still treated as the same unit, for small units such as studios. | worker |
+| `DEDUP_PRICE_TOLERANCE_PERCENT` | no | `10` | `10` | When neither listing states an area, they are the same unit only if their prices are within this percent. | worker |
+| `STALE_AFTER_DAYS` | no | `45` | `45` | Active units not posted or updated for this many days become `stale` (checked daily at 03:17 Cairo time). A stale unit becomes active again when it is reposted. | worker |
 | `USD_EGP_RATE` | no |  | `50` | EGP per 1 USD, set by the owner. The Excel export converts USD prices to EGP with it (EGP is the main currency). Exports fail if a unit is in USD and this is not set. | worker (export command) |
 | `POSTGRES_USER` | no | `reb` | `reb` | Database user created by the Postgres container on first start. | docker-compose.yml |
 | `POSTGRES_PASSWORD` | yes |  | `change-me` | Password for POSTGRES_USER. Must match the password inside DATABASE_URL. Only read the first time the database volume is created. **Secret.** | docker-compose.yml |

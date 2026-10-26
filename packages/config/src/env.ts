@@ -207,6 +207,49 @@ export const envSchema = z.object({
       usedBy: 'worker',
       examples: ['true'],
     }),
+  DEDUP_AREA_TOLERANCE_PERCENT: z.coerce
+    .number()
+    .min(0)
+    .max(50)
+    .default(5)
+    .meta({
+      description:
+        'Two listings of the same project, unit type and bedrooms are the same unit when their areas are within this percent of each other (at least DEDUP_AREA_TOLERANCE_M2). Tune on real data.',
+      usedBy: 'worker',
+      examples: ['5'],
+    }),
+  DEDUP_AREA_TOLERANCE_M2: z.coerce
+    .number()
+    .min(0)
+    .default(3)
+    .meta({
+      description:
+        'Minimum area difference (m²) still treated as the same unit, for small units such as studios.',
+      usedBy: 'worker',
+      examples: ['3'],
+    }),
+  DEDUP_PRICE_TOLERANCE_PERCENT: z.coerce
+    .number()
+    .min(0)
+    .max(50)
+    .default(10)
+    .meta({
+      description:
+        'When neither listing states an area, they are the same unit only if their prices are within this percent.',
+      usedBy: 'worker',
+      examples: ['10'],
+    }),
+  STALE_AFTER_DAYS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(45)
+    .meta({
+      description:
+        'Active units not posted or updated for this many days become `stale` (checked daily at 03:17 Cairo time). A stale unit becomes active again when it is reposted.',
+      usedBy: 'worker',
+      examples: ['45'],
+    }),
   USD_EGP_RATE: z.coerce
     .number()
     .positive()

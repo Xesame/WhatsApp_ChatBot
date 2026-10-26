@@ -17,6 +17,8 @@ export const jobPayloads = {
     messageId: z.number().int().positive(),
     intent: z.enum(['listing', 'price_update', 'sold']),
   }),
+  /** Daily: mark units not seen for STALE_AFTER_DAYS as stale. */
+  lifecycle: z.object({}),
 } as const;
 
 export type QueueName = keyof typeof jobPayloads;
@@ -43,4 +45,10 @@ export const queueSettings: Record<
   // fallback list, so wait longer before trying again (rate limits, outages).
   classify: { retryLimit: 6, retryDelay: 60, retryBackoff: true, retentionSeconds: 60 * 24 * 3600 },
   extract: { retryLimit: 6, retryDelay: 60, retryBackoff: true, retentionSeconds: 60 * 24 * 3600 },
+  lifecycle: {
+    retryLimit: 3,
+    retryDelay: 300,
+    retryBackoff: true,
+    retentionSeconds: 7 * 24 * 3600,
+  },
 };
