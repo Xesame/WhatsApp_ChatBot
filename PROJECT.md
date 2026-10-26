@@ -9,7 +9,9 @@ Reference material that could drift from the code is generated, not hand-written
 - [docs/generated/template.md](docs/generated/template.md): the 26 Primary Units columns and their rules (from `packages/schema/src/columns.ts`)
 - API reference _(Phase 5, generated from Fastify route schemas)_
 
-Regenerate them with `pnpm run docs`. CI runs `pnpm docs:check` and fails if they are out of date.
+Regenerate them with `pnpm run docs`.
+
+[PITCH.md](PITCH.md) is the non-technical counterpart for investors and buyers. It is updated at the end of every phase, alongside this manual, and only claims what is built and tested. CI runs `pnpm docs:check` and fails if they are out of date.
 
 ## Build status
 

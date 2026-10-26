@@ -54,6 +54,7 @@ pnpm check                      # lint, format, types, tests, generated docs
 
 ## Documentation
 
+- [PITCH.md](PITCH.md): plain-language overview for investors and buyers (updated every phase)
 - [PROJECT.md](PROJECT.md): the full technical manual (architecture, data model, setup from zero, operations, runbooks, decision log)
 - [docs/generated/env.md](docs/generated/env.md): every environment variable
 - [docs/generated/database.md](docs/generated/database.md): every table and column
