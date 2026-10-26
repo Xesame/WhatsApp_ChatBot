@@ -1,3 +1,4 @@
+import { usdToEgpRate } from '@reb/admin';
 import { loadConfigOrExit } from '@reb/config';
 import { createDatabase, MESSAGE_STATUSES } from '@reb/db';
 import { exportUnits, reprocess, type ReprocessFilter } from '@reb/pipeline';
@@ -64,7 +65,10 @@ try {
     console.log(`Queued ${count} message(s) for processing.`);
   } else {
     if (!values.out) throw new Error('export needs --out <file.xlsx>');
-    const rate = values['usd-egp-rate'] ? Number(values['usd-egp-rate']) : config.USD_EGP_RATE;
+    // --usd-egp-rate, else the rate the owner set in the admin console, else USD_EGP_RATE
+    const rate = values['usd-egp-rate']
+      ? Number(values['usd-egp-rate'])
+      : await usdToEgpRate(database.db, config.USD_EGP_RATE);
     const { file, count } = await exportUnits(database, {
       usdToEgp: rate,
       messageIds: ids(values.message),

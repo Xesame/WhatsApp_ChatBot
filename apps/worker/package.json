@@ -14,7 +14,8 @@
     "@reb/config": "workspace:*",
     "@reb/db": "workspace:*",
     "@reb/llm": "workspace:*",
-    "@reb/pipeline": "workspace:*"
+    "@reb/pipeline": "workspace:*",
+    "@reb/admin": "workspace:*"
   },
   "devDependencies": {}
 }
