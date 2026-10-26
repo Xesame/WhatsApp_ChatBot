@@ -1,6 +1,7 @@
-import { extractionRuns, mediaFiles, messages, units, waGroups } from '@reb/db';
+import { extractionRuns, mediaFiles, messages, units, unitSources, waGroups } from '@reb/db';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
+import { DEFAULT_TOLERANCES } from '@reb/dedup';
 import { LlmClient, parseModelList } from '@reb/llm';
 import { startQueue, type PgBoss } from '@reb/queue';
 import { TEMPLATE_HEADERS, unitSchema, type RawUnit } from '@reb/schema';
@@ -100,6 +101,7 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
     llm,
     models,
     logger,
+    tolerances: DEFAULT_TOLERANCES,
   });
 
   const addMessage = async (values: Partial<typeof messages.$inferInsert>) => {
@@ -142,7 +144,7 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
   });
   beforeEach(async () => {
     await testDb.database.pool.query(
-      'truncate units, extraction_runs, media_files, messages restart identity cascade; delete from pgboss.job',
+      'truncate unit_prices, unit_sources, units, extraction_runs, media_files, messages restart identity cascade; delete from pgboss.job',
     );
   });
 
@@ -276,7 +278,9 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
 
     it('turns one message into one row per unit type, with values computed in code', async () => {
       const id = await addMessage({ text: MULTI_UNIT });
-      expect(await extract(deps(fakeModel({ extraction }).llm), id, 'listing')).toBe(3);
+      expect(
+        (await extract(deps(fakeModel({ extraction }).llm), id, 'listing'))?.created,
+      ).toHaveLength(3);
       const rows = await testDb.database.db.select().from(units).orderBy(asc(units.id));
       expect(rows).toHaveLength(3);
       expect(rows.map((u) => [u.unitType, u.bedrooms, u.minArea, u.minPrice, u.maxPrice])).toEqual([
@@ -291,7 +295,6 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
           installmentFrequency: 'quarterly',
           deliveryYear: 2029,
           priceCurrency: 'EGP',
-          sourceMessageId: id,
           firstSeenAt: new Date('2026-10-26T09:00:00Z'),
         });
         expect(row.projectId).not.toBeNull();
@@ -364,21 +367,32 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
       expect(await testDb.database.db.select().from(extractionRuns)).toHaveLength(2);
     });
 
-    it('uses the replied-to message as context, and keeps price updates for Phase 4', async () => {
-      const original = await addMessage({ text: MULTI_UNIT, waMessageId: 'ORIG' });
+    it('sends the replied-to message to the model as context', async () => {
+      await addMessage({ text: MULTI_UNIT, waMessageId: 'ORIG' });
       const reply = await addMessage({ text: 'السعر بقى 9.5 مليون', quotedWaMessageId: 'ORIG' });
       const model = fakeModel({
         extraction: { units: [{ ...blank, project: 'ميفيدا', price: 'السعر بقى 9.5 مليون' }] },
       });
-      expect(await extract(deps(model.llm), reply, 'price_update')).toBe(0);
+      await extract(deps(model.llm), reply, 'price_update');
       expect(model.bodies[0]).toContain('IT REPLIES TO THIS EARLIER MESSAGE');
       expect(model.bodies[0]).toContain('ميفيدا');
-      expect(await testDb.database.db.select().from(units)).toEqual([]);
-      expect(await message(reply)).toMatchObject({
-        status: 'processed',
-        error: 'price_update: applied to existing units in Phase 4',
-      });
-      expect(original).toBeGreaterThan(0);
+    });
+
+    it('the same post in a second group merges into the existing units (end to end)', async () => {
+      const [other] = await testDb.database.db
+        .insert(waGroups)
+        .values({ jid: `other-${Math.random()}@g.us`, watched: true })
+        .returning({ id: waGroups.id });
+      const first = await addMessage({ text: MULTI_UNIT });
+      const second = await addMessage({ text: MULTI_UNIT, groupId: other?.id ?? 0 });
+      expect(
+        (await extract(deps(fakeModel({ extraction }).llm), first, 'listing'))?.created,
+      ).toHaveLength(3);
+      const again = await extract(deps(fakeModel({ extraction }).llm), second, 'listing');
+      expect(again?.created).toEqual([]);
+      expect(again?.merged).toHaveLength(3);
+      expect(await testDb.database.db.select().from(units)).toHaveLength(3);
+      expect(await testDb.database.db.select().from(unitSources)).toHaveLength(6);
     });
 
     it('stores rows whose columns match the shared unit schema', async () => {

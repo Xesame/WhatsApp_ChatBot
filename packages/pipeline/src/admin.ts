@@ -1,4 +1,4 @@
-import { cities, developers, messages, projects, units, type Database } from '@reb/db';
+import { cities, developers, messages, projects, units, unitSources, type Database } from '@reb/db';
 import { enqueueInTransaction, type PgBoss } from '@reb/queue';
 import { type ExportContext, type Unit } from '@reb/schema';
 import { writePrimaryUnitsWorkbook } from '@reb/schema/export';
@@ -51,8 +51,18 @@ export async function exportUnits(
   const { db } = database;
   const conditions: SQL[] = [];
   if (!options.includeInactive) conditions.push(eq(units.status, 'active'));
-  if (options.messageIds?.length)
-    conditions.push(inArray(units.sourceMessageId, options.messageIds));
+  if (options.messageIds?.length) {
+    const ids = options.messageIds;
+    conditions.push(
+      inArray(
+        units.id,
+        db
+          .select({ id: unitSources.unitId })
+          .from(unitSources)
+          .where(inArray(unitSources.messageId, ids)),
+      ),
+    );
+  }
   const rows = await db
     .select()
     .from(units)

@@ -1,4 +1,5 @@
-import { extractionRuns, messages, units, type Database, type Db } from '@reb/db';
+import { extractionRuns, messages, type Database, type Db } from '@reb/db';
+import type { Tolerances } from '@reb/dedup';
 import {
   classifyPrompt,
   extractPrompt,
@@ -20,12 +21,15 @@ import {
 import { eq, sql } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import type { z } from 'zod';
+import { applyExtraction, type ApplyResult } from './apply.ts';
 import { assembleContext, type MessageContext } from './context.ts';
 import { matchEntities } from './entities.ts';
 import { mightBeListing } from './prefilter.ts';
 
 export interface PipelineDeps {
   database: Database;
+  /** How close two listings must be to count as the same unit (dedup). */
+  tolerances: Tolerances;
   boss: PgBoss;
   llm: LlmClient;
   models: { classify: ModelRef[]; extract: ModelRef[] };
@@ -219,21 +223,22 @@ export async function classify(
 }
 
 /**
- * Steps 5-6 (extract, validate, normalize): the model copies out the units,
- * code turns them into template values, and they are saved.
+ * Steps 5-8 (extract, validate, normalize, dedup): the model copies out the
+ * units, code turns them into template values, and `applyExtraction` merges
+ * them into existing units (or creates new ones), records price changes and
+ * applies price updates and sold notices.
  *
- * Idempotent: running it again for the same message replaces the units it
- * produced before (until Phase 4, when units are merged across messages).
- * Model calls are always added to `extraction_runs`, never replaced.
+ * Idempotent: running it again for the same message first undoes what it
+ * did before. Model calls are always added to `extraction_runs`.
  */
 export async function extract(
   deps: PipelineDeps,
   messageId: number,
   intent: Exclude<MessageIntent, 'not_relevant'>,
-): Promise<number> {
+): Promise<ApplyResult | null> {
   const { db } = deps.database;
   const context = await assembleContext(db, messageId);
-  if (!context) return 0;
+  if (!context) return null;
 
   const result = await runExtraction(db, deps.llm, deps.models.extract, {
     ...context,
@@ -253,35 +258,38 @@ export async function extract(
 
   const normalized = result.units;
 
-  await deps.database.transaction(async (tx) => {
-    await tx.delete(units).where(eq(units.sourceMessageId, messageId));
-    // Price updates and sold notices change existing units; that matching
-    // arrives with dedup in Phase 4. Their extraction is kept in
-    // extraction_runs so Phase 4 can apply them without calling the model.
-    if (intent === 'listing' && normalized.length > 0) {
-      await tx.insert(units).values(
-        normalized.map((unit) => ({
-          ...unit,
-          sourceMessageId: messageId,
-          extractionRunId: runId,
-          firstSeenAt: context.message.sentAt,
-          lastSeenAt: context.message.sentAt,
-        })),
-      );
-    }
+  const applied = await deps.database.transaction(async (tx) => {
+    const outcome = await applyExtraction(tx, {
+      message: context.message,
+      intent,
+      units: normalized,
+      extractionRunId: runId,
+      tolerances: deps.tolerances,
+    });
+    const noUnits = intent === 'listing' && normalized.length === 0;
     await tx
       .update(messages)
       .set({
-        status: intent === 'listing' && normalized.length === 0 ? 'skipped' : 'processed',
-        error:
-          intent === 'listing' && normalized.length === 0
-            ? 'No units found'
-            : intent === 'listing'
-              ? null
-              : `${intent}: applied to existing units in Phase 4`,
+        status: noUnits ? 'skipped' : 'processed',
+        error: noUnits
+          ? 'No units found'
+          : outcome.notes.length > 0
+            ? outcome.notes.join('; ')
+            : null,
       })
       .where(eq(messages.id, messageId));
+    return outcome;
   });
-  deps.logger.info({ messageId, intent, units: normalized.length }, 'Message extracted');
-  return intent === 'listing' ? normalized.length : 0;
+  deps.logger.info(
+    {
+      messageId,
+      intent,
+      created: applied.created.length,
+      merged: applied.merged.length,
+      priceChanged: applied.priceChanged.length,
+      sold: applied.sold.length,
+    },
+    'Message applied',
+  );
+  return applied;
 }
