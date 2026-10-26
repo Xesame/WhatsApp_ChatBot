@@ -52,4 +52,15 @@ describe('eval scoring', () => {
     expect(total.city).toEqual({ correct: 1, total: 2 });
     expect(percent(total.city ?? { correct: 0, total: 0 })).toBe(50);
   });
+
+  it('assumes "not ready to move" and EGP when expected.json leaves them out', () => {
+    const score = scoreCase(
+      { intent: 'listing', units: [{ unitType: 'Villa' }] },
+      {
+        intent: 'listing',
+        units: [{ unitType: 'Villa', readyToMove: false, priceCurrency: 'EGP' }],
+      },
+    );
+    expect(score.mistakes).toEqual([]);
+  });
 });

@@ -108,13 +108,20 @@ export interface CaseScore {
   mistakes: string[];
 }
 
+/**
+ * Values assumed when expected.json leaves a field out: not ready to move,
+ * priced in EGP. Every other field left out means "should be empty".
+ */
+export const EXPECTED_DEFAULTS: ComparableUnit = { readyToMove: false, priceCurrency: 'EGP' };
+
 export function scoreCase(
   expected: { intent: string; units: ComparableUnit[] },
   actual: { intent: string; units: ComparableUnit[] },
 ): CaseScore {
   const fields: Record<string, FieldTally> = {};
   const mistakes: string[] = [];
-  for (const [e, a] of pairUnits(expected.units, actual.units)) {
+  const withDefaults = expected.units.map((u) => ({ ...EXPECTED_DEFAULTS, ...u }));
+  for (const [e, a] of pairUnits(withDefaults, actual.units)) {
     for (const field of COMPARED_FIELDS) {
       const tally = (fields[field] ??= { correct: 0, total: 0 });
       tally.total += 1;

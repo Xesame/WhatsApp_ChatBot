@@ -30,6 +30,7 @@
     "@reb/config": "workspace:*",
     "@reb/db": "workspace:*",
     "@reb/llm": "workspace:*",
+    "@reb/media": "workspace:*",
     "@reb/pipeline": "workspace:*",
     "@reb/schema": "workspace:*",
     "@types/node": "24.19.2",

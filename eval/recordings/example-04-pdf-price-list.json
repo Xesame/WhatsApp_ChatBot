@@ -1,0 +1,6 @@
+{
+  "handwritten": true,
+  "transcriptions": ["[no text]"],
+  "classification": "{\"intent\": \"listing\"}",
+  "extraction": "{\"units\": [{\"category\": null, \"developer\": null, \"project\": \"Mivida\", \"city\": \"New Cairo\", \"unit_type\": \"Apartment\", \"unit_code\": null, \"floor\": null, \"finishing\": null, \"bedrooms\": \"3BR\", \"bathrooms\": null, \"area\": \"165 m\", \"land_area\": null, \"garden_area\": null, \"outdoor_area\": null, \"price\": \"9.8M\", \"delivery\": null, \"maintenance\": null, \"down_payment\": \"Down payment 10%\", \"installments\": \"8 years\", \"cash_discount\": null, \"notes\": null, \"evidence\": {\"project\": \"Mivida\", \"unit_type\": \"Apartment\", \"area\": \"165 m\", \"price\": \"9.8M\"}}, {\"category\": null, \"developer\": null, \"project\": \"Mivida\", \"city\": \"New Cairo\", \"unit_type\": \"Townhouse\", \"unit_code\": null, \"floor\": null, \"finishing\": null, \"bedrooms\": null, \"bathrooms\": null, \"area\": \"210 m\", \"land_area\": null, \"garden_area\": null, \"outdoor_area\": null, \"price\": \"16.5M\", \"delivery\": null, \"maintenance\": null, \"down_payment\": \"Down payment 10%\", \"installments\": \"8 years\", \"cash_discount\": null, \"notes\": null, \"evidence\": {\"project\": \"Mivida\", \"unit_type\": \"Townhouse\", \"area\": \"210 m\", \"price\": \"16.5M\"}}]}"
+}

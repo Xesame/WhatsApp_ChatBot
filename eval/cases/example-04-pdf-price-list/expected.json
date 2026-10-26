@@ -1,0 +1,35 @@
+{
+  "source": "example",
+  "kind": "pdf",
+  "sentAt": "2026-10-26T09:00:00Z",
+  "intent": "listing",
+  "units": [
+    {
+      "category": "Residential",
+      "developer": "Emaar Misr",
+      "project": "Mivida",
+      "city": "New Cairo",
+      "unitType": "Apartment",
+      "minArea": 165,
+      "maxArea": 165,
+      "minPrice": 9800000,
+      "maxPrice": 9800000,
+      "priceCurrency": "EGP",
+      "downPayment": 10,
+      "bedrooms": 3
+    },
+    {
+      "category": "Residential",
+      "developer": "Emaar Misr",
+      "project": "Mivida",
+      "city": "New Cairo",
+      "unitType": "Townhouse",
+      "minArea": 210,
+      "maxArea": 210,
+      "minPrice": 16500000,
+      "maxPrice": 16500000,
+      "priceCurrency": "EGP",
+      "downPayment": 10
+    }
+  ]
+}

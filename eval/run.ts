@@ -7,7 +7,9 @@
  *   pnpm eval --case <id>      run one case
  *
  * Each case is a folder with message.txt, optional quoted.txt (the message it
- * replies to) and expected.json. The report (per-field accuracy, unit-count
+ * replies to) and expected.json. Media cases add one file named image.jpg /
+ * image.png / document.pdf / document.xlsx; message.txt is then its caption
+ * (may be empty). The report (per-field accuracy, unit-count
  * accuracy, cost, latency) is printed and written to eval/reports/. It is
  * compared with eval/reports/latest.json, the last saved report.
  *
@@ -25,7 +27,13 @@ import {
   scrubPersonalData,
   type Attempt,
 } from '@reb/llm';
-import { mightBeListing, runClassification, runExtraction } from '@reb/pipeline';
+import { describeMedia } from '@reb/media';
+import {
+  composeMessageText,
+  mightBeListing,
+  runClassification,
+  runExtraction,
+} from '@reb/pipeline';
 import type { Unit } from '@reb/schema';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
@@ -49,7 +57,7 @@ const reportsDir = join(root, 'reports');
 
 interface Expected {
   source: 'real' | 'review' | 'example';
-  kind: 'text' | 'image' | 'pdf';
+  kind: 'text' | 'image' | 'pdf' | 'spreadsheet';
   /** When the message was posted (for "delivery in 3 years"). Defaults to the run date. */
   sentAt?: string;
   intent: 'listing' | 'price_update' | 'sold' | 'not_relevant';
@@ -61,6 +69,8 @@ interface Recording {
   handwritten?: boolean;
   classification?: string;
   extraction?: string;
+  /** Vision transcriptions, in call order (one per image or scanned PDF page). */
+  transcriptions?: string[];
 }
 
 const { values } = parseArgs({
@@ -76,16 +86,19 @@ const database = createDatabase(config.DATABASE_URL, { max: 2 });
 const models = {
   classify: parseModelList(config.LLM_CLASSIFY_MODELS),
   extract: parseModelList(config.LLM_EXTRACT_MODELS),
+  vision: parseModelList(config.LLM_VISION_MODELS),
 };
 
 /** In replay mode, a fake HTTP layer answers from the case's recording. */
 function replayFetch(recording: Recording): typeof fetch {
   return ((_url: string, init: RequestInit) => {
     const body = JSON.parse(init.body as string) as {
-      response_format: { json_schema: { name: string } };
+      response_format?: { json_schema: { name: string } };
     };
-    const name = body.response_format.json_schema.name as 'classification' | 'extraction';
-    const content = recording[name];
+    // Requests without a JSON schema are vision transcriptions.
+    const content = body.response_format
+      ? recording[body.response_format.json_schema.name as 'classification' | 'extraction']
+      : recording.transcriptions?.shift();
     if (content === undefined)
       return Promise.resolve(new Response('{"error":"no recording"}', { status: 404 }));
     return Promise.resolve(
@@ -167,7 +180,8 @@ interface CaseResult {
 async function runCase(id: string): Promise<CaseResult> {
   const dir = join(casesDir, id);
   const expected = JSON.parse(await readFile(join(dir, 'expected.json'), 'utf8')) as Expected;
-  const text = scrubPersonalData(await readFile(join(dir, 'message.txt'), 'utf8'));
+  const messagePath = join(dir, 'message.txt');
+  const caption = existsSync(messagePath) ? await readFile(messagePath, 'utf8') : '';
   const quotedPath = join(dir, 'quoted.txt');
   const quoted = existsSync(quotedPath)
     ? scrubPersonalData(await readFile(quotedPath, 'utf8'))
@@ -193,6 +207,42 @@ async function runCase(id: string): Promise<CaseResult> {
   let intent: Expected['intent'] = 'not_relevant';
   let produced: Unit[] = [];
   const newRecording: Recording = {};
+
+  // A media case has one file next to message.txt (which then holds the caption).
+  const mediaFile = (await readdir(dir)).find((f) => /^(image|document)\./.test(f));
+  let mediaText: string | null = null;
+  if (mediaFile) {
+    const extension = mediaFile.split('.').pop()?.toLowerCase() ?? '';
+    const mimeType =
+      {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+        pdf: 'application/pdf',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }[extension] ?? null;
+    const described = await describeMedia(
+      {
+        kind: mediaFile.startsWith('image') ? 'image' : 'document',
+        mimeType,
+        fileName: mediaFile,
+        data: await readFile(join(dir, mediaFile)),
+      },
+      {
+        llm,
+        visionModels: models.vision,
+        pdfMaxPages: config.PDF_MAX_PAGES,
+        pdfMinTextChars: config.PDF_MIN_TEXT_CHARS,
+      },
+    );
+    if (described.status !== 'skipped') attempts.push(...described.attempts);
+    if (described.status === 'ok') mediaText = described.text;
+    newRecording.transcriptions = (described.status === 'skipped' ? [] : described.attempts)
+      .filter((a) => a.status === 'ok' && a.rawOutput)
+      .map((a) => a.rawOutput ?? '');
+  }
+  const text = scrubPersonalData(composeMessageText({ text: caption, mediaText }));
 
   if (mightBeListing(`${text} ${quoted ?? ''}`)) {
     const classification = await runClassification(llm, models.classify, { text, quoted });
