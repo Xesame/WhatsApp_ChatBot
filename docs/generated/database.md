@@ -4,6 +4,8 @@
 
 ```mermaid
 erDiagram
+  users ||--o{ accounts : "user_id"
+  users ||--o{ audit_log : "user_id"
   cities ||--o{ entity_aliases : "city_id"
   developers ||--o{ entity_aliases : "developer_id"
   projects ||--o{ entity_aliases : "project_id"
@@ -13,6 +15,11 @@ erDiagram
   wa_groups ||--o{ messages : "group_id"
   developers ||--o{ projects : "developer_id"
   cities ||--o{ projects : "city_id"
+  units ||--o{ review_corrections : "unit_id"
+  messages ||--o{ review_corrections : "message_id"
+  users ||--o{ review_corrections : "reviewer_id"
+  users ||--o{ sessions : "user_id"
+  users ||--o{ settings : "updated_by"
   units ||--o{ unit_prices : "unit_id"
   messages ||--o{ unit_prices : "source_message_id"
   units ||--o{ unit_sources : "unit_id"
@@ -22,6 +29,30 @@ erDiagram
   cities ||--o{ units : "city_id"
   messages ||--o{ units : "sold_by_message_id"
   extraction_runs ||--o{ units : "extraction_run_id"
+  accounts {
+    text id PK
+    text user_id FK
+    text account_id
+    text provider_id
+    text access_token
+    text refresh_token
+    text id_token
+    timestamp_with_time_zone access_token_expires_at
+    timestamp_with_time_zone refresh_token_expires_at
+    text scope
+    text password
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
+  audit_log {
+    bigint id PK
+    text user_id FK
+    text action
+    text target
+    jsonb details
+    text ip_address
+    timestamp_with_time_zone created_at
+  }
   cities {
     integer id PK
     text name_en
@@ -113,6 +144,33 @@ erDiagram
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
+  review_corrections {
+    bigint id PK
+    bigint unit_id FK
+    bigint message_id FK
+    text action
+    text field
+    jsonb before
+    jsonb after
+    text reviewer_id FK
+    timestamp_with_time_zone created_at
+  }
+  sessions {
+    text id PK
+    text user_id FK
+    text token
+    timestamp_with_time_zone expires_at
+    text ip_address
+    text user_agent
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
+  settings {
+    text key PK
+    jsonb value
+    text updated_by FK
+    timestamp_with_time_zone updated_at
+  }
   unit_prices {
     bigint id PK
     bigint unit_id FK
@@ -182,6 +240,25 @@ erDiagram
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
+  users {
+    text id PK
+    text name
+    text email
+    boolean email_verified
+    text image
+    text role
+    text phone
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
+  verifications {
+    text id PK
+    text identifier
+    text value
+    timestamp_with_time_zone expires_at
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
   wa_auth {
     text account
     text category
@@ -212,6 +289,49 @@ erDiagram
     timestamp_with_time_zone updated_at
   }
 ```
+
+## `accounts`
+
+Login methods per user. For e-mail and password, `provider_id` is `credential` and `password` holds the scrypt hash.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | text | no | primary key | Random ID. |
+| `user_id` | text | no | → users.id | The user. |
+| `account_id` | text | no |  | ID at the provider (the user ID for passwords). |
+| `provider_id` | text | no |  | `credential` for e-mail and password. |
+| `access_token` | text | yes |  | Unused (social logins). |
+| `refresh_token` | text | yes |  | Unused. |
+| `id_token` | text | yes |  | Unused. |
+| `access_token_expires_at` | timestamp with time zone | yes |  | Unused. |
+| `refresh_token_expires_at` | timestamp with time zone | yes |  | Unused. |
+| `scope` | text | yes |  | Unused. |
+| `password` | text | yes |  | Password hash (scrypt). Never the password itself. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Index `accounts_user_idx` on (user_id)
+
+## `audit_log`
+
+Who did what: logins, failed logins, exports and admin actions.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `user_id` | text | yes | → users.id | Who (empty for failed logins). |
+| `action` | text | no |  | What, e.g. `login`, `login_failed`, `review.approve`, `groups.watch`, `settings.update`. |
+| `target` | text | yes |  | What it was done to, e.g. `unit:42`. |
+| `details` | jsonb | yes |  | Extra details (no passwords). |
+| `ip_address` | text | yes |  | From which IP address. |
+| `created_at` | timestamp with time zone | no |  | When. |
+
+**Indexes and constraints**
+
+- Index `audit_log_created_idx` on (created_at)
+- Index `audit_log_user_idx` on (user_id)
 
 ## `cities`
 
@@ -376,6 +496,57 @@ Canonical projects (compounds). Each belongs to one developer and one city.
 - Unique index `projects_developer_name_en_key` on (developer_id, name_en)
 - Index `projects_city_id_idx` on (city_id)
 
+## `review_corrections`
+
+Every change made in the review queue, field by field. Corrected units become eval cases.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `unit_id` | bigint | yes | → units.id | The unit reviewed. |
+| `message_id` | bigint | yes | → messages.id | The message the unit was extracted from (for eval export). |
+| `action` | text | no |  | `edit` (a field changed), `approve` (checked and correct) or `reject` (not a real listing). |
+| `field` | text | yes |  | For edits: which field (unit field name). |
+| `before` | jsonb | yes |  | For edits: the value before. |
+| `after` | jsonb | yes |  | For edits: the value after. |
+| `reviewer_id` | text | yes | → users.id | Who made the change. |
+| `created_at` | timestamp with time zone | no |  | When. |
+
+**Indexes and constraints**
+
+- Index `review_corrections_unit_idx` on (unit_id)
+- Check `review_corrections_action_check`
+
+## `sessions`
+
+Logged-in sessions (cookie tokens). Deleted on logout or expiry.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | text | no | primary key | Random ID. |
+| `user_id` | text | no | → users.id | Who is logged in. |
+| `token` | text | no | unique | Session token stored in the browser cookie. Secret. |
+| `expires_at` | timestamp with time zone | no |  | When the session ends. |
+| `ip_address` | text | yes |  | IP address at login. |
+| `user_agent` | text | yes |  | Browser at login. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Index `sessions_user_idx` on (user_id)
+
+## `settings`
+
+Settings the owner changes from the admin page.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `key` | text | no | primary key | Setting name, e.g. `usd_egp_rate`. |
+| `value` | jsonb | no |  | Its value (JSON). |
+| `updated_by` | text | yes | → users.id | Who last changed it. |
+| `updated_at` | timestamp with time zone | no |  | When. |
+
 ## `unit_prices`
 
 Price history: one row each time the price or payment terms of a unit were seen to change (the first listing included). Reposts with the same terms add no row.
@@ -488,6 +659,39 @@ One row per unit offering: the 26 Primary Units template columns, then internal 
 - Check `units_installment_frequency_check`
 - Check `units_down_payment_range`
 - Check `units_price_order`
+
+## `users`
+
+People who can log in: the owner (Phase 5), firm admins and agents (Phase 6). Managed by Better Auth.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | text | no | primary key | Random ID set by Better Auth. |
+| `name` | text | no |  | Display name. |
+| `email` | text | no | unique | Login e-mail. Unique. |
+| `email_verified` | boolean | no |  | Whether the e-mail was verified (not used yet). |
+| `image` | text | yes |  | Profile picture URL (not used). |
+| `role` | text | no |  | `owner`, `firm_admin` or `agent`. Only the owner can use the admin pages. |
+| `phone` | text | yes |  | Phone number (Phase 7: links chat accounts). |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Check `users_role_check`
+
+## `verifications`
+
+One-time codes (e-mail verification, password reset, Phase 7 chat linking). Managed by Better Auth.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | text | no | primary key | Random ID. |
+| `identifier` | text | no |  | What the code is for. |
+| `value` | text | no |  | The code. |
+| `expires_at` | timestamp with time zone | no |  | When it stops working. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
 
 ## `wa_auth`
 

@@ -40,14 +40,27 @@ describe('loadConfig', () => {
 describe('service-specific required variables', () => {
   const salt = 'x'.repeat(32);
 
-  it('lists SENDER_HASH_SALT as required for capture only', async () => {
+  it('lists the secrets each service requires', async () => {
     const { requiredVariables } = await import('../src/index.ts');
     expect(requiredVariables('capture')).toEqual(['SENDER_HASH_SALT']);
-    expect(requiredVariables('api')).toEqual([]);
+    expect(requiredVariables('api')).toEqual(['AUTH_SECRET']);
   });
 
   it('lets the api start without SENDER_HASH_SALT', () => {
-    expect(loadConfig({ DATABASE_URL }, 'api').SENDER_HASH_SALT).toBeUndefined();
+    expect(
+      loadConfig({ DATABASE_URL, AUTH_SECRET: 'a'.repeat(32) }, 'api').SENDER_HASH_SALT,
+    ).toBeUndefined();
+  });
+
+  it('stops the api without a long enough AUTH_SECRET', () => {
+    expect(() => loadConfig({ DATABASE_URL }, 'api')).toThrow(/AUTH_SECRET is required for api/);
+    expect(() => loadConfig({ DATABASE_URL, AUTH_SECRET: 'short' }, 'api')).toThrow(/at least 32/);
+  });
+
+  it('defaults PUBLIC_URL to the local web address', () => {
+    expect(loadConfig({ DATABASE_URL, AUTH_SECRET: 'a'.repeat(32) }, 'api').PUBLIC_URL).toBe(
+      'http://localhost:4173',
+    );
   });
 
   it('stops capture without SENDER_HASH_SALT', () => {

@@ -264,4 +264,101 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       created_at: 'When the row was created.',
     },
   },
+  users: {
+    description:
+      'People who can log in: the owner (Phase 5), firm admins and agents (Phase 6). Managed by Better Auth.',
+    columns: {
+      id: 'Random ID set by Better Auth.',
+      name: 'Display name.',
+      email: 'Login e-mail. Unique.',
+      email_verified: 'Whether the e-mail was verified (not used yet).',
+      image: 'Profile picture URL (not used).',
+      role: '`owner`, `firm_admin` or `agent`. Only the owner can use the admin pages.',
+      phone: 'Phone number (Phase 7: links chat accounts).',
+      created_at: 'When the row was created.',
+      updated_at: 'When the row was last changed.',
+    },
+  },
+  sessions: {
+    description: 'Logged-in sessions (cookie tokens). Deleted on logout or expiry.',
+    columns: {
+      id: 'Random ID.',
+      user_id: 'Who is logged in.',
+      token: 'Session token stored in the browser cookie. Secret.',
+      expires_at: 'When the session ends.',
+      ip_address: 'IP address at login.',
+      user_agent: 'Browser at login.',
+      created_at: 'When the row was created.',
+      updated_at: 'When the row was last changed.',
+    },
+  },
+  accounts: {
+    description:
+      'Login methods per user. For e-mail and password, `provider_id` is `credential` and `password` holds the scrypt hash.',
+    columns: {
+      id: 'Random ID.',
+      user_id: 'The user.',
+      account_id: 'ID at the provider (the user ID for passwords).',
+      provider_id: '`credential` for e-mail and password.',
+      access_token: 'Unused (social logins).',
+      refresh_token: 'Unused.',
+      id_token: 'Unused.',
+      access_token_expires_at: 'Unused.',
+      refresh_token_expires_at: 'Unused.',
+      scope: 'Unused.',
+      password: 'Password hash (scrypt). Never the password itself.',
+      created_at: 'When the row was created.',
+      updated_at: 'When the row was last changed.',
+    },
+  },
+  verifications: {
+    description:
+      'One-time codes (e-mail verification, password reset, Phase 7 chat linking). Managed by Better Auth.',
+    columns: {
+      id: 'Random ID.',
+      identifier: 'What the code is for.',
+      value: 'The code.',
+      expires_at: 'When it stops working.',
+      created_at: 'When the row was created.',
+      updated_at: 'When the row was last changed.',
+    },
+  },
+  review_corrections: {
+    description:
+      'Every change made in the review queue, field by field. Corrected units become eval cases.',
+    columns: {
+      id: 'Identity primary key.',
+      unit_id: 'The unit reviewed.',
+      message_id: 'The message the unit was extracted from (for eval export).',
+      action:
+        '`edit` (a field changed), `approve` (checked and correct) or `reject` (not a real listing).',
+      field: 'For edits: which field (unit field name).',
+      before: 'For edits: the value before.',
+      after: 'For edits: the value after.',
+      reviewer_id: 'Who made the change.',
+      created_at: 'When.',
+    },
+  },
+  audit_log: {
+    description: 'Who did what: logins, failed logins, exports and admin actions.',
+    columns: {
+      id: 'Identity primary key.',
+      user_id: 'Who (empty for failed logins).',
+      action:
+        'What, e.g. `login`, `login_failed`, `review.approve`, `groups.watch`, `settings.update`.',
+      target: 'What it was done to, e.g. `unit:42`.',
+      details: 'Extra details (no passwords).',
+      ip_address: 'From which IP address.',
+      created_at: 'When.',
+    },
+  },
+  settings: {
+    description: 'Settings the owner changes from the admin page.',
+    columns: {
+      key: 'Setting name, e.g. `usd_egp_rate`.',
+      value: 'Its value (JSON).',
+      updated_by: 'Who last changed it.',
+      updated_at: 'When.',
+    },
+  },
 };

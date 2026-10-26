@@ -1,0 +1,16 @@
+{
+  "name": "@reb/auth",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@reb/db": "workspace:*",
+    "better-auth": "1.7.13",
+    "drizzle-orm": "0.45.4"
+  }
+}

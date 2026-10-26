@@ -12,6 +12,8 @@ Copy `.env.example` to `.env` and fill in the values. Variables marked **Secret*
 | `HEALTH_PORT` | no | `8080` | `8080` | Port for the `/health` endpoint of capture, worker and chatbot. Docker health checks call it. | capture, worker, chatbot |
 | `API_HOST` | no | `0.0.0.0` | `0.0.0.0` | Interface the API listens on. `0.0.0.0` accepts connections from other containers. | api |
 | `API_PORT` | no | `3000` | `3000` | Port the API listens on. The API serves `/health` on this same port. | api |
+| `AUTH_SECRET` | api |  | `replace-with-output-of-openssl-rand-hex-32` | Secret that signs admin login sessions. Generate with `openssl rand -hex 32`. Changing it signs everyone out. **Secret.** | api |
+| `PUBLIC_URL` | no | `http://localhost:4173` | `http://localhost:4173` | The address people type in the browser to open the web app (the admin console). Logins are only accepted from pages served at this address. Use the `https://` address on the server. | api |
 | `SENDER_HASH_SALT` | capture |  | `replace-with-output-of-openssl-rand-hex-32` | Secret mixed into every sender hash, so a stored hash cannot be turned back into a phone number by hashing guesses. Generate with `openssl rand -hex 32`. Never change it after messages are stored: the same sender would get a different hash. **Secret.** | capture |
 | `MEDIA_DIR` | no | `<repo>/data/media` |  | Folder where downloaded WhatsApp media is stored. Defaults to `data/media` in the repository; Docker keeps it in the `media` volume. | capture, worker |
 | `MEDIA_MAX_BYTES` | no | `52428800` | `52428800` | Media files larger than this (in bytes) are not downloaded; the message is still saved. Default 50 MB. | capture |
@@ -33,7 +35,7 @@ Copy `.env.example` to `.env` and fill in the values. Variables marked **Secret*
 | `DEDUP_AREA_TOLERANCE_M2` | no | `3` | `3` | Minimum area difference (m²) still treated as the same unit, for small units such as studios. | worker |
 | `DEDUP_PRICE_TOLERANCE_PERCENT` | no | `10` | `10` | When neither listing states an area, they are the same unit only if their prices are within this percent. | worker |
 | `STALE_AFTER_DAYS` | no | `45` | `45` | Active units not posted or updated for this many days become `stale` (checked daily at 03:17 Cairo time). A stale unit becomes active again when it is reposted. | worker |
-| `USD_EGP_RATE` | no |  | `50` | EGP per 1 USD, set by the owner. The Excel export converts USD prices to EGP with it (EGP is the main currency). Exports fail if a unit is in USD and this is not set. | worker (export command) |
+| `USD_EGP_RATE` | no |  | `50` | Fallback EGP per 1 USD. The owner normally sets the rate in the admin console (Settings), which takes priority; this is used only until then. The Excel export converts USD prices to EGP (the main currency) and fails if a unit is in USD and no rate is set anywhere. | worker (export command), api (export) |
 | `POSTGRES_USER` | no | `reb` | `reb` | Database user created by the Postgres container on first start. | docker-compose.yml |
 | `POSTGRES_PASSWORD` | yes |  | `change-me` | Password for POSTGRES_USER. Must match the password inside DATABASE_URL. Only read the first time the database volume is created. **Secret.** | docker-compose.yml |
 | `POSTGRES_DB` | no | `reb` | `reb` | Database name created by the Postgres container on first start. | docker-compose.yml |

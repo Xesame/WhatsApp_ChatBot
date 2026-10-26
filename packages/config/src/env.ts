@@ -76,6 +76,27 @@ export const envSchema = z.object({
       usedBy: 'api',
       examples: ['3000'],
     }),
+  AUTH_SECRET: z
+    .string()
+    .min(32, 'must be at least 32 characters; generate one with `openssl rand -hex 32`')
+    .optional()
+    .meta({
+      description:
+        'Secret that signs admin login sessions. Generate with `openssl rand -hex 32`. Changing it signs everyone out.',
+      usedBy: 'api',
+      requiredFor: ['api'],
+      examples: ['replace-with-output-of-openssl-rand-hex-32'],
+      secret: true,
+    }),
+  PUBLIC_URL: z
+    .url()
+    .default('http://localhost:4173')
+    .meta({
+      description:
+        'The address people type in the browser to open the web app (the admin console). Logins are only accepted from pages served at this address. Use the `https://` address on the server.',
+      usedBy: 'api',
+      examples: ['http://localhost:4173'],
+    }),
   SENDER_HASH_SALT: z
     .string()
     .min(32, 'must be at least 32 characters; generate one with `openssl rand -hex 32`')
@@ -297,8 +318,8 @@ export const envSchema = z.object({
     .optional()
     .meta({
       description:
-        'EGP per 1 USD, set by the owner. The Excel export converts USD prices to EGP with it (EGP is the main currency). Exports fail if a unit is in USD and this is not set.',
-      usedBy: 'worker (export command)',
+        'Fallback EGP per 1 USD. The owner normally sets the rate in the admin console (Settings), which takes priority; this is used only until then. The Excel export converts USD prices to EGP (the main currency) and fails if a unit is in USD and no rate is set anywhere.',
+      usedBy: 'worker (export command), api (export)',
       examples: ['50'],
     }),
 });
