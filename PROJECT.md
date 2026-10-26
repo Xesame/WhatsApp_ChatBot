@@ -6,23 +6,33 @@ Reference material that could drift from the code is generated, not hand-written
 
 - [docs/generated/env.md](docs/generated/env.md): environment variables (from `packages/config/src/env.ts`)
 - [docs/generated/database.md](docs/generated/database.md): tables, columns, indexes and entity diagram (from `packages/db/src/schema/`)
+- [docs/generated/template.md](docs/generated/template.md): the 26 Primary Units columns and their rules (from `packages/schema/src/columns.ts`)
 - API reference _(Phase 5, generated from Fastify route schemas)_
 
 Regenerate them with `pnpm run docs`. CI runs `pnpm docs:check` and fails if they are out of date.
 
 ## Build status
 
-| Phase | Scope                                                         | Status                                                     |
-| ----- | ------------------------------------------------------------- | ---------------------------------------------------------- |
-| 0     | Foundation: monorepo, config, logging, Docker, database, seed | **Done**                                                   |
-| 1     | Capture (Baileys, raw messages, media)                        | **Done** (live WhatsApp test waits for the scraper number) |
-| 2     | Text extraction and eval harness                              | Not started                                                |
-| 3     | Media extraction (vision, PDF, speech-to-text)                | Not started                                                |
-| 4     | Dedup, price history, lifecycle                               | Not started                                                |
-| 5     | API and owner admin                                           | Not started                                                |
-| 6     | Multi-tenant firm dashboard                                   | Not started                                                |
-| 7     | Chat bots and alerts                                          | Not started                                                |
-| 8     | Hardening and deploy                                          | Not started                                                |
+| Phase | Scope | Status |
+| **Waiting on Hassan**
+
+- [ ] Scraper WhatsApp number, for the live Phase 1 test (pairing, groups, restart without loss).
+- [ ] `CEREBRAS_API_KEY` in `.env`, for live extraction and the first eval run.
+- [ ] 20-50 real listing messages for `eval/cases` (chapter 12).
+- [ ] The original `primary-units-template.xlsx`, to commit in `packages/schema/template/`.
+- [ ] Confirm: a lone "من"/"from" before a price means "starting from" (Min only) (decision log).
+- [ ] **Reminder for Phase 3:** choose the vision provider (free options: Gemini Flash, OpenRouter free vision models) and decide on sending images that may show phone numbers.
+
+----- | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| 0 | Foundation: monorepo, config, logging, Docker, database, seed | **Done** |
+| 1 | Capture (Baileys, raw messages, media) | **Done** (live WhatsApp test waits for the scraper number) |
+| 2 | Text extraction and eval harness | **Built** (accuracy run waits for real cases and a Cerebras key) |
+| 3 | Media extraction (vision, PDF, speech-to-text) | Not started |
+| 4 | Dedup, price history, lifecycle | Not started |
+| 5 | API and owner admin | Not started |
+| 6 | Multi-tenant firm dashboard | Not started |
+| 7 | Chat bots and alerts | Not started |
+| 8 | Hardening and deploy | Not started |
 
 ---
 
@@ -117,7 +127,7 @@ sequenceDiagram
 realestate-bot/
   apps/
     capture/   src/main.ts (wiring), src/cli.ts (groups command)
-    worker/    src/main.ts: supervises the job queue                    (jobs: Phases 2-4)
+    worker/    src/main.ts (pipeline jobs), src/cli.ts (reprocess, export)
     api/       src/app.ts (Fastify routes), src/main.ts (startup)       (Phases 5-6)
     web/       Vite + React placeholder                                 (Phases 5-6)
     chatbot/   src/main.ts: skeleton service                          (Phase 7)
@@ -129,6 +139,10 @@ realestate-bot/
     queue/     pg-boss setup, job names and payloads, transactional enqueue
     whatsapp/  Baileys connection, Postgres auth store, message parsing, sender hashing
     ingest/    storing messages and media, groups, exactly-once queueing, crash recovery
+    schema/    the listing fields (Zod), enums, model JSON schema, template column map, Excel export
+    llm/       model client (fallback, rate limits, privacy scrub) and versioned prompts
+    pipeline/  preprocess / classify / extract steps, entity matching, reprocess, export
+  eval/        labeled cases, recordings, scoring and the `pnpm eval` runner
   scripts/docs.ts           generates docs/generated/* and .env.example
   docs/generated/           generated reference docs (do not edit)
   docker-compose.yml        Postgres + migrate step + five services
@@ -136,19 +150,22 @@ realestate-bot/
   .github/workflows/ci.yml  lint, format, types, tests (with real Postgres), docs check, web build
 ```
 
-| Package          | Owns                                                             | Main files                                               | Used by                            |
-| ---------------- | ---------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------- |
-| `@reb/config`    | Environment variables: schema, defaults, validation              | `src/env.ts`, `src/load.ts`                              | db, runtime, api, scripts          |
-| `@reb/normalize` | Deterministic text normalization                                 | `src/text.ts`                                            | db (seed) and, later, the pipeline |
-| `@reb/db`        | Tables, migrations, pool, seed                                   | `src/schema/*`, `migrations/*`, `src/seed.ts`, `seed/*`  | runtime, api, scripts              |
-| `@reb/runtime`   | Logging, health checks, service lifecycle                        | `src/logger.ts`, `src/health.ts`, `src/service.ts`       | all Node apps                      |
-| `@reb/queue`     | Job queue (pg-boss): queues, payload schemas, retries            | `src/queues.ts`, `src/boss.ts`                           | capture, worker, ingest            |
-| `@reb/whatsapp`  | WhatsApp connection, login keys, message parsing, sender hashing | `src/connection.ts`, `src/parse.ts`, `src/auth-store.ts` | capture; chatbot (Phase 7)         |
-| `@reb/ingest`    | Storing messages and media, group management, queueing           | `src/ingestor.ts`, `src/files.ts`, `src/groups.ts`       | capture; api (Phase 5)             |
+| Package          | Owns                                                                    | Main files                                                            | Used by                            |
+| ---------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------- |
+| `@reb/config`    | Environment variables: schema, defaults, validation                     | `src/env.ts`, `src/load.ts`                                           | db, runtime, api, scripts          |
+| `@reb/normalize` | Deterministic text normalization                                        | `src/text.ts`                                                         | db (seed) and, later, the pipeline |
+| `@reb/db`        | Tables, migrations, pool, seed                                          | `src/schema/*`, `migrations/*`, `src/seed.ts`, `seed/*`               | runtime, api, scripts              |
+| `@reb/runtime`   | Logging, health checks, service lifecycle                               | `src/logger.ts`, `src/health.ts`, `src/service.ts`                    | all Node apps                      |
+| `@reb/queue`     | Job queue (pg-boss): queues, payload schemas, retries                   | `src/queues.ts`, `src/boss.ts`                                        | capture, worker, ingest            |
+| `@reb/whatsapp`  | WhatsApp connection, login keys, message parsing, sender hashing        | `src/connection.ts`, `src/parse.ts`, `src/auth-store.ts`              | capture; chatbot (Phase 7)         |
+| `@reb/ingest`    | Storing messages and media, group management, queueing                  | `src/ingestor.ts`, `src/files.ts`, `src/groups.ts`                    | capture; api (Phase 5)             |
+| `@reb/schema`    | The listing fields, enums, model schema, template columns, Excel export | `src/unit.ts`, `src/extraction.ts`, `src/columns.ts`, `src/export.ts` | db, normalize, llm, pipeline, eval |
+| `@reb/llm`       | Model calls: fallback, rate limits, privacy scrub; prompts              | `src/client.ts`, `src/privacy.ts`, `prompts/*.ts`                     | pipeline, eval                     |
+| `@reb/pipeline`  | Processing steps, entity matching, reprocess, export                    | `src/steps.ts`, `src/entities.ts`, `src/admin.ts`                     | worker, eval                       |
 
-Packages planned for later phases and not created yet: `schema` and `llm` (Phase 2), `media` (Phase 3), `dedup` (Phase 4), `chat-core` (Phase 7), and the `eval/` folder (Phase 2).
+Packages planned for later phases and not created yet: `media` (Phase 3), `dedup` (Phase 4), `chat-core` (Phase 7).
 
-**Dependency direction:** `apps → (runtime, ingest) → (whatsapp, queue) → db → (config, normalize)`. Packages never import from apps.
+**Dependency direction:** `apps → (runtime, ingest, pipeline) → (whatsapp, queue, llm, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
 
 **Library versions** (checked 2026-10-25):
 
@@ -170,7 +187,7 @@ Packages planned for later phases and not created yet: `schema` and `llm` (Phase
 | qrcode                                | 1.5.4                            | Prints the pairing QR code in the logs                                 |
 | grammY                                | 1.46.0                           | Phase 7                                                                |
 | better-auth                           | 1.7.12                           | Phase 5                                                                |
-| exceljs                               | 4.4.0                            | Phase 2                                                                |
+| exceljs                               | 4.4.0                            | Excel export                                                           |
 
 ## 4. Data model
 
@@ -217,7 +234,23 @@ erDiagram
 
 **Tables added by later phases:** `units`, `extraction_runs` (Phase 2); `unit_prices`, `unit_sources` (Phase 4); `review_corrections`, `audit_log` (Phase 5); `firms`, `users`, `chat_identities`, `saved_searches`, `firm_notes`, `usage_events` (Phase 6); `alert_deliveries` (Phase 7). Each arrives as its own migration in the phase that uses it.
 
-**Primary Units template mapping** _(Phase 2)_: the 26 template columns, their database columns and export rules will be generated here from `packages/schema`.
+**Listing tables (Phase 2)**
+
+```mermaid
+erDiagram
+  messages ||--o{ extraction_runs : "model calls"
+  messages ||--o{ units : "extracted from"
+  extraction_runs ||--o{ units : produced
+  projects ||--o{ units : ""
+  developers ||--o{ units : ""
+  cities ||--o{ units : ""
+```
+
+- `units`: one row per unit offering. The 26 template columns in template order, then internal columns: `status`, `price_currency`, `down_payment_amount`, `installment_years`, `installment_frequency`, `ready_to_move`, `confidence`, `needs_review`, `review_reasons`, `extras` (unmatched names), `source_message_id`, `extraction_run_id`, `first_seen_at`, `last_seen_at`. Every allowed value is enforced by a CHECK constraint generated from `@reb/schema`.
+- `extraction_runs`: every model call, kept forever (reprocessing adds rows, never deletes): purpose (`classify`/`extract`), prompt version, provider, model, the request as sent, the raw answer, the parsed answer, tokens, cost, latency, status.
+- Until Phase 4 (dedup), each listing message produces its own unit rows; re-extracting a message replaces its units. Price updates and sold notices are classified and extracted, and kept in `extraction_runs` for Phase 4 to apply.
+
+**Primary Units template mapping:** generated from the column map in `packages/schema`: **[docs/generated/template.md](docs/generated/template.md)** (header, database column and rule for all 26 columns). The export writes exactly those headers in that order (a test checks it; once the original template file is committed in `packages/schema/template/`, a second test compares against it).
 
 **Template rules agreed with Hassan (2026-10-25)**, implemented in Phase 2:
 
@@ -230,7 +263,7 @@ erDiagram
 | Delivery Year for ready-to-move units | **Blank**, with "Ready to move" written in Notes; the internal `ready_to_move` flag is set                                                                                                                                               |
 | Row granularity                       | **One row per unit type** (with Min/Max ranges); a message naming a specific unit (Unit Code) gets its own row                                                                                                                           |
 
-**Money** _(Phase 2)_ is stored as integer piastres with an explicit currency column. Conversion happens only at query time.
+**Money** is stored as integers in minor units (piastres / cents) with `price_currency`: `min_price = 650000000, price_currency = 'EGP'` is EGP 6,500,000. Prices are stored in the currency they were stated in; the Excel export converts USD to EGP with the owner-set `USD_EGP_RATE`.
 
 ## 5. Pipeline
 
@@ -248,32 +281,101 @@ Each step is its own pg-boss job type, idempotent, with retries and backoff. Job
 | Restart     | Messages that arrived while capture was down are delivered by WhatsApp on reconnect. On start, a sweep finishes interrupted downloads and queues anything never queued.                    |
 | Known gap   | WhatsApp acknowledges a message before we store it. If the database is down for more than ~2 minutes while messages arrive, those messages are lost (their IDs are logged at error level). |
 
-**Job: `preprocess`** _(queue created in Phase 1; handler in Phases 2-3)_
+**Job: `preprocess`** (Phase 2)
 
-|                   |                                                |
-| ----------------- | ---------------------------------------------- |
-| Payload           | `{ messageId }`                                |
-| Retries           | 8, exponential backoff from 30 s               |
-| Waiting jobs kept | 60 days, so a long worker outage loses nothing |
+|         |                                                                                                                                                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Payload | `{ messageId }`                                                                                                                                                                                                     |
+| Does    | Text messages → `processing`, queues `classify`. Voice notes → `skipped` ("Voice notes are not processed"). Images, PDFs, videos → `skipped` ("Media extraction arrives in Phase 3"). Deleted or empty → `skipped`. |
+| Retries | 8, exponential backoff from 30 s                                                                                                                                                                                    |
 
-_(Phases 2-4)_ assemble context → classify → extract → validate/normalize → dedup/merge → lifecycle → alerts, plus the reprocessing CLI.
+**Job: `classify`** (Phase 2, step 4)
+
+|         |                                                                                                                                                                                                                                                                                                      |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Payload | `{ messageId }`                                                                                                                                                                                                                                                                                      |
+| Does    | Builds the context (message + the message it replies to, contact details scrubbed). Free keyword check first: no listing words → `skipped` without calling a model. Otherwise one model call → `listing`, `price_update`, `sold` or `not_relevant`. Not relevant → `skipped`; else queues `extract`. |
+| Retries | 6, backoff from 60 s. A failure means every model in the fallback list failed: the message is marked `failed` with the reason until a retry succeeds.                                                                                                                                                |
+
+**Job: `extract`** (Phase 2, steps 5-6)
+
+|             |                                                                                                                                                                                                                                                                                                      |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Payload     | `{ messageId, intent }`                                                                                                                                                                                                                                                                              |
+| Does        | One model call returns raw phrases per unit; code matches names and normalizes every field (chapter 6). Listings: the message's units are replaced in one transaction. Price updates and sold notices: kept in `extraction_runs` for Phase 4. Message → `processed` (or `skipped` "No units found"). |
+| Idempotency | Re-running replaces this message's units; model calls are always added, never replaced.                                                                                                                                                                                                              |
+| Retries     | 6, backoff from 60 s                                                                                                                                                                                                                                                                                 |
+
+All waiting jobs are kept 60 days. **Without a model API key** the worker logs a warning and does not start `classify`/`extract`: messages wait in the queue until a key is added and the worker restarts.
+
+**Reprocessing** (after a prompt or model change, or when Phase 3 adds media):
+
+```sh
+docker compose exec worker node apps/worker/src/cli.ts reprocess --status skipped
+docker compose exec worker node apps/worker/src/cli.ts reprocess --from 2026-10-01 --to 2026-11-01
+docker compose exec worker node apps/worker/src/cli.ts reprocess --group 3
+docker compose exec worker node apps/worker/src/cli.ts reprocess --message 120,121
+```
+
+Matching messages go back to `pending` and through every step again with the current prompts and models. Old model calls stay in `extraction_runs` for comparison.
+
+_(Phases 3-4)_ media preprocessing, caption linking, dedup/merge, lifecycle, alerts.
 
 ## 6. Extraction
 
-**Normalization rules in place now** (`packages/normalize`):
+**The split (build plan, section 7).** The model reads messy text and copies phrases; code does everything deterministic.
 
-| Rule                                             | Example                                  |
-| ------------------------------------------------ | ---------------------------------------- |
-| Lowercase, Unicode NFKC                          | `ＳＯＤＩＣ West` → `sodic west`         |
-| Arabic-Indic and Persian digits to ASCII         | `٦ أكتوبر` → `6 اكتوبر`                  |
-| Remove diacritics (tashkeel) and tatweel         | `التجمّـع` → `التجمع`                    |
-| `أ إ آ ٱ` → `ا`                                  | `إعمار` → `اعمار`                        |
-| `ى` → `ي`, `ة` → `ه`, `ؤ` → `و`, `ئ` → `ي`       | `العاصمة الإدارية` → `العاصمه الاداريه`  |
-| Non-letters and non-digits become a single space | `Il-Monte  Galala!!` → `il monte galala` |
+| The model (Cerebras)                                                                  | Code (`@reb/normalize`, `@reb/pipeline`)                                  |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Says what a message is about (classify)                                               | Free keyword check before calling it                                      |
+| Returns one entry per unit type, with phrases copied as written ("يبدأ من 6.5 مليون") | Turns phrases into numbers, currencies, years, counts                     |
+| Chooses unit type, finishing, category from fixed lists                               | Matches names to canonical entities; infers category from unit type       |
+| Quotes the evidence for project, unit type, area, price                               | Checks every value and quote really appears in the message (no invention) |
+| Writes a short English note                                                           | Computes confidence and review reasons                                    |
 
-These only erase differences that never change meaning. Riskier matching (typos, dropped "ال") is done by trigram similarity, where it can be tuned and reviewed.
+**Prompts and versions.** `packages/llm/prompts/classify.ts` and `extract.ts`, each with a `VERSION` (currently `classify-2026-10-26.1`, `extract-2026-10-26.1`). Every `extraction_runs` row records it. To change a prompt: edit it, bump `VERSION`, run `pnpm eval`, compare with the previous report, and get approval if a key field drops by more than 2 points (chapter 12).
 
-_(Phase 2)_ Prompts and versions, model fallback chain, number and unit parsing, confidence. _(Phase 4)_ Dedup algorithm with worked examples. _(Phase 3)_ Cost per message.
+**Models and fallback.** Set in `.env` as `provider:model` lists in fallback order:
+
+- Classification: `LLM_CLASSIFY_MODELS`, default `cerebras:qwen-3.8-27b,cerebras:gpt-oss-120b`
+- Extraction: `LLM_EXTRACT_MODELS`, default `cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b`
+
+Both models are on Cerebras' public tier and support strict JSON Schema output. Requests use `response_format: json_schema, strict: true`. A rate limit, timeout, server error or refusal moves to the next model; an answer that fails validation gets one retry on the same model with the error appended. Different first models for the two steps spread the free tier's per-model limit (about 5 requests a minute, `LLM_REQUESTS_PER_MINUTE`). The client waits for a free slot instead of failing.
+
+**Normalization rules** (each has tests in `packages/normalize/test`):
+
+| Rule                     | Examples                                                                                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Numbers                  | `٣٫٥` → 3.5 · `1,250,000` / `1.250.000` → 1250000 · `3,5` → 3.5                                                                                             |
+| Multipliers (money only) | `3.5 مليون`, `3.5M` → 3,500,000 · `850 ألف`, `850k` → 850,000 · `6.500 مليون` → 6,500,000                                                                   |
+| Halves, words, compounds | `مليون ونص` → 1.5M · `نص مليون` → 500k · `مليونين` → 2M · `تلاتة مليون` → 3M · `9 مليون و 200 ألف` → 9.2M                                                   |
+| Ranges                   | `6.5 - 9 مليون` → 6.5M–9M (the multiplier applies to both) · `من 120 ل 180` → 120–180                                                                       |
+| Starting from            | `يبدأ من 6.5 مليون`, `starting from`, a lone `من` → Min only, Max empty                                                                                     |
+| Single value             | `150 متر` → Min = Max = 150                                                                                                                                 |
+| Bare price               | `السعر 6.5` (no million/thousand) → read as 6.5 million and flagged for review                                                                              |
+| Areas                    | `m` means metres, not million: `BUA 320 m` → 320. Areas outside 10–100,000 m² are dropped.                                                                  |
+| Currency                 | `$`, `USD`, `dollar`, `دولار` → USD, otherwise EGP                                                                                                          |
+| Delivery                 | `Q3 2027` → 2027 · `Q4-28` → 2028 · `بعد 3 سنين` → message year + 3 · `استلام فوري`, `RTM`, `جاهز` → ready to move, year blank · two years → first, flagged |
+| Installments             | `8 years quarterly` / `على 8 سنين ربع سنوي` → 8 × 4 = 32 · `96 شهر` → 96 monthly · `على 7 سنين` → 7 years, count unknown                                    |
+| Percent or amount        | `10%`, `١٠٪`, `10 في المية` → percent · `مقدم 500 ألف` → amount (down payment percent then computed from the price)                                         |
+| Floor                    | `أرضي` → Ground · `روف` → Roof · `الدور التالت`, `3rd floor` → 3 · `1-5` → 1-5                                                                              |
+| Rooms                    | `3 غرف`, `3BR`, `تلات غرف` → 3 · `غرفتين` → 2 · `3+1` → 3                                                                                                   |
+
+**No invention.** Every value the model returns for a copied field (names, areas, price, delivery, payment terms...) must appear in the message (compared ignoring spacing, punctuation, diacritics and digit style). If not, it is dropped and the unit is flagged: `Dropped price "12 مليون": not found in the message`. Evidence quotes are checked the same way.
+
+**Entity matching** (`packages/pipeline/src/entities.ts`), for developer, project and city separately:
+
+1. exact normalized alias (`MIVIDA`, `ميفيدا` → Mivida);
+2. a known alias contained as whole words, longest first (`ميفيدا التجمع` → Mivida); aliases of 3 characters or fewer only match exactly;
+3. fuzzy trigram similarity ≥ 0.40 (`mivda` → Mivida, 0.44), always flagged for review.
+
+A matched project fills in its developer and city; if the message names a different developer or city, the project's wins and the conflict is flagged. Unknown names are kept in `extras.unmatched` and flagged.
+
+**Confidence (0-1) and review.** Confidence = 0.25 × project match + 0.15 × developer (or city) + 0.15 × unit type + 0.25 × price (0.6 if the million/thousand was assumed) + 0.20 × area. A unit needs review if confidence < 0.7 or any reason was recorded: no price, no area, no unit type, dropped value, bad evidence, fuzzy or unknown name, USD price, price per m² outside 3,000-1,000,000 EGP, ambiguous delivery, out-of-range down payment.
+
+**Cost per message.** Each message costs 0, 1 or 2 model calls (keyword filter, classification, extraction). On the free tier cost is recorded as 0 (`LLM_FREE_TIER=true`); tokens and latency are always recorded. Daily cost and call counts: `select date(created_at), purpose, count(*), sum(input_tokens), sum(output_tokens), sum(cost_usd) from extraction_runs group by 1, 2 order by 1;`
+
+_(Phase 3)_ vision for images and PDFs. _(Phase 4)_ dedup algorithm with worked examples.
 
 ## 7. Interfaces
 
@@ -295,6 +397,16 @@ docker compose exec capture node apps/capture/src/cli.ts groups source <develope
 ```
 
 `list` shows id, name, watched, source type, membership, last message time and JID. Changes reach a running capture within 30 seconds.
+
+**Worker command line (Phase 2)**
+
+```sh
+docker compose exec worker node apps/worker/src/cli.ts reprocess [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--group <id>] [--status skipped,failed] [--message <id,...>]
+docker compose exec worker node apps/worker/src/cli.ts export --out /tmp/units.xlsx [--usd-egp-rate 50] [--message <id,...>] [--all]
+docker compose cp worker:/tmp/units.xlsx ./units.xlsx
+```
+
+`export` writes active units (all units with `--all`) in the Primary Units template layout. USD prices are converted with `--usd-egp-rate` or `USD_EGP_RATE`; without a rate, an export containing USD units stops with an error. Locally: `pnpm --filter @reb/worker pipeline export --out units.xlsx`.
 
 **Web (Phase 0):** a placeholder page at http://localhost:4173.
 
@@ -421,7 +533,27 @@ docker compose exec postgres psql -U reb -d reb -c "select id, sent_at, media_ty
 docker compose exec postgres psql -U reb -d reb -c "select status, count(*) from media_files group by 1"
 ```
 
-**Later steps:** create the owner account _(Phase 5)_ · pairing and group choice from the browser _(Phase 5)_ · pair the query bot and create the Telegram bot _(Phase 7)_ · confirm a message flows end to end _(Phase 2)_ · create the first firm _(Phase 6)_ · run the first eval _(Phase 2)_.
+**10. Turn on extraction (Cerebras)**
+
+1. Create an account at cloud.cerebras.ai and an API key.
+2. Add it to `.env`: `CEREBRAS_API_KEY=...` (never commit or paste it anywhere else).
+3. Set the exchange rate for exports: `USD_EGP_RATE=50` (update it by hand when it changes).
+4. `docker compose up -d` (restarts the worker with the key). Expected log: `Pipeline ready`.
+5. Messages stored earlier without a key are already waiting in the queue and are processed now.
+
+**11. Confirm a message flows end to end**
+
+Post a listing in a watched group (or wait for one), then:
+
+```sh
+docker compose exec postgres psql -U reb -d reb -c "select id, status, error from messages order by id desc limit 5"
+docker compose exec postgres psql -U reb -d reb -c "select unit_type, min_area, min_price/100 as min_price_egp, needs_review, review_reasons from units order by id desc limit 5"
+docker compose exec worker node apps/worker/src/cli.ts export --out /tmp/units.xlsx && docker compose cp worker:/tmp/units.xlsx ./units.xlsx
+```
+
+**12. Run the first eval** (chapter 12): `pnpm eval` on your machine with the key in `.env`, or `docker compose exec worker node eval/run.ts`.
+
+**Later steps:** create the owner account _(Phase 5)_ · pairing and group choice from the browser _(Phase 5)_ · pair the query bot and create the Telegram bot _(Phase 7)_ · create the first firm _(Phase 6)_.
 
 ## 10. Daily operations
 
@@ -430,6 +562,19 @@ docker compose exec postgres psql -U reb -d reb -c "select status, count(*) from
 **Checking the system:** `docker compose ps` (all healthy?) and `docker compose logs -f --since 10m <service>`.
 
 **Adding or removing groups to watch:** see chapter 7 (groups command). The scraper number must first be added to the group from a phone. To find a new group's id, run `groups list`: it is listed as soon as the number joins.
+
+**Checking what was extracted (until the review queue in Phase 5)**
+
+```sh
+# messages by status today
+docker compose exec postgres psql -U reb -d reb -c "select status, count(*) from messages where created_at > current_date group by 1"
+# units waiting for review, with reasons
+docker compose exec postgres psql -U reb -d reb -c "select id, unit_type, min_price/100 as price, review_reasons from units where needs_review order by id desc limit 20"
+```
+
+**Exporting:** see the worker command line in chapter 7.
+
+**After changing a prompt or the models:** run `pnpm eval` first; if accepted, `reprocess` the messages you want redone.
 
 **Is capture receiving messages?**
 
@@ -503,11 +648,80 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 
 - `groups list`: is it still `watched`, and is `member` still `yes`? If the number was removed from the group, `member` shows `left`; add it back from a phone.
 
-_(Later phases)_ model errors, cost spike, job backlog, failed jobs, restoring a backup, rotating secrets.
+**Model errors or rate limits (messages stuck in `failed` or `processing`)**
 
-## 12. Evaluation _(Phase 2)_
+- `select status, error, count(*) from messages group by 1, 2 order by 3 desc;` and `select model, status, count(*), max(error) from extraction_runs where created_at > now() - interval '1 hour' group by 1, 2;`
+- `rate_limited`: the free tier's per-minute limit. The worker already waits and retries; lower `LLM_REQUESTS_PER_MINUTE` if it happens often, or add a second model to the lists.
+- `error` with `HTTP 401`: the API key is wrong or expired. Fix `CEREBRAS_API_KEY`, then `docker compose up -d`.
+- `error` with `HTTP 404` or `model_not_found`: the model was retired. Change `LLM_*_MODELS` to a current model.
+- `invalid` repeatedly: the model ignores the schema; check the `raw_output`, consider another model.
+- Failed messages are retried automatically 6 times. Afterwards: `reprocess --status failed`.
 
-The eval set (`eval/cases`), `pnpm eval`, the report format and the approval rule for prompt or model changes (a drop of more than 2 points on a key field needs Hassan's approval) arrive in Phase 2.
+**Job backlog (messages pile up in `processing`)**
+
+- `select name, state, count(*) from pgboss.job group by 1, 2;`
+- Many `classify`/`extract` jobs in `created`: the worker is slower than the incoming messages (free-tier rate limit) or has no API key (log: `No model API key set`). Add a key, raise the limit on a paid plan, or add models.
+
+**Export fails with "A unit is priced in USD but no USD→EGP rate was given"**
+
+- Set `USD_EGP_RATE` in `.env` (then `docker compose up -d`) or pass `--usd-egp-rate`.
+
+_(Later phases)_ cost spike, restoring a backup, rotating secrets.
+
+## 12. Evaluation
+
+The eval set is the accuracy gate: prompts and models change only when the numbers say so.
+
+**A case** is a folder in `eval/cases/<id>/`:
+
+- `message.txt`: the message exactly as posted (contact details are scrubbed automatically when it runs; remove names you don't want in the repository).
+- `quoted.txt` (optional): the message it replies to.
+- `expected.json`: the correct answer, in export form:
+
+```json
+{
+  "source": "real",
+  "kind": "text",
+  "sentAt": "2026-10-26T09:00:00Z",
+  "intent": "listing",
+  "units": [
+    {
+      "project": "Mivida",
+      "developer": "Emaar Misr",
+      "city": "New Cairo",
+      "unitType": "Apartment",
+      "minArea": 150,
+      "maxArea": 150,
+      "minPrice": 9500000,
+      "maxPrice": null,
+      "priceCurrency": "EGP",
+      "deliveryYear": 2028,
+      "downPayment": 10,
+      "installmentsCount": 32,
+      "bedrooms": 3
+    }
+  ]
+}
+```
+
+Prices are whole currency units (9500000 = 9.5 million), names are the English canonical names. Fields left out count as "expected empty". `source` is `real` (from a group), `review` (from a review-queue correction, Phase 5) or `example` (hand-written, never counted).
+
+**Adding cases:** paste messages into new folders; a first `expected.json` can be produced by running the pipeline and checking every field by hand. Aim for variety (chapter 9 of the plan): single and multi-unit listings, price updates (with `quoted.txt`), sold notices, chatter, USD prices, "starting from", payment plans, Franco-Arabic. From Phase 5, review corrections become cases automatically.
+
+**Running it:**
+
+```sh
+pnpm eval                 # live: calls the configured models (needs CEREBRAS_API_KEY)
+pnpm eval --record        # live, and saves every model answer to eval/recordings/
+pnpm eval --replay        # uses saved answers: free, offline, repeatable
+pnpm eval --case <id>     # one case
+```
+
+**The report** (printed, and saved to `eval/reports/<time>.md`) shows, for real cases: intent accuracy, unit-count accuracy, model calls, cost and average latency per message, and per-field accuracy with the change since the last live run (`eval/reports/latest.json`). Key fields are in bold. Every wrong field is listed (`case: field: expected X, got Y`). Example cases appear in a separate table that never counts. Once image and PDF cases exist (Phase 3), the report also splits by kind.
+
+**Approval rule.** Any prompt or model change must be run against the eval set, and the report attached to the checkpoint summary. A drop of more than 2 points on a key field (price, area, city, project, developer, unit type) is marked "⚠ needs approval" and needs Hassan's approval. With fewer than 50 real cases one mistake moves a field by more than 2 points, so until the set reaches 50, **any new mistake on a key field** needs approval.
+
+**Current state:** no real cases yet. The three `example-*` cases (hand-written messages and hand-written model answers, marked `"handwritten": true`) only prove the runner works; they found and fixed one real bug ("320 m" read as 320 million).
 
 ## 13. Testing
 
@@ -518,21 +732,29 @@ pnpm vitest --watch                           # re-run on save
 TEST_DATABASE_URL=postgres://reb:<pw>@localhost:5432/reb pnpm test   # plus database integration tests
 ```
 
-| Suite                                                   | Covers                                                                                                                                                                                                                                                                                                       | Needs                                                                                           |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `packages/config/test`                                  | defaults, coercion, readable errors                                                                                                                                                                                                                                                                          | nothing                                                                                         |
-| `packages/normalize/test`                               | every normalization rule, Arabic and mixed-script                                                                                                                                                                                                                                                            | nothing                                                                                         |
-| `packages/db/test/seed-data.test.ts`                    | seed data has no duplicates, bad references or ambiguous aliases                                                                                                                                                                                                                                             | nothing                                                                                         |
-| `packages/db/test/client.test.ts`                       | a lost connection does not crash the process                                                                                                                                                                                                                                                                 | nothing                                                                                         |
-| `packages/db/test/migrate-seed.integration.test.ts`     | migrations on a clean database, rerun is a no-op, seed twice adds nothing, alias lookup, trigram lookup, constraints                                                                                                                                                                                         | `TEST_DATABASE_URL`. Creates and drops a throwaway `reb_test_*` database. Skipped when not set. |
-| `packages/runtime/test`                                 | health server 200/503/404, log redaction                                                                                                                                                                                                                                                                     | nothing                                                                                         |
-| `apps/api/test`                                         | `/health` 200 and 503 (database mocked)                                                                                                                                                                                                                                                                      | nothing                                                                                         |
-| `packages/config/test` (Phase 1 part)                   | per-service required variables (`SENDER_HASH_SALT` for capture), salt length, pairing phone format                                                                                                                                                                                                           | nothing                                                                                         |
-| `packages/whatsapp/test/parse.test.ts`                  | text, replies, forwarding, images, PDFs with captions, voice notes, disappearing/view-once, edits, deletions, everything ignored, LID-preferred sender hashing                                                                                                                                               | nothing                                                                                         |
-| `packages/whatsapp/test/connection.integration.test.ts` | QR and pairing-code flow, open/close states, backoff timings, restart-required, logged-out key wipe, connection replaced, in-order delivery, retry during DB outage, health check; auth store round trip with binary keys                                                                                    | `TEST_DATABASE_URL`; a fake WhatsApp socket                                                     |
-| `packages/ingest/test/ingestor.integration.test.ts`     | store + queue once, duplicates after restart, unwatched groups, replies/edits/deletions, media hashed and stored once, download retries and give-up, size limit (announced and actual), crash mid-download recovery, stragglers, and a raw-message-to-database run proving no phone number or name is stored | `TEST_DATABASE_URL`; fake downloads                                                             |
+| Suite                                                       | Covers                                                                                                                                                                                                                                                                                                       | Needs                                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `packages/config/test`                                      | defaults, coercion, readable errors                                                                                                                                                                                                                                                                          | nothing                                                                                         |
+| `packages/normalize/test`                                   | every normalization rule, Arabic and mixed-script                                                                                                                                                                                                                                                            | nothing                                                                                         |
+| `packages/db/test/seed-data.test.ts`                        | seed data has no duplicates, bad references or ambiguous aliases                                                                                                                                                                                                                                             | nothing                                                                                         |
+| `packages/db/test/client.test.ts`                           | a lost connection does not crash the process                                                                                                                                                                                                                                                                 | nothing                                                                                         |
+| `packages/db/test/migrate-seed.integration.test.ts`         | migrations on a clean database, rerun is a no-op, seed twice adds nothing, alias lookup, trigram lookup, constraints                                                                                                                                                                                         | `TEST_DATABASE_URL`. Creates and drops a throwaway `reb_test_*` database. Skipped when not set. |
+| `packages/runtime/test`                                     | health server 200/503/404, log redaction                                                                                                                                                                                                                                                                     | nothing                                                                                         |
+| `apps/api/test`                                             | `/health` 200 and 503 (database mocked)                                                                                                                                                                                                                                                                      | nothing                                                                                         |
+| `packages/config/test` (Phase 1 part)                       | per-service required variables (`SENDER_HASH_SALT` for capture), salt length, pairing phone format                                                                                                                                                                                                           | nothing                                                                                         |
+| `packages/whatsapp/test/parse.test.ts`                      | text, replies, forwarding, images, PDFs with captions, voice notes, disappearing/view-once, edits, deletions, everything ignored, LID-preferred sender hashing                                                                                                                                               | nothing                                                                                         |
+| `packages/whatsapp/test/connection.integration.test.ts`     | QR and pairing-code flow, open/close states, backoff timings, restart-required, logged-out key wipe, connection replaced, in-order delivery, retry during DB outage, health check; auth store round trip with binary keys                                                                                    | `TEST_DATABASE_URL`; a fake WhatsApp socket                                                     |
+| `packages/ingest/test/ingestor.integration.test.ts`         | store + queue once, duplicates after restart, unwatched groups, replies/edits/deletions, media hashed and stored once, download retries and give-up, size limit (announced and actual), crash mid-download recovery, stragglers, and a raw-message-to-database run proving no phone number or name is stored | `TEST_DATABASE_URL`; fake downloads                                                             |
+| `packages/schema/test`                                      | the 26 template headers in order, export rows, USD conversion and missing-rate error, ready-to-move, strict JSON schema at every level                                                                                                                                                                       | nothing (template-file comparison skipped until the file is committed)                          |
+| `packages/normalize/test/numbers.test.ts`, `fields.test.ts` | every number, range, currency, delivery, installment, floor and room rule in chapter 6                                                                                                                                                                                                                       | nothing                                                                                         |
+| `packages/normalize/test/unit.test.ts`                      | raw → unit, no-invention drops, evidence check, bare prices, USD, down-payment amount → percent, ready to move, unknown and fuzzy names, conflicts, category inference, price per m²                                                                                                                         | nothing                                                                                         |
+| `packages/llm/test`                                         | phone/e-mail/mention scrubbing, model lists, rate limiter, strict request shape, fallback on 429/timeout, retry with validation error, refusing personal data                                                                                                                                                | a fake HTTP layer                                                                               |
+| `packages/pipeline/test`                                    | preprocess skips, keyword filter, classification, multi-unit extraction to rows, Excel export headers and values, **no phone number in any stored model request**, idempotent re-extraction, reply context, entity matching (exact/contained/fuzzy)                                                          | `TEST_DATABASE_URL`; a fake model                                                               |
+| `eval/test`                                                 | eval scoring: tolerance, unit pairing, missing units, totals                                                                                                                                                                                                                                                 | nothing                                                                                         |
 
-No test calls WhatsApp, Telegram or a paid API. WhatsApp is replaced by a fake socket (connection tests) and hand-built raw messages (parser tests). _(Phase 2)_ LLM fixtures will be recorded responses replayed offline.
+No test calls WhatsApp, Telegram or a paid API. WhatsApp is replaced by a fake socket (connection tests) and hand-built raw messages (parser tests). The model API is replaced by a fake HTTP layer returning fixed answers (client and pipeline tests), and `pnpm eval --replay` replays saved answers.
+
+**Recording model fixtures:** with `CEREBRAS_API_KEY` set, `pnpm eval --record` calls the models for every case and saves their answers in `eval/recordings/<case>.json`; commit them, and `pnpm eval --replay` (and CI, if added) reproduces that run for free.
 
 CI (`.github/workflows/ci.yml`) runs lint, format check, type check, all tests against a real Postgres service, the generated-docs check and the web build on every push and pull request.
 
@@ -557,7 +779,14 @@ VPS setup, domain and Caddy (HTTPS), daily off-server backups with a tested rest
 - `wa_auth` holds the WhatsApp login keys: protect database backups accordingly.
 - The scraper never sends messages, and does not mark itself online.
 
-_(Phase 2)_ Names and numbers stripped before anything reaches a model. _(Phase 6)_ Firm isolation with tests on every route, and the audit log. **Law 151 of 2020:** sender names and phone numbers are personal data; Hassan should get legal advice before charging firms (open decision).
+**Phase 2:**
+
+- Before any text is sent to a model, phone numbers (any Egyptian format, Arabic or Western digits), e-mail addresses and WhatsApp @mentions are replaced with `[phone]`, `[email]`, `[mention]`. The client then refuses to send any request that still contains one. A test checks every stored request in `extraction_runs`.
+- Sender names, sender hashes and group details are never part of a model request.
+- Personal names typed inside a post (signatures) are not detected and may be sent.
+- `extraction_runs.request` stores what was sent (already scrubbed), never the API key.
+
+_(Phase 6)_ Firm isolation with tests on every route, and the audit log. **Law 151 of 2020:** sender names and phone numbers are personal data; Hassan should get legal advice before charging firms (open decision).
 
 ## 16. Troubleshooting FAQ
 
@@ -587,6 +816,15 @@ Should not happen: the initial history sync must stay on (decision log). If you 
 
 **`WebSocket Error (getaddrinfo ENOTFOUND web.whatsapp.com)`**
 No DNS/internet route to WhatsApp from the server. See runbook "WhatsApp disconnected".
+
+**Worker logs `No model API key set (CEREBRAS_API_KEY): messages are queued but not extracted`**
+Add `CEREBRAS_API_KEY` to `.env` and run `docker compose up -d`. Queued messages are then processed.
+
+**`Refusing to send personal data to a model; scrub the text first`**
+A code path built a prompt without `scrubPersonalData()`. It's a bug: find the caller in the stack trace.
+
+**`Bad model "...": use provider:model with provider one of cerebras, openrouter`**
+A model list in `.env` is malformed: `LLM_EXTRACT_MODELS=cerebras:gpt-oss-120b,cerebras:qwen-3.8-27b`.
 
 **`toomanyrequests` / `429 Too Many Requests` while pulling images**
 Docker Hub's anonymous pull limit. Run `docker login`, or wait and retry.
@@ -624,3 +862,16 @@ Docker Hub's anonymous pull limit. Run `docker login`, or wait and retry.
 | 2026-10-25 | Template answers: Categories Residential/Commercial/Administrative/Medical; Down Payment as percent plus stored amount; Maintenance Currency EGP/USD/%; RTM Delivery Year blank                                                                                                                                                                                                                                                                                                               | Hassan's answers to the plan's template questions                                                                                                                                                                                   | See chapter 4                                                    |
 | 2026-10-25 | **EGP is the main export currency**; USD prices are converted at export with an owner-set exchange rate, originals kept                                                                                                                                                                                                                                                                                                                                                                       | Firms compare prices in EGP; a manual rate avoids a new paid API (rule 10) and keeps exports predictable                                                                                                                            | Daily automatic rate; exporting USD with a note                  |
 | 2026-10-25 | **One row per unit type**                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Hassan asked for the recommended option. Posts give ranges, so splitting them into units would invent rows.                                                                                                                         | One row per individual unit                                      |
+| 2026-10-26 | **Cerebras for text** (classification and extraction), free tier, models `gpt-oss-120b` and `qwen-3.8-27b`                                                                                                                                                                                                                                                                                                                                                                                    | Hassan used Cerebras in the previous version with good results; both models support strict JSON-schema output on the public tier. The client is provider-independent, so OpenRouter or others are a settings change.                | OpenRouter (plan default)                                        |
+| 2026-10-26 | **Voice notes are not processed**                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Hassan: rare in the watched groups. They are still captured, and skipped by the worker.                                                                                                                                             | Speech-to-text in Phase 3                                        |
+| 2026-10-26 | **Vision provider decided in Phase 3** (Hassan asked to be reminded then). Free candidates: Gemini Flash, OpenRouter free vision models; privacy question: images can't be scrubbed.                                                                                                                                                                                                                                                                                                          | Not needed for text                                                                                                                                                                                                                 |                                                                  |
+| 2026-10-26 | Added packages **`pipeline`** (steps, entity matching, reprocess, export)                                                                                                                                                                                                                                                                                                                                                                                                                     | Entity matching needs the database, and `db` already depends on `normalize`; the steps also need `llm` and `queue`. Rule 2 keeps this out of the worker app.                                                                        | Putting matching in `normalize` (circular dependency)            |
+| 2026-10-26 | **Model returns raw phrases; all numbers parsed in code**                                                                                                                                                                                                                                                                                                                                                                                                                                     | Rule 4. Also lets parsing fixes be re-run without new model calls.                                                                                                                                                                  | Model returns numbers                                            |
+| 2026-10-26 | **No-invention check in code**: copied values not found in the message are dropped and flagged                                                                                                                                                                                                                                                                                                                                                                                                | The plan's "never invent values" made enforceable instead of trusted                                                                                                                                                                | Trusting the prompt                                              |
+| 2026-10-26 | A lone **"from"/"من" before a number = starting from (Min only)**; "from X to Y" is a range                                                                                                                                                                                                                                                                                                                                                                                                   | The plan lists "from 6.5M" as a range example but also says "starting from fills Min only"; in practice a lone "من 6.5 مليون" means "starting from". **Hassan to confirm.**                                                         | Lone "from" fills Min and Max                                    |
+| 2026-10-26 | A price with **no million/thousand word under 1,000 is read as millions** and flagged                                                                                                                                                                                                                                                                                                                                                                                                         | Brokers write "السعر 6.5"                                                                                                                                                                                                           | Leaving it empty                                                 |
+| 2026-10-26 | **Fuzzy entity threshold 0.40**                                                                                                                                                                                                                                                                                                                                                                                                                                                               | One-letter typos in short names score 0.43-0.44; fuzzy matches always go to review                                                                                                                                                  | 0.45 (missed real typos)                                         |
+| 2026-10-26 | **Until Phase 4, each listing message has its own units**; price updates and sold notices are stored in `extraction_runs` only                                                                                                                                                                                                                                                                                                                                                                | Merging and applying updates needs the dedup logic of Phase 4                                                                                                                                                                       | Creating duplicate rows for updates                              |
+| 2026-10-26 | **Images/PDFs/videos skipped until Phase 3**, reprocessable                                                                                                                                                                                                                                                                                                                                                                                                                                   | A caption alone ("details in the photo") would create poor rows                                                                                                                                                                     | Extracting captions only                                         |
+| 2026-10-26 | USD→EGP rate as a **setting (`USD_EGP_RATE`)** for now; editable in the admin page from Phase 5                                                                                                                                                                                                                                                                                                                                                                                               | Hassan chose a rate he sets by hand                                                                                                                                                                                                 | Database setting table now                                       |
+| 2026-10-26 | Classification uses a **different first model** than extraction                                                                                                                                                                                                                                                                                                                                                                                                                               | Cerebras free limits are per model; this doubles throughput                                                                                                                                                                         | Same model for both                                              |

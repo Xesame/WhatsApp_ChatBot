@@ -3,6 +3,7 @@
  *
  *   docs/generated/env.md       environment variables, from @reb/config
  *   .env.example                 the same variables, ready to copy to .env
+ *   docs/generated/template.md   the 26 Primary Units columns and their rules, from @reb/schema
  *   docs/generated/database.md   tables and columns, from the Drizzle schema
  *                                and the descriptions in packages/db/src/schema/docs.ts
  *
@@ -19,6 +20,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { composeEnvSchema, envSchema } from '@reb/config';
 import * as db from '@reb/db';
+import { TEMPLATE_COLUMNS } from '@reb/schema';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 
@@ -216,10 +218,28 @@ function renderDatabaseMarkdown(): string {
   ].join('\n');
 }
 
+function renderTemplateMarkdown(): string {
+  return [
+    '# Primary Units template',
+    '',
+    `<!-- ${GENERATED_NOTE} Source: packages/schema/src/columns.ts -->`,
+    '',
+    'The 26 export columns in order, the database column behind each, and how its value is produced. The model only copies phrases; every rule below runs in code.',
+    '',
+    '| # | Template header | Database column | Rule |',
+    '| --- | --- | --- | --- |',
+    ...TEMPLATE_COLUMNS.map(
+      (c, i) => `| ${i + 1} | ${c.header} | \`${c.dbColumn}\` | ${cell(c.rule)} |`,
+    ),
+    '',
+  ].join('\n');
+}
+
 const outputs: Record<string, string> = {
   'docs/generated/env.md': renderEnvMarkdown(),
   '.env.example': renderEnvExample(),
   'docs/generated/database.md': renderDatabaseMarkdown(),
+  'docs/generated/template.md': renderTemplateMarkdown(),
 };
 
 const check = process.argv.includes('--check');

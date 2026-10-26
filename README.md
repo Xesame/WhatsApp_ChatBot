@@ -2,7 +2,7 @@
 
 A service that reads Egyptian developer and broker WhatsApp groups, turns every listing (text, images, PDFs, voice notes) into clean, deduplicated records, and sells access to that listing database to brokerage firms.
 
-> **Status: Phase 1 (Capture) complete.** The scraper connection, message and media storage, and job queueing are built and tested. A live WhatsApp test waits for the scraper number. See [PROJECT.md](PROJECT.md#build-status) for what each phase adds.
+> **Status: Phase 2 (text extraction) built.** Capture stores messages; the worker classifies and extracts text listings with Cerebras into the Primary Units template; `pnpm eval` measures accuracy. Live runs wait for the scraper number, a Cerebras API key and real test messages. See [PROJECT.md](PROJECT.md#build-status).
 
 ## Architecture in one screen
 
@@ -57,4 +57,6 @@ pnpm check                      # lint, format, types, tests, generated docs
 - [PROJECT.md](PROJECT.md): the full technical manual (architecture, data model, setup from zero, operations, runbooks, decision log)
 - [docs/generated/env.md](docs/generated/env.md): every environment variable
 - [docs/generated/database.md](docs/generated/database.md): every table and column
+- [docs/generated/template.md](docs/generated/template.md): the 26 export columns and their rules
+- [eval/README.md](eval/README.md): the accuracy test set
 - Each package has its own README explaining what it does and why
