@@ -18,4 +18,4 @@ Decides when two listings are the same unit, which unit a reply means, and when 
 5. Same bedrooms, when both are known.
 6. Areas within tolerance: the gap between the two area ranges is at most `DEDUP_AREA_TOLERANCE_PERCENT` (5%) of the larger area, or `DEDUP_AREA_TOLERANCE_M2` (3 m²), whichever is bigger. If neither has an area, prices must be within `DEDUP_PRICE_TOLERANCE_PERCENT` (10%) instead. If only one has an area, they're treated as different.
 
-**Why it is designed this way:** a wrong merge loses information (two real units become one), while a missed duplicate only shows twice and can be merged from the review queue. So the rules say "different" whenever they're unsure. The tolerances are settings, to be tuned on real data.
+**Why it is designed this way:** a wrong merge loses information (two real units become one), while a missed duplicate only shows twice (merging two units by hand is planned for the admin console). So the rules say "different" whenever they're unsure. The tolerances are settings, to be tuned on real data.

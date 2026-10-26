@@ -7,7 +7,7 @@ Reference material that could drift from the code is generated, not hand-written
 - [docs/generated/env.md](docs/generated/env.md): environment variables (from `packages/config/src/env.ts`)
 - [docs/generated/database.md](docs/generated/database.md): tables, columns, indexes and entity diagram (from `packages/db/src/schema/`)
 - [docs/generated/template.md](docs/generated/template.md): the 26 Primary Units columns and their rules (from `packages/schema/src/columns.ts`)
-- API reference _(Phase 5, generated from Fastify route schemas)_
+- [docs/generated/api.md](docs/generated/api.md): every API route with its parameters (from the Fastify route schemas)
 
 Regenerate them with `pnpm run docs`.
 
@@ -15,8 +15,19 @@ Regenerate them with `pnpm run docs`.
 
 ## Build status
 
-| Phase | Scope | Status |
-| **Waiting on Hassan**
+| Phase | Scope                                                              | Status                                                           |
+| ----- | ------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| 0     | Foundation: monorepo, config, logging, Docker, database, seed      | **Done**                                                         |
+| 1     | Capture (Baileys, raw messages, media)                             | **Done** (live WhatsApp test waits for the scraper number)       |
+| 2     | Text extraction and eval harness                                   | **Built** (accuracy run waits for real cases and a Gemini key)   |
+| 3     | Media extraction (vision, PDF; voice notes dropped)                | **Built** (accuracy on real flyers waits for real cases)         |
+| 4     | Dedup, price history, lifecycle                                    | **Done** (tolerances to tune on real data)                       |
+| 5     | API and owner admin (login, pairing, groups, review, names, stats) | **Done** (pairing from the browser waits for the scraper number) |
+| 6     | Multi-tenant firm dashboard                                        | Not started                                                      |
+| 7     | Chat bots and alerts                                               | Not started                                                      |
+| 8     | Hardening and deploy                                               | Not started                                                      |
+
+**Waiting on Hassan**
 
 - [ ] Scraper WhatsApp number, for the live Phase 1 test (pairing, groups, restart without loss).
 - [x] `GEMINI_API_KEY` added to the cloud environment (2026-10-26); add it to `.env` on the server too. `GROQ_API_KEY`, `OPENROUTER_API_KEY` optional fallbacks.
@@ -24,17 +35,6 @@ Regenerate them with `pnpm run docs`.
 - [x] ~~The original `primary-units-template.xlsx`~~ Committed in `packages/schema/template/` (2026-10-26); the export matches it.
 - [x] ~~Confirm: a lone "من"/"from" before a price means "starting from"~~ Confirmed by Hassan 2026-10-26.
 - [x] ~~Phase 3 vision provider~~ Gemini chosen (2026-10-26); images may be sent as they are.
-
------ | ------------------------------------------------------------- | ---------------------------------------------------------- |
-| 0 | Foundation: monorepo, config, logging, Docker, database, seed | **Done** |
-| 1 | Capture (Baileys, raw messages, media) | **Done** (live WhatsApp test waits for the scraper number) |
-| 2 | Text extraction and eval harness | **Built** (accuracy run waits for real cases and a Gemini key) |
-| 3 | Media extraction (vision, PDF; voice notes dropped) | **Built** (accuracy on real flyers waits for real cases) |
-| 4 | Dedup, price history, lifecycle | **Done** (tolerances to tune on real data) |
-| 5 | API and owner admin | Not started |
-| 6 | Multi-tenant firm dashboard | Not started |
-| 7 | Chat bots and alerts | Not started |
-| 8 | Hardening and deploy | Not started |
 
 ---
 
@@ -130,8 +130,8 @@ realestate-bot/
   apps/
     capture/   src/main.ts (wiring), src/cli.ts (groups command)
     worker/    src/main.ts (pipeline jobs), src/cli.ts (reprocess, export)
-    api/       src/app.ts (Fastify routes), src/main.ts (startup)       (Phases 5-6)
-    web/       Vite + React placeholder                                 (Phases 5-6)
+    api/       src/app.ts, src/admin-routes.ts (owner API), src/auth-routes.ts (login), src/create-owner.ts
+    web/       React admin console: src/pages/* (login, overview, WhatsApp, groups, review, names, jobs, settings)
     chatbot/   src/main.ts: skeleton service                          (Phase 7)
   packages/
     config/    env schema (Zod) and loadConfig()
@@ -146,54 +146,61 @@ realestate-bot/
     pipeline/  preprocess / classify / extract steps, entity matching, dedup/merge, lifecycle, reprocess, export
     dedup/     when two listings are the same unit; which unit a reply means; price changes
     media/     reads text in images (vision), PDFs (text layer, vision for scans) and Excel sheets
-  eval/        labeled cases, recordings, scoring and the `pnpm eval` runner
-  scripts/docs.ts           generates docs/generated/* and .env.example
+    auth/      owner login (Better Auth): sessions, password hashing, create-owner
+    admin/     what the admin console does: review, corrections, names, groups, stats, settings, eval cases
+  eval/        labeled cases, recordings, scoring, the `pnpm eval` runner and `pnpm eval:from-review`
+  scripts/docs.ts           generates docs/generated/* (env, database, template, API) and .env.example
   docs/generated/           generated reference docs (do not edit)
   docker-compose.yml        Postgres + migrate step + five services
   Dockerfile                one image for every service
   .github/workflows/ci.yml  lint, format, types, tests (with real Postgres), docs check, web build
 ```
 
-| Package          | Owns                                                                                                   | Main files                                                            | Used by                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ---------------------------------- |
-| `@reb/config`    | Environment variables: schema, defaults, validation                                                    | `src/env.ts`, `src/load.ts`                                           | db, runtime, api, scripts          |
-| `@reb/normalize` | Deterministic text normalization                                                                       | `src/text.ts`                                                         | db (seed) and, later, the pipeline |
-| `@reb/db`        | Tables, migrations, pool, seed                                                                         | `src/schema/*`, `migrations/*`, `src/seed.ts`, `seed/*`               | runtime, api, scripts              |
-| `@reb/runtime`   | Logging, health checks, service lifecycle                                                              | `src/logger.ts`, `src/health.ts`, `src/service.ts`                    | all Node apps                      |
-| `@reb/queue`     | Job queue (pg-boss): queues, payload schemas, retries                                                  | `src/queues.ts`, `src/boss.ts`                                        | capture, worker, ingest            |
-| `@reb/whatsapp`  | WhatsApp connection, login keys, message parsing, sender hashing                                       | `src/connection.ts`, `src/parse.ts`, `src/auth-store.ts`              | capture; chatbot (Phase 7)         |
-| `@reb/ingest`    | Storing messages and media, group management, queueing                                                 | `src/ingestor.ts`, `src/files.ts`, `src/groups.ts`                    | capture; api (Phase 5)             |
-| `@reb/schema`    | The listing fields, enums, model schema, template columns, Excel export                                | `src/unit.ts`, `src/extraction.ts`, `src/columns.ts`, `src/export.ts` | db, normalize, llm, pipeline, eval |
-| `@reb/llm`       | Model calls: fallback, rate limits, privacy scrub; prompts                                             | `src/client.ts`, `src/privacy.ts`, `prompts/*.ts`                     | pipeline, eval                     |
-| `@reb/pipeline`  | Processing steps, entity matching, dedup/merge and price history (apply), lifecycle, reprocess, export | `src/steps.ts`, `src/apply.ts`, `src/entities.ts`, `src/admin.ts`     | worker, eval                       |
-| `@reb/dedup`     | Same-unit rules, reply targeting, price-change detection (pure)                                        | `src/match.ts`, `src/prices.ts`                                       | pipeline                           |
-| `@reb/media`     | Text inside images (vision), PDFs (text layer, vision for scans) and Excel sheets                      | `src/describe.ts`, `src/image.ts`, `src/pdf.ts`, `src/sheet.ts`       | pipeline, eval                     |
+| Package          | Owns                                                                                                   | Main files                                                                                 | Used by                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------- |
+| `@reb/config`    | Environment variables: schema, defaults, validation                                                    | `src/env.ts`, `src/load.ts`                                                                | db, runtime, api, scripts          |
+| `@reb/normalize` | Deterministic text normalization                                                                       | `src/text.ts`                                                                              | db (seed) and, later, the pipeline |
+| `@reb/db`        | Tables, migrations, pool, seed                                                                         | `src/schema/*`, `migrations/*`, `src/seed.ts`, `seed/*`                                    | runtime, api, scripts              |
+| `@reb/runtime`   | Logging, health checks, service lifecycle                                                              | `src/logger.ts`, `src/health.ts`, `src/service.ts`                                         | all Node apps                      |
+| `@reb/queue`     | Job queue (pg-boss): queues, payload schemas, retries                                                  | `src/queues.ts`, `src/boss.ts`                                                             | capture, worker, ingest            |
+| `@reb/whatsapp`  | WhatsApp connection, login keys, message parsing, sender hashing                                       | `src/connection.ts`, `src/parse.ts`, `src/auth-store.ts`                                   | capture; chatbot (Phase 7)         |
+| `@reb/ingest`    | Storing messages and media, group management, queueing                                                 | `src/ingestor.ts`, `src/files.ts`, `src/groups.ts`                                         | capture; api (Phase 5)             |
+| `@reb/schema`    | The listing fields, enums, model schema, template columns, Excel export                                | `src/unit.ts`, `src/extraction.ts`, `src/columns.ts`, `src/export.ts`                      | db, normalize, llm, pipeline, eval |
+| `@reb/llm`       | Model calls: fallback, rate limits, privacy scrub; prompts                                             | `src/client.ts`, `src/privacy.ts`, `prompts/*.ts`                                          | pipeline, eval                     |
+| `@reb/pipeline`  | Processing steps, entity matching, dedup/merge and price history (apply), lifecycle, reprocess, export | `src/steps.ts`, `src/apply.ts`, `src/entities.ts`, `src/admin.ts`                          | worker, eval                       |
+| `@reb/dedup`     | Same-unit rules, reply targeting, price-change detection (pure)                                        | `src/match.ts`, `src/prices.ts`                                                            | pipeline                           |
+| `@reb/media`     | Text inside images (vision), PDFs (text layer, vision for scans) and Excel sheets                      | `src/describe.ts`, `src/image.ts`, `src/pdf.ts`, `src/sheet.ts`                            | pipeline, eval                     |
+| `@reb/auth`      | Owner login: Better Auth setup, sessions, password hashing, creating the owner                         | `src/auth.ts`, `src/owner.ts`                                                              | api                                |
+| `@reb/admin`     | Review and corrections, names and spellings, groups, stats, failed jobs, settings, review → eval cases | `src/review.ts`, `src/entities.ts`, `src/stats.ts`, `src/settings.ts`, `src/eval-cases.ts` | api, worker (export rate), eval    |
 
 Packages planned for later phases and not created yet: `chat-core` (Phase 7).
 
-**Dependency direction:** `apps → (runtime, ingest, pipeline) → (whatsapp, queue, llm, media, dedup, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
+**Dependency direction:** `apps → (runtime, ingest, pipeline, admin, auth) → (whatsapp, queue, llm, media, dedup, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
 
 **Library versions** (checked 2026-10-25):
 
-| Library                               | Version                          | Note                                                                   |
-| ------------------------------------- | -------------------------------- | ---------------------------------------------------------------------- |
-| Node.js                               | 24 LTS (Docker), ≥ 22.18 locally | 22.18+ runs TypeScript without flags                                   |
-| pnpm                                  | 12.15.0                          |                                                                        |
-| TypeScript                            | 6.0.3                            | 7.0 exists but typescript-eslint supports < 6.1                        |
-| drizzle-orm / drizzle-kit             | 0.45.4 / 0.31.11                 | latest stable; 1.0 is still beta                                       |
-| pg (node-postgres)                    | 8.23.1                           |                                                                        |
-| zod                                   | 4.6.7                            |                                                                        |
-| pino                                  | 10.4.0                           |                                                                        |
-| fastify                               | 5.12.7                           |                                                                        |
-| vite / react                          | 8.3.5 / 19.3.1                   |                                                                        |
-| vitest                                | 5.0.5                            |                                                                        |
-| eslint / typescript-eslint / prettier | 10.13.0 / 8.72.0 / 3.9.10        |                                                                        |
-| pg-boss                               | 12.38.0                          |                                                                        |
-| baileys                               | 7.0.0-rc14                       | npm's `latest` tag; the 6.x line is marked `legacy`. See decision log. |
-| qrcode                                | 1.5.4                            | Prints the pairing QR code in the logs                                 |
-| grammY                                | 1.46.0                           | Phase 7                                                                |
-| better-auth                           | 1.7.12                           | Phase 5                                                                |
-| exceljs                               | 4.4.0                            | Excel export                                                           |
+| Library                                      | Version                          | Note                                                                   |
+| -------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------- |
+| Node.js                                      | 24 LTS (Docker), ≥ 22.18 locally | 22.18+ runs TypeScript without flags                                   |
+| pnpm                                         | 12.15.0                          |                                                                        |
+| TypeScript                                   | 6.0.3                            | 7.0 exists but typescript-eslint supports < 6.1                        |
+| drizzle-orm / drizzle-kit                    | 0.45.4 / 0.31.11                 | latest stable; 1.0 is still beta                                       |
+| pg (node-postgres)                           | 8.23.1                           |                                                                        |
+| zod                                          | 4.6.7                            |                                                                        |
+| pino                                         | 10.4.0                           |                                                                        |
+| fastify                                      | 5.12.7                           |                                                                        |
+| vite / react                                 | 8.3.5 / 19.3.1                   |                                                                        |
+| vitest                                       | 5.0.5                            |                                                                        |
+| eslint / typescript-eslint / prettier        | 10.13.0 / 8.72.0 / 3.9.10        |                                                                        |
+| pg-boss                                      | 12.38.0                          |                                                                        |
+| baileys                                      | 7.0.0-rc14                       | npm's `latest` tag; the 6.x line is marked `legacy`. See decision log. |
+| qrcode                                       | 1.5.4                            | Pairing QR code in the logs and, as an image, in the admin console     |
+| grammY                                       | 1.46.0                           | Phase 7                                                                |
+| better-auth                                  | 1.7.13                           | Owner login                                                            |
+| @fastify/swagger / fastify-type-provider-zod | 9.9.2 / 7.0.0                    | Route schemas from Zod; the API reference is generated from them       |
+| react-router / @tanstack/react-query         | 8.4.0 / 5.104.1                  | Admin console                                                          |
+| tailwindcss                                  | 4.3.3                            | Admin console styling (hand-written components, no UI library)         |
+| exceljs                                      | 4.4.0                            | Excel export                                                           |
 
 ## 4. Data model
 
@@ -464,15 +471,25 @@ Among several matches, the closest area wins. When unsure, the rules say "differ
 
 ## 7. Interfaces
 
-**API routes (Phase 0)**
+**Admin console (Phase 5)** at `PUBLIC_URL` (http://localhost:4173 by default). The owner signs in with e-mail and password; there is no public sign-up.
 
-| Method | Path      | Response                                                                                                    |
-| ------ | --------- | ----------------------------------------------------------------------------------------------------------- |
-| GET    | `/health` | `200 {"status":"ok","service":"api","checks":{"database":"ok"}}`, or `503` with the failing check's message |
+| Page              | What it does                                                                                                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview          | Messages per day, how many were read successfully, model calls and cost, units waiting for review, units by status                                                                                                              |
+| WhatsApp          | Connection state of each number; the pairing QR code (or pairing code) while waiting, refreshed every 3 seconds                                                                                                                 |
+| Groups            | Every group the scraper number is in: watch / stop watching, who posts there (developer or brokers), messages saved, last message                                                                                               |
+| Review            | Flagged units one at a time: the original message, flyer or PDF and the text read from it on the left; every field of the unit on the right. Save, approve (saves too) or "Not a listing". Every change is kept as a correction |
+| Places & names    | Projects, developers and areas with all their spellings: add or remove spellings, rename, add new ones, merge a duplicate into the right one                                                                                    |
+| Failed jobs       | Pipeline steps that failed all automatic retries, with the error and a Retry button                                                                                                                                             |
+| Settings & export | The USD→EGP rate; download the Primary Units Excel                                                                                                                                                                              |
+
+**API.** Every route, with parameters, is listed in [docs/generated/api.md](docs/generated/api.md) (generated from the route schemas). In short: `GET /health`; `/api/auth/*` (Better Auth: sign in, sign out, session); `/api/admin/*` (owner only: me, whatsapp, groups, review, units, media, entities, aliases, stats, jobs, settings, export.xlsx). The browser only talks to the web address; the web server passes `/api` on to the API (`API_URL`), so the login cookie belongs to one address and no cross-site requests are needed.
+
+Rules every admin route follows: a signed-in **owner** session is required (401 otherwise, 403 for other roles); a change sent from a page that isn't `PUBLIC_URL` is refused (403); every change is written to `audit_log` with who, what and the IP address; input is checked against the same Zod schema as the pipeline, so a correction can't store an impossible value.
 
 Capture, worker and chatbot each serve the same `GET /health` on `HEALTH_PORT` (8080 inside Docker; not published to the host). Capture's includes a `whatsapp` check, which fails once the connection has been down for more than 5 minutes (waiting for pairing counts as healthy).
 
-**Groups command (Phase 1, until the admin page in Phase 5)**
+**Groups command (Phase 1; the Groups page does the same)**
 
 ```sh
 docker compose exec capture node apps/capture/src/cli.ts groups list
@@ -491,11 +508,18 @@ docker compose exec worker node apps/worker/src/cli.ts export --out /tmp/units.x
 docker compose cp worker:/tmp/units.xlsx ./units.xlsx
 ```
 
-`export` writes active units (all units with `--all`) in the Primary Units template layout. USD prices are converted with `--usd-egp-rate` or `USD_EGP_RATE`; without a rate, an export containing USD units stops with an error. Locally: `pnpm --filter @reb/worker pipeline export --out units.xlsx`.
+`export` writes active units (all units with `--all`) in the Primary Units template layout. USD prices are converted with `--usd-egp-rate`, else the rate saved on the Settings page, else `USD_EGP_RATE`; without a rate, an export containing USD units stops with an error. Locally: `pnpm --filter @reb/worker pipeline export --out units.xlsx`.
 
-**Web (Phase 0):** a placeholder page at http://localhost:4173.
+**Owner commands (Phase 5)**
 
-_(Phase 5)_ Owner admin pages. _(Phase 6)_ Firm dashboard. _(Phase 7)_ Chat bot commands with sample Arabic and English queries.
+```sh
+docker compose exec -it api node apps/api/src/create-owner.ts --email you@example.com --name Hassan   # type the password twice
+pnpm eval:from-review          # reviewed messages → eval/cases/review-message-<id>/ (on your machine)
+```
+
+Running `create-owner` again for the same e-mail resets the password.
+
+_(Phase 6)_ Firm dashboard. _(Phase 7)_ Chat bot commands with sample Arabic and English queries.
 
 ## 8. Configuration
 
@@ -537,6 +561,8 @@ Edit `.env`:
 
 - `POSTGRES_PASSWORD`: a long random value (`openssl rand -hex 24` makes one). Put the same password in `DATABASE_URL`. It is only applied the first time the database volume is created (see runbook "Database password rejected").
 - `SENDER_HASH_SALT`: the output of `openssl rand -hex 32`. **Never change it later**: the same sender would get a different hash. Keep a copy with your other secrets.
+- `AUTH_SECRET`: another `openssl rand -hex 32`. It signs login sessions; changing it signs everyone out.
+- `PUBLIC_URL`: the address you open the admin console at. Leave `http://localhost:4173` on your own machine; on the server it becomes the `https://` address (Phase 8).
 - `WA_PAIRING_PHONE` (optional): the scraper's own number, digits only (e.g. `201001234567`), if you prefer typing an 8-character code over scanning a QR code.
 
 **5. Start everything**
@@ -582,53 +608,37 @@ To include the database integration tests, point them at the running Postgres (t
 TEST_DATABASE_URL=postgres://reb:<password>@localhost:5432/reb pnpm test
 ```
 
-**8. Pair the scraper number**
+**8. Create your admin login**
+
+```sh
+docker compose exec -it api node apps/api/src/create-owner.ts --email you@example.com --name Hassan
+```
+
+Type a password of at least 10 characters (twice; nothing shows while typing). Then open http://localhost:4173 and sign in. On a server, reach it through an SSH tunnel until Phase 8 adds HTTPS: `ssh -L 4173:localhost:4173 you@server`, then open http://localhost:4173 on your own computer.
+
+**9. Pair the scraper number** (from the browser)
 
 The server needs outbound access to `web.whatsapp.com` and `*.whatsapp.net` (normal on a VPS).
 
-```sh
-docker compose logs -f capture
-```
+Open **WhatsApp** in the admin console. A QR code appears within a few seconds and refreshes by itself. On the scraper phone: WhatsApp → Settings → Linked devices → Link a device → scan. If `WA_PAIRING_PHONE` is set, an 8-character code is shown instead: Link a device → _Link with phone number instead_ → type the code. The badge turns **Connected**.
 
-A QR code is printed (it refreshes about every 20 s). On the scraper phone: WhatsApp → Settings → Linked devices → Link a device → scan. If `WA_PAIRING_PHONE` is set, an 8-character code is logged instead: Link a device → _Link with phone number instead_ → type the code.
+(Without the browser: `docker compose logs -f capture` prints the same QR code.) The login is saved in the database; restarts don't need pairing again.
 
-Expected log lines: `WhatsApp asked for a restart (normal after pairing)`, then `WhatsApp connected`.
+**10. Choose groups** (from the browser)
 
-```sh
-docker compose exec postgres psql -U reb -d reb -c "select state, last_connected_at from wa_connections"
-#  state |      last_connected_at
-#  open  | 2026-...
-```
+Open **Groups**, tick the groups to watch and set who posts in each (developer or brokers). Within 30 seconds new messages from them are stored, and the message count goes up. (The command line still works: chapter 7.)
 
-The login is saved in the database; restarts don't need pairing again.
-
-**9. Choose groups**
-
-```sh
-docker compose exec capture node apps/capture/src/cli.ts groups list
-docker compose exec capture node apps/capture/src/cli.ts groups watch 3 7 12
-docker compose exec capture node apps/capture/src/cli.ts groups source developer 3 7
-docker compose exec capture node apps/capture/src/cli.ts groups source broker 12
-```
-
-Within 30 s, new messages from those groups are stored:
-
-```sh
-docker compose exec postgres psql -U reb -d reb -c "select id, sent_at, media_type, left(text, 60) from messages order by id desc limit 5"
-docker compose exec postgres psql -U reb -d reb -c "select status, count(*) from media_files group by 1"
-```
-
-**10. Turn on extraction (Gemini, Groq, OpenRouter)**
+**11. Turn on extraction (Gemini, Groq, OpenRouter)**
 
 1. Create API keys (all have free tiers): Gemini at aistudio.google.com → Get API key; Groq at console.groq.com → API Keys; OpenRouter at openrouter.ai → Keys. Gemini alone is enough to start; the other two are fallbacks.
 2. Add them to `.env`: `GEMINI_API_KEY=...`, `GROQ_API_KEY=...`, `OPENROUTER_API_KEY=...` (never commit or paste them anywhere else).
-3. Set the exchange rate for exports: `USD_EGP_RATE=50` (update it by hand when it changes).
+3. Set the exchange rate for exports on the **Settings & export** page (or `USD_EGP_RATE=50` in `.env` as a fallback).
 4. `docker compose up -d` (restarts the worker with the key). Expected log: `Pipeline ready`.
 5. Messages stored earlier without a key are already waiting in the queue and are processed now.
 
-**11. Confirm a message flows end to end**
+**12. Confirm a message flows end to end**
 
-Post a listing in a watched group (or wait for one), then:
+Post a listing in a watched group (or wait for one). The **Overview** page counts it within a minute; flagged units appear under **Review**; **Settings & export** downloads the Excel. From the command line:
 
 ```sh
 docker compose exec postgres psql -U reb -d reb -c "select id, status, error from messages order by id desc limit 5"
@@ -638,19 +648,23 @@ docker compose exec worker node apps/worker/src/cli.ts export --out /tmp/units.x
 
 **Flyers and PDFs:** post one in a watched group; after about 2 minutes (the caption window) its units appear. Check what was read: `docker compose exec postgres psql -U reb -d reb -c "select message_id, derived_method, left(derived_text, 200) from media_files order by id desc limit 5"`.
 
-**12. Run the first eval** (chapter 12): `pnpm eval` on your machine with the key in `.env`, or `docker compose exec worker node eval/run.ts`.
+**13. Run the first eval** (chapter 12): `pnpm eval` on your machine with the key in `.env`, or `docker compose exec worker node eval/run.ts`.
 
-**Later steps:** create the owner account _(Phase 5)_ · pairing and group choice from the browser _(Phase 5)_ · pair the query bot and create the Telegram bot _(Phase 7)_ · create the first firm _(Phase 6)_.
+**Later steps:** pair the query bot and create the Telegram bot _(Phase 7)_ · create the first firm _(Phase 6)_.
 
 ## 10. Daily operations
 
-**Adding or correcting entities and aliases (until the admin UI in Phase 5):** edit `packages/db/seed/*.ts`, run `pnpm test` to validate, then `pnpm db:seed` (or `docker compose up -d --build`, which re-runs the seed). The seed only adds and updates; it never deletes.
+**Every morning (5 minutes):** open **Overview** (did messages come in? any failures?), then **Review** until it is empty. Check **Failed jobs** if the Overview shows failures.
+
+**Reviewing a unit:** compare the message or flyer on the left with the fields on the right. Changed fields turn blue. Prices are in whole pounds (or dollars). _Approve_ when it is right (with or without changes), _Not a listing_ when it isn't a unit for sale (it is withdrawn from exports), _Skip_ to come back later. Every decision is kept and becomes an accuracy test case (`pnpm eval:from-review`, chapter 12).
+
+**Adding or correcting names and spellings:** **Places & names**. Add a spelling when a project keeps coming in unrecognised (the review reason says "project name unclear"); merge when the same place exists twice. Bulk changes can still go in `packages/db/seed/*.ts` (`pnpm test`, then `docker compose up -d --build`); the seed only adds and updates, never deletes.
 
 **Checking the system:** `docker compose ps` (all healthy?) and `docker compose logs -f --since 10m <service>`.
 
-**Adding or removing groups to watch:** see chapter 7 (groups command). The scraper number must first be added to the group from a phone. To find a new group's id, run `groups list`: it is listed as soon as the number joins.
+**Adding or removing groups to watch:** the **Groups** page. The scraper number must first be added to the group from a phone; the group then appears on the page, unwatched.
 
-**Checking what was extracted (until the review queue in Phase 5)**
+**Checking what was extracted from the command line**
 
 ```sh
 # messages by status today
@@ -659,7 +673,9 @@ docker compose exec postgres psql -U reb -d reb -c "select status, count(*) from
 docker compose exec postgres psql -U reb -d reb -c "select id, unit_type, min_price/100 as price, review_reasons from units where needs_review order by id desc limit 20"
 ```
 
-**Exporting:** see the worker command line in chapter 7.
+**Exporting:** **Settings & export** → Download, or the worker command line in chapter 7.
+
+**Who did what:** `docker compose exec postgres psql -U reb -d reb -c "select created_at, action, target, details, ip_address from audit_log order by id desc limit 30"` (sign-ins, failed sign-ins, every admin change).
 
 **After changing a prompt or the models:** run `pnpm eval` first; if accepted, `reprocess` the messages you want redone.
 
@@ -683,7 +699,7 @@ docker compose exec postgres psql -U reb -d reb -c "select state, last_message_a
 docker compose exec postgres psql -U reb -d reb -c "select name, last_message_at from wa_groups where watched order by last_message_at desc nulls last"
 ```
 
-_(Phase 5)_ Review queue, groups, stats. _(Phase 6)_ Onboarding and offboarding firms, exports.
+_(Phase 6)_ Onboarding and offboarding firms, exports.
 
 ## 11. Runbooks
 
@@ -730,7 +746,7 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 **Number logged out or banned (`state = logged_out`, log: "WhatsApp logged this number out")**
 
 - Cause: the device was unlinked from the phone, or WhatsApp banned the number.
-- Capture has already cleared the old keys and is printing a new QR code. If the phone still works, pair again (setup step 8).
+- Capture has already cleared the old keys and shows a new QR code on the **WhatsApp** page. If the phone still works, pair again (setup step 9).
 - If the number is banned: get a new dedicated number, pair it, and add it to the same groups. Group ids stay the same as long as the groups do; re-check `groups list` and re-watch any new group rows.
 
 **Media files stuck in `pending` or many `failed`**
@@ -756,7 +772,7 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 - `rate_limited` on Gemini every day around the same time: its free daily quota is used up; Groq and OpenRouter take over until it resets.
 - `error` with `HTTP 404` or `model_not_found`: the model was retired. Change `LLM_*_MODELS` to a current model.
 - `invalid` repeatedly: the model ignores the schema; check the `raw_output`, consider another model.
-- Failed messages are retried automatically 6 times. Afterwards: `reprocess --status failed`.
+- Failed messages are retried automatically 6 times. Afterwards: **Failed jobs** → Retry, or `reprocess --status failed`.
 
 **Job backlog (messages pile up in `processing`)**
 
@@ -765,7 +781,7 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 
 **Export fails with "A unit is priced in USD but no USD→EGP rate was given"**
 
-- Set `USD_EGP_RATE` in `.env` (then `docker compose up -d`) or pass `--usd-egp-rate`.
+- Set the rate on **Settings & export** (or `USD_EGP_RATE` in `.env`, or `--usd-egp-rate`).
 
 **Flyers or PDFs not producing units**
 
@@ -778,7 +794,7 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 **The same unit shows up twice (missed duplicate)**
 
 - Usually one post lacked the project, the area or the unit type, or the areas differ by more than the tolerance. Check both rows: `select id, project_id, unit_type, bedrooms, min_area, max_area, unit_code from units where id in (..)`.
-- If many duplicates differ only slightly in area, raise `DEDUP_AREA_TOLERANCE_PERCENT` (then `docker compose up -d`) and `reprocess` the affected messages. Merging single pairs by hand comes with the review page (Phase 5).
+- If many duplicates differ only slightly in area, raise `DEDUP_AREA_TOLERANCE_PERCENT` (then `docker compose up -d`) and `reprocess` the affected messages. Merging two units by hand is not in the console yet.
 
 **Two different units were merged (wrong merge)**
 
@@ -788,11 +804,29 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 
 - `select id, error from messages where error like 'price_update%' or error like 'sold%'`. "no matching unit found": the original listing wasn't captured or didn't match. "does not say which": the reply was ambiguous and the units are flagged for review.
 
+**Can't sign in to the admin console**
+
+- "Wrong e-mail or password": reset it with `create-owner` (chapter 7); the same e-mail keeps its account.
+- "Too many attempts": 5 tries per minute per address; wait a minute.
+- Signed in, but sent straight back to the login page: the page address doesn't match `PUBLIC_URL` (for example 127.0.0.1 vs localhost). Open exactly the `PUBLIC_URL` address, or change it in `.env` and `docker compose up -d`.
+- Every page says `Sign in first` after a restart: `AUTH_SECRET` changed, which signs everyone out. Sign in again.
+
+**The WhatsApp page shows no QR code**
+
+- State **Reconnecting** with a timeout or `ENOTFOUND` reason: the server can't reach WhatsApp (see "WhatsApp disconnected").
+- No card at all: capture isn't running (`docker compose ps capture`).
+
+**A flyer doesn't show on the Review page ("File not available")**
+
+- The download failed or the file expired on WhatsApp (`media_files.status`). The text read from it, if any, is still shown.
+
 _(Later phases)_ cost spike, restoring a backup, rotating secrets.
 
 ## 12. Evaluation
 
 The eval set is the accuracy gate: prompts and models change only when the numbers say so.
+
+**Cases from reviews (Phase 5).** Every message whose units you corrected, approved or rejected on the Review page can become a case: `pnpm eval:from-review` writes `eval/cases/review-message-<id>/` (the message with contact details removed, the reply it answered, the flyer or PDF, and `expected.json` with the units as you left them). Existing folders are kept unless `--force`. Read each new case once before committing: a unit merged from several messages may carry details that a different message added.
 
 **A case** is a folder in `eval/cases/<id>/`:
 
@@ -856,29 +890,32 @@ pnpm vitest --watch                           # re-run on save
 TEST_DATABASE_URL=postgres://reb:<pw>@localhost:5432/reb pnpm test   # plus database integration tests
 ```
 
-| Suite                                                       | Covers                                                                                                                                                                                                                                                                                                                                                             | Needs                                                                                           |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `packages/config/test`                                      | defaults, coercion, readable errors                                                                                                                                                                                                                                                                                                                                | nothing                                                                                         |
-| `packages/normalize/test`                                   | every normalization rule, Arabic and mixed-script                                                                                                                                                                                                                                                                                                                  | nothing                                                                                         |
-| `packages/db/test/seed-data.test.ts`                        | seed data has no duplicates, bad references or ambiguous aliases                                                                                                                                                                                                                                                                                                   | nothing                                                                                         |
-| `packages/db/test/client.test.ts`                           | a lost connection does not crash the process                                                                                                                                                                                                                                                                                                                       | nothing                                                                                         |
-| `packages/db/test/migrate-seed.integration.test.ts`         | migrations on a clean database, rerun is a no-op, seed twice adds nothing, alias lookup, trigram lookup, constraints                                                                                                                                                                                                                                               | `TEST_DATABASE_URL`. Creates and drops a throwaway `reb_test_*` database. Skipped when not set. |
-| `packages/runtime/test`                                     | health server 200/503/404, log redaction                                                                                                                                                                                                                                                                                                                           | nothing                                                                                         |
-| `apps/api/test`                                             | `/health` 200 and 503 (database mocked)                                                                                                                                                                                                                                                                                                                            | nothing                                                                                         |
-| `packages/config/test` (Phase 1 part)                       | per-service required variables (`SENDER_HASH_SALT` for capture), salt length, pairing phone format                                                                                                                                                                                                                                                                 | nothing                                                                                         |
-| `packages/whatsapp/test/parse.test.ts`                      | text, replies, forwarding, images, PDFs with captions, voice notes, disappearing/view-once, edits, deletions, everything ignored, LID-preferred sender hashing                                                                                                                                                                                                     | nothing                                                                                         |
-| `packages/whatsapp/test/connection.integration.test.ts`     | QR and pairing-code flow, open/close states, backoff timings, restart-required, logged-out key wipe, connection replaced, in-order delivery, retry during DB outage, health check; auth store round trip with binary keys                                                                                                                                          | `TEST_DATABASE_URL`; a fake WhatsApp socket                                                     |
-| `packages/ingest/test/ingestor.integration.test.ts`         | store + queue once, duplicates after restart, unwatched groups, replies/edits/deletions, media hashed and stored once, download retries and give-up, size limit (announced and actual), crash mid-download recovery, stragglers, and a raw-message-to-database run proving no phone number or name is stored                                                       | `TEST_DATABASE_URL`; fake downloads                                                             |
-| `packages/schema/test`                                      | the 26 template headers in order, export rows, USD conversion and missing-rate error, ready-to-move, strict JSON schema at every level                                                                                                                                                                                                                             | nothing (template-file comparison skipped until the file is committed)                          |
-| `packages/normalize/test/numbers.test.ts`, `fields.test.ts` | every number, range, currency, delivery, installment, floor and room rule in chapter 6                                                                                                                                                                                                                                                                             | nothing                                                                                         |
-| `packages/normalize/test/unit.test.ts`                      | raw → unit, no-invention drops, evidence check, bare prices, USD, down-payment amount → percent, ready to move, unknown and fuzzy names, conflicts, category inference, price per m²                                                                                                                                                                               | nothing                                                                                         |
-| `packages/llm/test`                                         | phone/e-mail/mention scrubbing, model lists, rate limiter, strict request shape, fallback on 429/timeout, retry with validation error, refusing personal data                                                                                                                                                                                                      | a fake HTTP layer                                                                               |
-| `packages/pipeline/test`                                    | preprocess skips, keyword filter, classification, multi-unit extraction to rows, Excel export headers and values, **no phone number in any stored model request**, idempotent re-extraction, reply context, entity matching (exact/contained/fuzzy)                                                                                                                | `TEST_DATABASE_URL`; a fake model                                                               |
-| `eval/test`                                                 | eval scoring: tolerance, unit pairing, missing units, totals                                                                                                                                                                                                                                                                                                       | nothing                                                                                         |
-| `packages/dedup/test`                                       | every matching rule and tolerance edge (5% gap, 3 m² floor, price fallback, codes, bedrooms), closest-match choice, reply targeting, price-change detection                                                                                                                                                                                                        | nothing                                                                                         |
-| `packages/media/test`                                       | PDF text layer vs vision per page, page limit, failed pages, Excel to text, image resizing, transcription request (image sent, image data kept out of the log, `[no text]`), vision fallback, skipped types                                                                                                                                                        | nothing (a real PDF fixture; fake vision API)                                                   |
-| `packages/pipeline/test/media.integration.test.ts`          | **a price-sheet image with many units gives one row per unit type**; caption linking and the delayed classification; **cost and latency of media calls recorded**; PDF without model calls; Excel; vision retry then caption on the last attempt; file never downloaded; empty image; video caption; replies under a flyer                                         | `TEST_DATABASE_URL`; files on disk; fake models                                                 |
-| `packages/pipeline/test/dedup.integration.test.ts`          | **same unit in three groups → one unit, three sources**; **reply with a new price → price row, not a new unit**; units kept apart; repost at a new price; late older message; sold reply and reprocessing it; ambiguous reply flagged; reprocessing never duplicates and retracting the last source removes the unit; no project → no merge; stale job and revival | `TEST_DATABASE_URL`                                                                             |
+| Suite                                                       | Covers                                                                                                                                                                                                                                                                                                                                                                                                                                         | Needs                                                                                           |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `packages/config/test`                                      | defaults, coercion, readable errors                                                                                                                                                                                                                                                                                                                                                                                                            | nothing                                                                                         |
+| `packages/normalize/test`                                   | every normalization rule, Arabic and mixed-script                                                                                                                                                                                                                                                                                                                                                                                              | nothing                                                                                         |
+| `packages/db/test/seed-data.test.ts`                        | seed data has no duplicates, bad references or ambiguous aliases                                                                                                                                                                                                                                                                                                                                                                               | nothing                                                                                         |
+| `packages/db/test/client.test.ts`                           | a lost connection does not crash the process                                                                                                                                                                                                                                                                                                                                                                                                   | nothing                                                                                         |
+| `packages/db/test/migrate-seed.integration.test.ts`         | migrations on a clean database, rerun is a no-op, seed twice adds nothing, alias lookup, trigram lookup, constraints                                                                                                                                                                                                                                                                                                                           | `TEST_DATABASE_URL`. Creates and drops a throwaway `reb_test_*` database. Skipped when not set. |
+| `packages/runtime/test`                                     | health server 200/503/404, log redaction                                                                                                                                                                                                                                                                                                                                                                                                       | nothing                                                                                         |
+| `apps/api/test`                                             | `/health` 200 and 503 (database mocked)                                                                                                                                                                                                                                                                                                                                                                                                        | nothing                                                                                         |
+| `packages/auth/test`                                        | owner created with a hashed password, sign-in sets an http-only cookie, wrong password 401, no public sign-up, password reset keeps one account                                                                                                                                                                                                                                                                                                |
+| `packages/admin/test`                                       | review queue never includes sender details; a correction updates the unit, records each changed field and fixes the price row; reject withdraws; impossible values refused; **review corrections become eval cases**; aliases, rename, merge moves units/projects/spellings; settings; stats; QR code as SVG                                                                                                                                   |
+| `apps/api/test/admin.integration.test.ts`                   | real sign-in through the API; every admin route refuses without a session and for non-owners; sign-ins and failed sign-ins audited; **password guessing limited, also with a forged X-Forwarded-For**; changes from another site refused; **choose groups**; **review a flagged unit with its flyer**; media never served outside the media folder; names; USD rate and Excel download; a real failed pg-boss job listed and retried; sign-out |
+| `packages/config/test` (Phase 1 part)                       | per-service required variables (`SENDER_HASH_SALT` for capture), salt length, pairing phone format                                                                                                                                                                                                                                                                                                                                             | nothing                                                                                         |
+| `packages/whatsapp/test/parse.test.ts`                      | text, replies, forwarding, images, PDFs with captions, voice notes, disappearing/view-once, edits, deletions, everything ignored, LID-preferred sender hashing                                                                                                                                                                                                                                                                                 | nothing                                                                                         |
+| `packages/whatsapp/test/connection.integration.test.ts`     | QR and pairing-code flow, open/close states, backoff timings, restart-required, logged-out key wipe, connection replaced, in-order delivery, retry during DB outage, health check; auth store round trip with binary keys                                                                                                                                                                                                                      | `TEST_DATABASE_URL`; a fake WhatsApp socket                                                     |
+| `packages/ingest/test/ingestor.integration.test.ts`         | store + queue once, duplicates after restart, unwatched groups, replies/edits/deletions, media hashed and stored once, download retries and give-up, size limit (announced and actual), crash mid-download recovery, stragglers, and a raw-message-to-database run proving no phone number or name is stored                                                                                                                                   | `TEST_DATABASE_URL`; fake downloads                                                             |
+| `packages/schema/test`                                      | the 26 template headers in order, export rows, USD conversion and missing-rate error, ready-to-move, strict JSON schema at every level                                                                                                                                                                                                                                                                                                         | nothing (template-file comparison skipped until the file is committed)                          |
+| `packages/normalize/test/numbers.test.ts`, `fields.test.ts` | every number, range, currency, delivery, installment, floor and room rule in chapter 6                                                                                                                                                                                                                                                                                                                                                         | nothing                                                                                         |
+| `packages/normalize/test/unit.test.ts`                      | raw → unit, no-invention drops, evidence check, bare prices, USD, down-payment amount → percent, ready to move, unknown and fuzzy names, conflicts, category inference, price per m²                                                                                                                                                                                                                                                           | nothing                                                                                         |
+| `packages/llm/test`                                         | phone/e-mail/mention scrubbing, model lists, rate limiter, strict request shape, fallback on 429/timeout, retry with validation error, refusing personal data                                                                                                                                                                                                                                                                                  | a fake HTTP layer                                                                               |
+| `packages/pipeline/test`                                    | preprocess skips, keyword filter, classification, multi-unit extraction to rows, Excel export headers and values, **no phone number in any stored model request**, idempotent re-extraction, reply context, entity matching (exact/contained/fuzzy)                                                                                                                                                                                            | `TEST_DATABASE_URL`; a fake model                                                               |
+| `eval/test`                                                 | eval scoring: tolerance, unit pairing, missing units, totals                                                                                                                                                                                                                                                                                                                                                                                   | nothing                                                                                         |
+| `packages/dedup/test`                                       | every matching rule and tolerance edge (5% gap, 3 m² floor, price fallback, codes, bedrooms), closest-match choice, reply targeting, price-change detection                                                                                                                                                                                                                                                                                    | nothing                                                                                         |
+| `packages/media/test`                                       | PDF text layer vs vision per page, page limit, failed pages, Excel to text, image resizing, transcription request (image sent, image data kept out of the log, `[no text]`), vision fallback, skipped types                                                                                                                                                                                                                                    | nothing (a real PDF fixture; fake vision API)                                                   |
+| `packages/pipeline/test/media.integration.test.ts`          | **a price-sheet image with many units gives one row per unit type**; caption linking and the delayed classification; **cost and latency of media calls recorded**; PDF without model calls; Excel; vision retry then caption on the last attempt; file never downloaded; empty image; video caption; replies under a flyer                                                                                                                     | `TEST_DATABASE_URL`; files on disk; fake models                                                 |
+| `packages/pipeline/test/dedup.integration.test.ts`          | **same unit in three groups → one unit, three sources**; **reply with a new price → price row, not a new unit**; units kept apart; repost at a new price; late older message; sold reply and reprocessing it; ambiguous reply flagged; reprocessing never duplicates and retracting the last source removes the unit; no project → no merge; stale job and revival                                                                             | `TEST_DATABASE_URL`                                                                             |
 
 No test calls WhatsApp, Telegram or a paid API. WhatsApp is replaced by a fake socket (connection tests) and hand-built raw messages (parser tests). The model API is replaced by a fake HTTP layer returning fixed answers (client and pipeline tests), and `pnpm eval --replay` replays saved answers.
 
@@ -914,7 +951,17 @@ VPS setup, domain and Caddy (HTTPS), daily off-server backups with a tested rest
 - Personal names typed inside a post (signatures) are not detected and may be sent.
 - `extraction_runs.request` stores what was sent (already scrubbed), never the API key.
 
-_(Phase 6)_ Firm isolation with tests on every route, and the audit log. **Law 151 of 2020:** sender names and phone numbers are personal data; Hassan should get legal advice before charging firms (open decision).
+**Phase 5:**
+
+- Owner login by e-mail and password (Better Auth). Passwords are hashed (scrypt); public sign-up is off; the owner is created from the server's command line only.
+- Session in an http-only, SameSite=Lax cookie (Secure when `PUBLIC_URL` is https), 7 days, signed with `AUTH_SECRET`.
+- 5 sign-in attempts per minute per IP address. The IP is the one our own web server adds, so a forged `X-Forwarded-For` doesn't help.
+- Admin changes are accepted only from pages served at `PUBLIC_URL` (Origin check, on top of the SameSite cookie).
+- `audit_log` records sign-ins, failed sign-ins (with the e-mail typed, never the password) and every admin change.
+- The review page never shows who posted a message. Media files are served only by id, only from `MEDIA_DIR`, with `nosniff` and a restrictive content security policy; the API mounts the media volume read-only.
+- Until Phase 8 adds HTTPS, the console is reachable only from the server itself (ports bound to 127.0.0.1); use an SSH tunnel.
+
+_(Phase 6)_ Firm isolation with tests on every route. **Law 151 of 2020:** sender names and phone numbers are personal data; Hassan should get legal advice before charging firms (open decision).
 
 ## 16. Troubleshooting FAQ
 
@@ -1023,3 +1070,9 @@ Docker Hub's anonymous pull limit. Run `docker login`, or wait and retry.
 | 2026-10-26 | **On the last vision retry, go on with the caption**                                                                                                                                                                                                                                                                                                                                                                                                                                          | A listing's caption is better than losing the message                                                                                                                                                                               | Failing the message                                              |
 | 2026-10-26 | **Videos and Word documents not processed**                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Not in scope (videos) or rare (Word); skipped with a reason so they can be added later                                                                                                                                              |                                                                  |
 | 2026-10-26 | Call log stores **"[NN KB image omitted]"** instead of image data                                                                                                                                                                                                                                                                                                                                                                                                                             | Images would bloat `extraction_runs`                                                                                                                                                                                                | Storing images twice                                             |
+| 2026-10-26 | **Better Auth 1.7.13** for owner login, e-mail and password only, sign-up disabled                                                                                                                                                                                                                                                                                                                                                                                                            | Sessions, hashing and rate limits done right; its tables live in our Postgres via the Drizzle adapter; firm users (Phase 6) reuse it                                                                                                | Lucia (deprecated), hand-written sessions                        |
+| 2026-10-26 | The **browser talks only to the web server**, which passes `/api` to the API                                                                                                                                                                                                                                                                                                                                                                                                                  | One address: the session cookie needs no cross-site settings and no CORS                                                                                                                                                            | Exposing the API on its own port                                 |
+| 2026-10-26 | **Hand-written components with Tailwind**, no component library                                                                                                                                                                                                                                                                                                                                                                                                                               | Seven pages; a library would be more code to keep up than the pages                                                                                                                                                                 | shadcn/ui generator, MUI                                         |
+| 2026-10-26 | **The USD rate is set in the admin console** (`settings` table); `USD_EGP_RATE` is only a fallback                                                                                                                                                                                                                                                                                                                                                                                            | Hassan changes it without touching the server                                                                                                                                                                                       | Environment variable only                                        |
+| 2026-10-26 | A **reviewed message becomes an eval case** with the units as the owner left them; rejected units are dropped                                                                                                                                                                                                                                                                                                                                                                                 | Every review improves the accuracy test set at no extra effort                                                                                                                                                                      | Separate labeling tool                                           |
+| 2026-10-26 | A **price correction fixes the latest price-history row** instead of adding one                                                                                                                                                                                                                                                                                                                                                                                                               | A misread price is an extraction error, not a market price change                                                                                                                                                                   | New history row                                                  |

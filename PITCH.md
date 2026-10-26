@@ -2,7 +2,7 @@
 
 **Every primary-market listing posted in Egypt's developer and broker WhatsApp groups, turned into one clean, searchable, always-current database.**
 
-_Last updated: 26 October 2026 · Status: core system built and tested; first live run with real groups is next._
+_Last updated: 26 October 2026 · Status: core system and operator console built and tested; first live run with real groups is next._
 
 ---
 
@@ -79,9 +79,23 @@ Messages are saved the moment they arrive, before any processing. If the AI is s
 - Changing provider is a settings change, not a rebuild, so the business is never tied to one vendor's pricing.
 - The whole system runs on **one small server**, with one database that holds everything and is easy to back up.
 
-### 11. Built to be operated and trusted
+### 11. Run from a browser, no technical staff needed
 
-- **More than 350 automated tests** check the system on every change.
+The operator runs everything from a simple web console, without touching a server:
+
+- **Connect the WhatsApp number** by scanning a QR code on screen.
+- **Choose which groups to read** with a tick box, and mark each as a developer or broker group.
+- **Check flagged listings side by side**: the original post or flyer on the left, the extracted listing on the right. Fix a field, approve, or throw it out, in a few seconds.
+- **Every correction makes the system more accurate to test**: each reviewed listing automatically becomes a new item in the accuracy test set, so the more the operator reviews, the better the system is measured.
+- **Teach it new names**: add a new project or a new spelling ("ميفيدا", "MV") and future posts using it are recognised; merge duplicates with one click.
+- **See the health of the business at a glance**: messages read per day, success rate, AI cost, listings waiting for review, and anything that failed, with a retry button.
+- **Set the dollar rate and download the Excel** export from the same place.
+
+Access is protected by a password login with attempt limits, and every sign-in and change is recorded in an audit log.
+
+### 12. Built to be operated and trusted
+
+- **Nearly 380 automated tests** check the system on every change, including a full sign-in-and-review run through the console.
 - A complete operator manual covers setup from zero, daily operations and what to do when something goes wrong.
 - Every AI decision is logged (what was asked, what came back, cost and time), so any listing can be traced back to its source message.
 
@@ -105,10 +119,10 @@ Messages are saved the moment they arrive, before any processing. If the AI is s
 | Foundation                              | Secure, documented base; market knowledge of cities, developers and projects          | ✅ Built and tested                                                          |
 | Capture                                 | Reads the chosen WhatsApp groups and never loses a message                            | ✅ Built and tested · live run waits for the dedicated number                |
 | Understanding listings                  | Turns text listings into structured data in the firm's template, with accuracy checks | ✅ Built and tested · accuracy figures after the first real-message test set |
-| Flyers and PDFs                         | Reads images, price-sheet screenshots and PDF brochures                               | ⏭ Next                                                                       |
+| Flyers and PDFs                         | Reads images, price-sheet screenshots and PDF brochures                               | ✅ Built and tested · accuracy figures after the first real-flyer test set   |
 | One unit, price history, sold and stale | Duplicates merged, price changes tracked, sold and inactive units marked              | ✅ Built and tested                                                          |
-| Operator console                        | Connect the number, choose groups, review flagged listings, from a browser            | Planned                                                                      |
-| Firm dashboard                          | Multi-firm search, saved searches, exports, Arabic and English                        | Planned                                                                      |
+| Operator console                        | Connect the number, choose groups, review flagged listings, from a browser            | ✅ Built and tested · pairing a real number waits for the dedicated number   |
+| Firm dashboard                          | Multi-firm search, saved searches, exports, Arabic and English                        | ⏭ Next                                                                       |
 | Chat bot and alerts                     | Ask in plain language on WhatsApp, Telegram backup, instant alerts                    | Planned                                                                      |
 | Launch                                  | Hosted server, daily backups, monitoring, usage reports                               | Planned                                                                      |
 
