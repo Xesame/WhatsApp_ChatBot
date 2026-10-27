@@ -164,7 +164,7 @@ export function Loading() {
 export function Table({ head, children }: { head: ReactNode[]; children: ReactNode }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      <table className="w-full min-w-[36rem] text-left text-sm">
         <thead className="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-800">
           <tr>
             {head.map((h, i) => (
