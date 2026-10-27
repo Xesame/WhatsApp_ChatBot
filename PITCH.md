@@ -2,7 +2,7 @@
 
 **Every primary-market listing posted in Egypt's developer and broker WhatsApp groups, turned into one clean, searchable, always-current database.**
 
-_Last updated: 26 October 2026 · Status: core system and operator console built and tested; first live run with real groups is next._
+_Last updated: 27 October 2026 · Status: core system, operator console and firm dashboard built and tested; first live run with real groups is next._
 
 ---
 
@@ -93,9 +93,27 @@ The operator runs everything from a simple web console, without touching a serve
 
 Access is protected by a password login with attempt limits, and every sign-in and change is recorded in an audit log.
 
-### 12. Built to be operated and trusted
+### 12. A dashboard firms can use from day one, in Arabic or English
 
-- **Nearly 380 automated tests** check the system on every change, including a full sign-in-and-review run through the console.
+Each firm gets its own login and a dashboard built for brokers:
+
+- **Search the whole market in seconds**: area, developer, project, unit type, bedrooms, size, price, delivery year, down payment, installment years, finishing, ready to move, and "price dropped". Type a project's name in Arabic or English, or its nickname, and it is found.
+- **Every price in Egyptian pounds**, with **price per m²** to compare across projects; dollar listings are converted at the owner's rate.
+- **A full page per listing**: all details, its price history, how many times it was reposted, and the original post and flyer.
+- **Private notes** on any listing ("client Ahmed is interested"), seen only by the firm's own team.
+- **Saved searches**, ready for instant alerts when the chat bot goes live.
+- **Exports** of any search to the firm's Excel template or CSV.
+- **Share cards**: one tap gives a clean summary for a client, as WhatsApp text or a ready-made image, with nothing that points back to the source groups.
+- **Arabic or English**, chosen by each person; Arabic reads right to left, as it should.
+- **The firm runs its own team**: its admin adds agents with a link sent on WhatsApp, and removes them in one click.
+
+**Each firm is walled off from the others.** Listings are shared, but a firm can never see another firm's notes, searches or people; this is checked by automated tests on every part of the system. Firms never see who posted a listing, which group it came from, or the broker's contact details, so the service can't be bypassed.
+
+**For the operator:** create a firm, set its user limit and contract dates, and see each firm's searches and exports for billing. Suspending a firm, or reaching its contract end date, cuts access instantly.
+
+### 13. Built to be operated and trusted
+
+- **More than 400 automated tests** check the system on every change, including complete runs through the console and the firm dashboard, and attempts to cross from one firm into another.
 - A complete operator manual covers setup from zero, daily operations and what to do when something goes wrong.
 - Every AI decision is logged (what was asked, what came back, cost and time), so any listing can be traced back to its source message.
 
@@ -114,16 +132,16 @@ Access is protected by a password login with attempt limits, and every sign-in a
 
 ## Progress
 
-| Stage                                   | What it delivers                                                                      | Status                                                                       |
-| --------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Foundation                              | Secure, documented base; market knowledge of cities, developers and projects          | ✅ Built and tested                                                          |
-| Capture                                 | Reads the chosen WhatsApp groups and never loses a message                            | ✅ Built and tested · live run waits for the dedicated number                |
-| Understanding listings                  | Turns text listings into structured data in the firm's template, with accuracy checks | ✅ Built and tested · accuracy figures after the first real-message test set |
-| Flyers and PDFs                         | Reads images, price-sheet screenshots and PDF brochures                               | ✅ Built and tested · accuracy figures after the first real-flyer test set   |
-| One unit, price history, sold and stale | Duplicates merged, price changes tracked, sold and inactive units marked              | ✅ Built and tested                                                          |
-| Operator console                        | Connect the number, choose groups, review flagged listings, from a browser            | ✅ Built and tested · pairing a real number waits for the dedicated number   |
-| Firm dashboard                          | Multi-firm search, saved searches, exports, Arabic and English                        | ⏭ Next                                                                       |
-| Chat bot and alerts                     | Ask in plain language on WhatsApp, Telegram backup, instant alerts                    | Planned                                                                      |
-| Launch                                  | Hosted server, daily backups, monitoring, usage reports                               | Planned                                                                      |
+| Stage                                   | What it delivers                                                                      | Status                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Foundation                              | Secure, documented base; market knowledge of cities, developers and projects          | ✅ Built and tested                                                               |
+| Capture                                 | Reads the chosen WhatsApp groups and never loses a message                            | ✅ Built and tested · live run waits for the dedicated number                     |
+| Understanding listings                  | Turns text listings into structured data in the firm's template, with accuracy checks | ✅ Built and tested · accuracy figures after the first real-message test set      |
+| Flyers and PDFs                         | Reads images, price-sheet screenshots and PDF brochures                               | ✅ Built and tested · accuracy figures after the first real-flyer test set        |
+| One unit, price history, sold and stale | Duplicates merged, price changes tracked, sold and inactive units marked              | ✅ Built and tested                                                               |
+| Operator console                        | Connect the number, choose groups, review flagged listings, from a browser            | ✅ Built and tested · pairing a real number waits for the dedicated number        |
+| Firm dashboard                          | Multi-firm search, saved searches, exports, Arabic and English                        | ✅ Built and tested · first paying firm after plans, pricing and the legal review |
+| Chat bot and alerts                     | Ask in plain language on WhatsApp, Telegram backup, instant alerts                    | ⏭ Next                                                                            |
+| Launch                                  | Hosted server, daily backups, monitoring, usage reports                               | Planned                                                                           |
 
 **Honest status:** everything marked "Built and tested" works and is covered by automated tests. It has not yet run on live group traffic. That first live run, and published accuracy figures from a test set of real messages, are the next milestones.

@@ -2,7 +2,7 @@
 
 A service that reads Egyptian developer and broker WhatsApp groups, turns every listing (text, images, PDFs) into clean, deduplicated records, and sells access to that listing database to brokerage firms.
 
-> **Status: Phases 0-5 built.** Capture stores messages; the worker reads text, flyers, PDFs and Excel price lists (Gemini, with Groq and OpenRouter as text fallbacks) into the Primary Units template, merges reposts into one unit, keeps price history and handles price updates and sold notices. The owner's admin console (Phase 5) pairs the number, chooses groups, reviews flagged units side by side with the original flyer, manages names and spellings, shows stats and failed jobs, and exports Excel, all from the browser. Phase 6 (firm dashboard) is next. Live runs wait for the scraper number and real test messages. See [PROJECT.md](PROJECT.md#build-status).
+> **Status: Phases 0-6 built.** Capture stores messages; the worker reads text, flyers, PDFs and Excel price lists into the Primary Units template, merges reposts and keeps price history. The owner's console pairs the number, chooses groups, reviews listings and manages firms. Firms get their own dashboard in Arabic or English: search, listing pages, private notes, saved searches, Excel/CSV exports and share cards, each firm walled off from the others. Phase 7 (chat bots and alerts) is next. Live runs wait for the scraper number and real test messages. See [PROJECT.md](PROJECT.md#build-status).
 
 ## Architecture in one screen
 
@@ -23,7 +23,7 @@ flowchart LR
 | `capture` | Saves every message from watched groups. Never calls an LLM. |
 | `worker`  | Runs the pipeline: media → extraction → dedup → alerts.      |
 | `api`     | Auth, firm scoping, search, review, admin, exports.          |
-| `web`     | Owner admin console now; firm dashboard in Phase 6 (React).  |
+| `web`     | Firm dashboard (Arabic/English) and owner console (React).   |
 | `chatbot` | WhatsApp query bot on its own number, Telegram as backup.    |
 
 Business logic lives in `packages/`; `apps/` only connect it to the outside world.
@@ -46,7 +46,7 @@ Create your admin login, then open http://localhost:4173 and sign in:
 docker compose exec -it api node apps/api/src/create-owner.ts --email you@example.com --name Hassan
 ```
 
-From there: **WhatsApp** (scan the QR code with the scraper phone), **Groups** (tick the groups to watch), **Review** (check flagged listings).
+From there: **WhatsApp** (scan the QR code with the scraper phone), **Groups** (tick the groups to watch), **Review** (check flagged listings), **Firms** (add a firm and send its admin the invitation link). Firm users work at http://localhost:4173/app.
 
 For development without Docker for the apps:
 

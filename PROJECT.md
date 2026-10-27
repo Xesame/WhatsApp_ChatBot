@@ -15,17 +15,17 @@ Regenerate them with `pnpm run docs`.
 
 ## Build status
 
-| Phase | Scope                                                              | Status                                                           |
-| ----- | ------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| 0     | Foundation: monorepo, config, logging, Docker, database, seed      | **Done**                                                         |
-| 1     | Capture (Baileys, raw messages, media)                             | **Done** (live WhatsApp test waits for the scraper number)       |
-| 2     | Text extraction and eval harness                                   | **Built** (accuracy run waits for real cases and a Gemini key)   |
-| 3     | Media extraction (vision, PDF; voice notes dropped)                | **Built** (accuracy on real flyers waits for real cases)         |
-| 4     | Dedup, price history, lifecycle                                    | **Done** (tolerances to tune on real data)                       |
-| 5     | API and owner admin (login, pairing, groups, review, names, stats) | **Done** (pairing from the browser waits for the scraper number) |
-| 6     | Multi-tenant firm dashboard                                        | Not started                                                      |
-| 7     | Chat bots and alerts                                               | Not started                                                      |
-| 8     | Hardening and deploy                                               | Not started                                                      |
+| Phase | Scope                                                                                                                            | Status                                                                     |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| 0     | Foundation: monorepo, config, logging, Docker, database, seed                                                                    | **Done**                                                                   |
+| 1     | Capture (Baileys, raw messages, media)                                                                                           | **Done** (live WhatsApp test waits for the scraper number)                 |
+| 2     | Text extraction and eval harness                                                                                                 | **Built** (accuracy run waits for real cases and a Gemini key)             |
+| 3     | Media extraction (vision, PDF; voice notes dropped)                                                                              | **Built** (accuracy on real flyers waits for real cases)                   |
+| 4     | Dedup, price history, lifecycle                                                                                                  | **Done** (tolerances to tune on real data)                                 |
+| 5     | API and owner admin (login, pairing, groups, review, names, stats)                                                               | **Done** (pairing from the browser waits for the scraper number)           |
+| 6     | Multi-tenant firm dashboard (firms, invitations, search, listing page, saved searches, exports, share cards, Arabic and English) | **Done** (first paying firm waits for plans, pricing and the legal review) |
+| 7     | Chat bots and alerts                                                                                                             | Not started                                                                |
+| 8     | Hardening and deploy                                                                                                             | Not started                                                                |
 
 **Waiting on Hassan**
 
@@ -55,8 +55,11 @@ Hassan, a broker, runs this as a service. A bot reads Egyptian developer and bro
 | **Source** _(Phase 4)_          | A WhatsApp message that mentioned a unit. One unit can have many sources.                                                                      |
 | **Run** _(Phase 2)_             | One LLM extraction attempt on one message (`extraction_runs`), with its prompt version and model.                                              |
 | **Prompt version** _(Phase 2)_  | The version string of the extraction prompt, recorded on every run so results can be compared.                                                 |
-| **Firm** _(Phase 6)_            | A paying brokerage. Owns its users, saved searches, alerts and notes. Listings are shared.                                                     |
-| **Saved search** _(Phase 6)_    | A stored filter that can trigger alerts.                                                                                                       |
+| **Firm**                        | A paying brokerage. Owns its users, saved searches, alerts and notes. Listings are shared.                                                     |
+| **Saved search**                | A stored filter that can trigger alerts.                                                                                                       |
+| **Firm admin / agent**          | The two roles inside a firm. A firm admin adds and removes the firm's agents and sees the firm's saved searches and usage.                     |
+| **Access link**                 | A one-time link to set a password: an invitation (7 days) or a reset (1 day). Only a hash is stored.                                           |
+| **Usage event**                 | One search, export or listing view by a firm user (`usage_events`), for billing and plan limits.                                               |
 | **JID**                         | A WhatsApp address. Groups end in `@g.us`, people in `@s.whatsapp.net` (phone number) or `@lid` (private ID).                                  |
 | **LID**                         | WhatsApp's private per-user ID, used in groups instead of the phone number. Preferred for sender hashing.                                      |
 | **Sender hash**                 | `messages.sender_hash`: salted HMAC-SHA256 of the sender's ID. Same person → same hash; the number can't be recovered.                         |
@@ -131,7 +134,8 @@ realestate-bot/
     capture/   src/main.ts (wiring), src/cli.ts (groups command)
     worker/    src/main.ts (pipeline jobs), src/cli.ts (reprocess, export)
     api/       src/app.ts, src/admin-routes.ts (owner API), src/auth-routes.ts (login), src/create-owner.ts
-    web/       React admin console: src/pages/* (login, overview, WhatsApp, groups, review, names, jobs, settings)
+    api/       (also) src/app-routes.ts (firm dashboard API), src/link-routes.ts (set-password links), src/http.ts (shared guard)
+    web/       React: src/firm/* (firm dashboard), src/pages/* (admin console, login, set password), src/i18n.tsx (English/Arabic)
     chatbot/   src/main.ts: skeleton service                          (Phase 7)
   packages/
     config/    env schema (Zod) and loadConfig()
@@ -148,6 +152,8 @@ realestate-bot/
     media/     reads text in images (vision), PDFs (text layer, vision for scans) and Excel sheets
     auth/      owner login (Better Auth): sessions, password hashing, create-owner
     admin/     what the admin console does: review, corrections, names, groups, stats, settings, eval cases
+    search/    listing search: one filter shape, EGP prices at query time, price per m², listing page data
+    firms/     firms, invitations and reset links, teams, notes, saved searches, usage; every call scoped to the caller's firm
   eval/        labeled cases, recordings, scoring, the `pnpm eval` runner and `pnpm eval:from-review`
   scripts/docs.ts           generates docs/generated/* (env, database, template, API) and .env.example
   docs/generated/           generated reference docs (do not edit)
@@ -156,26 +162,28 @@ realestate-bot/
   .github/workflows/ci.yml  lint, format, types, tests (with real Postgres), docs check, web build
 ```
 
-| Package          | Owns                                                                                                   | Main files                                                                                 | Used by                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------- |
-| `@reb/config`    | Environment variables: schema, defaults, validation                                                    | `src/env.ts`, `src/load.ts`                                                                | db, runtime, api, scripts          |
-| `@reb/normalize` | Deterministic text normalization                                                                       | `src/text.ts`                                                                              | db (seed) and, later, the pipeline |
-| `@reb/db`        | Tables, migrations, pool, seed                                                                         | `src/schema/*`, `migrations/*`, `src/seed.ts`, `seed/*`                                    | runtime, api, scripts              |
-| `@reb/runtime`   | Logging, health checks, service lifecycle                                                              | `src/logger.ts`, `src/health.ts`, `src/service.ts`                                         | all Node apps                      |
-| `@reb/queue`     | Job queue (pg-boss): queues, payload schemas, retries                                                  | `src/queues.ts`, `src/boss.ts`                                                             | capture, worker, ingest            |
-| `@reb/whatsapp`  | WhatsApp connection, login keys, message parsing, sender hashing                                       | `src/connection.ts`, `src/parse.ts`, `src/auth-store.ts`                                   | capture; chatbot (Phase 7)         |
-| `@reb/ingest`    | Storing messages and media, group management, queueing                                                 | `src/ingestor.ts`, `src/files.ts`, `src/groups.ts`                                         | capture; api (Phase 5)             |
-| `@reb/schema`    | The listing fields, enums, model schema, template columns, Excel export                                | `src/unit.ts`, `src/extraction.ts`, `src/columns.ts`, `src/export.ts`                      | db, normalize, llm, pipeline, eval |
-| `@reb/llm`       | Model calls: fallback, rate limits, privacy scrub; prompts                                             | `src/client.ts`, `src/privacy.ts`, `prompts/*.ts`                                          | pipeline, eval                     |
-| `@reb/pipeline`  | Processing steps, entity matching, dedup/merge and price history (apply), lifecycle, reprocess, export | `src/steps.ts`, `src/apply.ts`, `src/entities.ts`, `src/admin.ts`                          | worker, eval                       |
-| `@reb/dedup`     | Same-unit rules, reply targeting, price-change detection (pure)                                        | `src/match.ts`, `src/prices.ts`                                                            | pipeline                           |
-| `@reb/media`     | Text inside images (vision), PDFs (text layer, vision for scans) and Excel sheets                      | `src/describe.ts`, `src/image.ts`, `src/pdf.ts`, `src/sheet.ts`                            | pipeline, eval                     |
-| `@reb/auth`      | Owner login: Better Auth setup, sessions, password hashing, creating the owner                         | `src/auth.ts`, `src/owner.ts`                                                              | api                                |
-| `@reb/admin`     | Review and corrections, names and spellings, groups, stats, failed jobs, settings, review → eval cases | `src/review.ts`, `src/entities.ts`, `src/stats.ts`, `src/settings.ts`, `src/eval-cases.ts` | api, worker (export rate), eval    |
+| Package          | Owns                                                                                                               | Main files                                                                                 | Used by                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------- |
+| `@reb/config`    | Environment variables: schema, defaults, validation                                                                | `src/env.ts`, `src/load.ts`                                                                | db, runtime, api, scripts          |
+| `@reb/normalize` | Deterministic text normalization                                                                                   | `src/text.ts`                                                                              | db (seed) and, later, the pipeline |
+| `@reb/db`        | Tables, migrations, pool, seed                                                                                     | `src/schema/*`, `migrations/*`, `src/seed.ts`, `seed/*`                                    | runtime, api, scripts              |
+| `@reb/runtime`   | Logging, health checks, service lifecycle                                                                          | `src/logger.ts`, `src/health.ts`, `src/service.ts`                                         | all Node apps                      |
+| `@reb/queue`     | Job queue (pg-boss): queues, payload schemas, retries                                                              | `src/queues.ts`, `src/boss.ts`                                                             | capture, worker, ingest            |
+| `@reb/whatsapp`  | WhatsApp connection, login keys, message parsing, sender hashing                                                   | `src/connection.ts`, `src/parse.ts`, `src/auth-store.ts`                                   | capture; chatbot (Phase 7)         |
+| `@reb/ingest`    | Storing messages and media, group management, queueing                                                             | `src/ingestor.ts`, `src/files.ts`, `src/groups.ts`                                         | capture; api (Phase 5)             |
+| `@reb/schema`    | The listing fields, enums, model schema, template columns, Excel export                                            | `src/unit.ts`, `src/extraction.ts`, `src/columns.ts`, `src/export.ts`                      | db, normalize, llm, pipeline, eval |
+| `@reb/llm`       | Model calls: fallback, rate limits, privacy scrub; prompts                                                         | `src/client.ts`, `src/privacy.ts`, `prompts/*.ts`                                          | pipeline, eval                     |
+| `@reb/pipeline`  | Processing steps, entity matching, dedup/merge and price history (apply), lifecycle, reprocess, export             | `src/steps.ts`, `src/apply.ts`, `src/entities.ts`, `src/admin.ts`                          | worker, eval                       |
+| `@reb/dedup`     | Same-unit rules, reply targeting, price-change detection (pure)                                                    | `src/match.ts`, `src/prices.ts`                                                            | pipeline                           |
+| `@reb/media`     | Text inside images (vision), PDFs (text layer, vision for scans) and Excel sheets                                  | `src/describe.ts`, `src/image.ts`, `src/pdf.ts`, `src/sheet.ts`                            | pipeline, eval                     |
+| `@reb/auth`      | Owner login: Better Auth setup, sessions, password hashing, creating the owner                                     | `src/auth.ts`, `src/owner.ts`                                                              | api                                |
+| `@reb/admin`     | Review and corrections, names and spellings, groups, stats, failed jobs, settings, review → eval cases             | `src/review.ts`, `src/entities.ts`, `src/stats.ts`, `src/settings.ts`, `src/eval-cases.ts` | api, worker (export rate), eval    |
+| `@reb/search`    | Listing filters (shared with exports, saved searches and the Phase 7 chat bots), search, listing details for firms | `src/filters.ts`, `src/search.ts`, `src/listing.ts`                                        | api, firms, web (filters only)     |
+| `@reb/firms`     | Firms, access links, teams, notes, saved searches, usage, all scoped to the caller's firm                          | `src/actor.ts`, `src/team.ts`, `src/links.ts`, `src/notes.ts`, `src/saved-searches.ts`     | api                                |
 
 Packages planned for later phases and not created yet: `chat-core` (Phase 7).
 
-**Dependency direction:** `apps → (runtime, ingest, pipeline, admin, auth) → (whatsapp, queue, llm, media, dedup, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
+**Dependency direction:** `apps → (runtime, ingest, pipeline, admin, auth, firms, search) → (whatsapp, queue, llm, media, dedup, normalize, schema) → db → (config, normalize, schema)`. `schema` depends on nothing of ours. Packages never import from apps.
 
 **Library versions** (checked 2026-10-25):
 
@@ -245,7 +253,9 @@ erDiagram
 - `wa_connections`: live status per account (`state`, QR/pairing code while pairing, last connect/disconnect and reason, last message time).
 - Status and type columns have CHECK constraints, so the database rejects unknown values.
 
-**Tables added by later phases:** `review_corrections`, `audit_log` (Phase 5); `firms`, `users`, `chat_identities`, `saved_searches`, `firm_notes`, `usage_events` (Phase 6); `alert_deliveries` (Phase 7). Each arrives as its own migration in the phase that uses it.
+**Firm data (Phase 6).** Every table with `firm_id` (`saved_searches`, `firm_notes`, `usage_events`) is read and written only through `@reb/firms`, which takes the signed-in person on every call and filters by their firm. Listings (`units` and everything behind them) are shared by all firms. A database check makes everyone but the owner belong to exactly one firm.
+
+**Tables added by later phases:** `users`, `sessions`, `accounts`, `review_corrections`, `audit_log`, `settings` (Phase 5); `firms`, `access_links`, `saved_searches`, `firm_notes`, `usage_events` and the user's firm, language and removed flag (Phase 6); `chat_identities`, `alert_deliveries` (Phase 7). Each arrives as its own migration in the phase that uses it.
 
 **Listing tables (Phase 2)**
 
@@ -519,7 +529,24 @@ pnpm eval:from-review          # reviewed messages → eval/cases/review-message
 
 Running `create-owner` again for the same e-mail resets the password.
 
-_(Phase 6)_ Firm dashboard. _(Phase 7)_ Chat bot commands with sample Arabic and English queries.
+**Firm dashboard (Phase 6)** at `PUBLIC_URL/app`, in Arabic (right to left) or English, chosen per user with the switch in the top bar.
+
+| Page               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Search             | Filters (area, developer, project, unit type, category, bedrooms, area, price in million EGP, delivered by, down payment, installment years, finishing, ready to move, price dropped, available / not reposted lately / sold) and free text matched against every spelling of projects, developers and areas. Sort by newest, price or price per m². Table or cards. Filters live in the address, so a search can be bookmarked or sent. Export the current search as Excel (Primary Units template) or CSV, up to 5,000 listings |
+| Listing            | All fields, price per m², price history with drops marked, every post it came from (message text and flyer, marked developer or broker group, never the group's name or the sender; phone numbers and e-mails in the text are blanked), the firm's private notes, share card                                                                                                                                                                                                                                                      |
+| Share card         | A summary for a client, as text to paste in WhatsApp and as an image to download, with no source groups or dates                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Saved searches     | Name, filters as readable chips, alert channel (WhatsApp, Telegram or none; delivered from Phase 7), pause, open, delete. A firm admin sees the whole firm's                                                                                                                                                                                                                                                                                                                                                                      |
+| Team (firm admins) | The firm's people (invited, active, removed), add an agent (shows the invitation link to send), new link (invitation again or password reset), remove or restore, usage in the last 30 days                                                                                                                                                                                                                                                                                                                                       |
+| Set password       | Opened from an invitation or reset link; in the person's language                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+
+The owner sees the dashboard too (Listings in the console menu), without notes or saved searches. Firm users who open the console are sent to the dashboard.
+
+**Firms (admin console, Phase 6):** create a firm; set its plan label, user limit and contract dates; suspend or reactivate it (suspending signs its users out at once); add firm admins and agents and copy their invitation links; new links, remove and restore; searches, exports and listing views.
+
+**API (Phase 6):** `/api/app/*` (any signed-in user; firm data limited to the caller's firm), `/api/admin/firms*` and `/api/admin/users/*` (owner), `/api/links/info` and `/api/links/redeem` (no session; the token is the proof). Every route is in [docs/generated/api.md](docs/generated/api.md).
+
+_(Phase 7)_ Chat bot commands with sample Arabic and English queries.
 
 ## 8. Configuration
 
@@ -650,7 +677,15 @@ docker compose exec worker node apps/worker/src/cli.ts export --out /tmp/units.x
 
 **13. Run the first eval** (chapter 12): `pnpm eval` on your machine with the key in `.env`, or `docker compose exec worker node eval/run.ts`.
 
-**Later steps:** pair the query bot and create the Telegram bot _(Phase 7)_ · create the first firm _(Phase 6)_.
+**14. Create the first firm and invite its admin**
+
+1. In the admin console open **Firms**, type the firm's name, **Create**.
+2. Set its plan label, user limit and contract dates, **Save**.
+3. Under People, enter the firm admin's name and e-mail, choose Firm admin and their language, **Add and get invitation link**.
+4. Copy the link and send it to them (WhatsApp is fine). It works once, for 7 days.
+5. They open it, choose a password, sign in, and land on the dashboard. They add their own agents from **Team** the same way.
+
+**Later steps:** pair the query bot and create the Telegram bot _(Phase 7)_.
 
 ## 10. Daily operations
 
@@ -699,7 +734,15 @@ docker compose exec postgres psql -U reb -d reb -c "select state, last_message_a
 docker compose exec postgres psql -U reb -d reb -c "select name, last_message_at from wa_groups where watched order by last_message_at desc nulls last"
 ```
 
-_(Phase 6)_ Onboarding and offboarding firms, exports.
+**Onboarding a firm:** setup step 14. Agree the user limit first; the firm admin can add agents up to it.
+
+**Offboarding a firm:** **Firms** → the firm → **Suspend**. Its users are signed out at once and can't sign in; their notes and saved searches are kept in case they come back (**Reactivate**). A contract end date does the same automatically the day after it.
+
+**Someone forgot their password:** their firm admin (or you, from **Firms**) presses **New link** and sends it; it works once, for a day.
+
+**Someone left a firm:** the firm admin presses **Remove**. They are signed out at once; their saved searches stay with the firm. Removing frees a place under the user limit.
+
+**Billing and usage:** **Firms** shows searches and exports per firm over 30 days; `usage_events` has every search, export and listing view with the person and the filters.
 
 ## 11. Runbooks
 
@@ -820,6 +863,18 @@ docker compose up -d --build   # the migrate step applies new migrations before 
 
 - The download failed or the file expired on WhatsApp (`media_files.status`). The text read from it, if any, is still shown.
 
+**A firm user can't sign in**
+
+- "Your access is paused": they were removed, their firm is suspended, or the firm's contract end date has passed (**Firms** shows which). Restore, reactivate or extend the contract.
+- "Wrong e-mail or password" and they never set one: their invitation wasn't used. Send a **New link**.
+- "This link has expired or was already used": links work once (invitations 7 days, resets 1 day). Send a new one.
+
+**"This firm already has its N users"** when adding someone: raise the user limit on **Firms**, or remove someone first.
+
+**An export stops at 5,000 listings:** narrow the filters. The limit keeps one export from slowing the server.
+
+**Dollar listings missing from price searches:** they need the dollar rate (Settings & export) to have an EGP price. Without a rate they still appear when no price filter is set.
+
 _(Later phases)_ cost spike, restoring a backup, rotating secrets.
 
 ## 12. Evaluation
@@ -902,6 +957,10 @@ TEST_DATABASE_URL=postgres://reb:<pw>@localhost:5432/reb pnpm test   # plus data
 | `packages/auth/test`                                        | owner created with a hashed password, sign-in sets an http-only cookie, wrong password 401, no public sign-up, password reset keeps one account                                                                                                                                                                                                                                                                                                |
 | `packages/admin/test`                                       | review queue never includes sender details; a correction updates the unit, records each changed field and fixes the price row; reject withdraws; impossible values refused; **review corrections become eval cases**; aliases, rename, merge moves units/projects/spellings; settings; stats; QR code as SVG                                                                                                                                   |
 | `apps/api/test/admin.integration.test.ts`                   | real sign-in through the API; every admin route refuses without a session and for non-owners; sign-ins and failed sign-ins audited; **password guessing limited, also with a forged X-Forwarded-For**; changes from another site refused; **choose groups**; **review a flagged unit with its flyer**; media never served outside the media folder; names; USD rate and Excel download; a real failed pg-boss job listed and retried; sign-out |
+| `packages/search/test`                                      | filter parsing (unknown filters, withdrawn listings and bad values refused); every filter on real data; ranges overlap; USD converted at the rate, and left out of price filters without one; price drops; every sort; paging; **the listing page never shows the sender, the group name, or phone numbers and e-mails in the text**; files served only for visible listings                                                                   |
+| `packages/firms/test`                                       | only the owner manages firms; invitation and reset links work once, expire, and only their hash is stored; firm admins add agents to their own firm only, within the user limit; removed people, suspended firms and ended contracts can't sign in; **a firm user can never read another firm's notes, saved searches or users**; usage recorded per firm                                                                                      |
+| `apps/api/test/firms.integration.test.ts`                   | the whole flow through HTTP: firms and invitations created through the API, links opened and passwords set; search and exports logged per firm; **tenancy through every firm route** (notes, saved searches, team, links, removal, usage); removing someone or suspending a firm ends their session at once                                                                                                                                    |
+| `apps/web/test`                                             | money and room-count wording in English and Arabic, right-to-left, translated values                                                                                                                                                                                                                                                                                                                                                           |
 | `packages/config/test` (Phase 1 part)                       | per-service required variables (`SENDER_HASH_SALT` for capture), salt length, pairing phone format                                                                                                                                                                                                                                                                                                                                             | nothing                                                                                         |
 | `packages/whatsapp/test/parse.test.ts`                      | text, replies, forwarding, images, PDFs with captions, voice notes, disappearing/view-once, edits, deletions, everything ignored, LID-preferred sender hashing                                                                                                                                                                                                                                                                                 | nothing                                                                                         |
 | `packages/whatsapp/test/connection.integration.test.ts`     | QR and pairing-code flow, open/close states, backoff timings, restart-required, logged-out key wipe, connection replaced, in-order delivery, retry during DB outage, health check; auth store round trip with binary keys                                                                                                                                                                                                                      | `TEST_DATABASE_URL`; a fake WhatsApp socket                                                     |
@@ -961,7 +1020,14 @@ VPS setup, domain and Caddy (HTTPS), daily off-server backups with a tested rest
 - The review page never shows who posted a message. Media files are served only by id, only from `MEDIA_DIR`, with `nosniff` and a restrictive content security policy; the API mounts the media volume read-only.
 - Until Phase 8 adds HTTPS, the console is reachable only from the server itself (ports bound to 127.0.0.1); use an SSH tunnel.
 
-_(Phase 6)_ Firm isolation with tests on every route. **Law 151 of 2020:** sender names and phone numbers are personal data; Hassan should get legal advice before charging firms (open decision).
+**Phase 6:**
+
+- Firm isolation is enforced in one place, `@reb/firms`: every function takes the signed-in person and filters by their firm. Another firm's notes, saved searches or people answer "not found", the same as something that doesn't exist, so nothing leaks. Tests cross firm lines through every firm route.
+- Firms never see who posted a listing, which group it came from (only "developer group" or "broker group"), or phone numbers and e-mails in message text (blanked). Flyer images are shown as posted and may include a broker's number.
+- Only the owner creates firms and firm admins; a firm admin adds agents only to their own firm, within its user limit. There is no public sign-up.
+- Invitations and resets are one-time links with a 256-bit random token; only its SHA-256 is stored, and the token travels after `#` so it never reaches server logs. Using a link signs the person out everywhere else.
+- Removing a person or suspending a firm deletes their sessions and is re-checked on every request; a contract end date blocks sign-in the day after.
+- Every search, export and listing view is logged per firm (`usage_events`); exports and team changes also go to `audit_log`. **Law 151 of 2020:** sender names and phone numbers are personal data; Hassan should get legal advice before charging firms (open decision).
 
 ## 16. Troubleshooting FAQ
 
@@ -1076,3 +1142,10 @@ Docker Hub's anonymous pull limit. Run `docker login`, or wait and retry.
 | 2026-10-26 | **The USD rate is set in the admin console** (`settings` table); `USD_EGP_RATE` is only a fallback                                                                                                                                                                                                                                                                                                                                                                                            | Hassan changes it without touching the server                                                                                                                                                                                       | Environment variable only                                        |
 | 2026-10-26 | A **reviewed message becomes an eval case** with the units as the owner left them; rejected units are dropped                                                                                                                                                                                                                                                                                                                                                                                 | Every review improves the accuracy test set at no extra effort                                                                                                                                                                      | Separate labeling tool                                           |
 | 2026-10-26 | A **price correction fixes the latest price-history row** instead of adding one                                                                                                                                                                                                                                                                                                                                                                                                               | A misread price is an extraction error, not a market price change                                                                                                                                                                   | New history row                                                  |
+| 2026-10-27 | **Only the owner creates firms** (Hassan's decision)                                                                                                                                                                                                                                                                                                                                                                                                                                          | Firms are paying customers onboarded by hand                                                                                                                                                                                        | Self sign-up with approval                                       |
+| 2026-10-27 | **Arabic and English from day one**, chosen per user, with right-to-left layout (Hassan's decision); the owner's console stays in English                                                                                                                                                                                                                                                                                                                                                     | Most agents read Arabic; the console has one user                                                                                                                                                                                   | English first                                                    |
+| 2026-10-27 | **Invitation and reset links, not e-mail**                                                                                                                                                                                                                                                                                                                                                                                                                                                    | No e-mail service to set up or pay for; brokers share links on WhatsApp anyway                                                                                                                                                      | Sending e-mails (SMTP or a provider)                             |
+| 2026-10-27 | **Firms never see source group names or contact details**, only "developer group" or "broker group"                                                                                                                                                                                                                                                                                                                                                                                           | Where listings come from is Hassan's business; firms must not be able to go around the service                                                                                                                                      | Showing group names                                              |
+| 2026-10-27 | **Prices filtered and sorted in EGP**, USD converted at query time with the owner's rate                                                                                                                                                                                                                                                                                                                                                                                                      | One currency to compare; conversion never stored (build plan)                                                                                                                                                                       | Converting at write time                                         |
+| 2026-10-27 | **Plan is a free label; the enforced limit is users per firm**                                                                                                                                                                                                                                                                                                                                                                                                                                | Plans and pricing are still open (build plan, section 13)                                                                                                                                                                           | Fixed plan tiers                                                 |
+| 2026-10-27 | Hand-written **English/Arabic dictionary**, no i18n library                                                                                                                                                                                                                                                                                                                                                                                                                                   | ~200 strings; a typed dictionary catches missing Arabic at build time                                                                                                                                                               | react-i18next                                                    |
