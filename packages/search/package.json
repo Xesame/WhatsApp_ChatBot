@@ -1,0 +1,20 @@
+{
+  "name": "@reb/search",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./filters": "./src/filters.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@reb/db": "workspace:*",
+    "@reb/llm": "workspace:*",
+    "@reb/normalize": "workspace:*",
+    "@reb/schema": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "zod": "4.6.7"
+  }
+}

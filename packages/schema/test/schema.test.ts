@@ -5,6 +5,7 @@ import {
   readHeaderRow,
   readSheetName,
   TEMPLATE_SHEET_NAME,
+  writePrimaryUnitsCsv,
   writePrimaryUnitsWorkbook,
 } from '../src/export.ts';
 import {
@@ -186,6 +187,19 @@ describe('Excel export', () => {
     expect(sheet?.rowCount).toBe(3);
     expect(sheet?.columnCount).toBe(26);
     expect(sheet?.getRow(3).getCell(5).value).toBe('Villa');
+  });
+});
+
+describe('CSV export', () => {
+  it('has the template headers, a BOM for Excel, Arabic intact and quoted cells', () => {
+    const csv = writePrimaryUnitsCsv(
+      [{ ...sampleUnit(), notes: 'view on the lake, "club" access, قريب من الخدمات' }],
+      ctx,
+    ).toString('utf8');
+    expect(csv.startsWith('\uFEFF')).toBe(true);
+    const [header, row] = csv.slice(1).split('\r\n');
+    expect(header?.split(',')).toEqual(TEMPLATE_HEADERS);
+    expect(row).toContain('"view on the lake, ""club"" access, قريب من الخدمات"');
   });
 });
 

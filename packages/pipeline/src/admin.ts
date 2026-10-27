@@ -1,8 +1,8 @@
 import { cities, developers, messages, projects, units, unitSources, type Database } from '@reb/db';
 import { enqueueInTransaction, type PgBoss } from '@reb/queue';
 import { type ExportContext, type Unit } from '@reb/schema';
-import { writePrimaryUnitsWorkbook } from '@reb/schema/export';
-import { and, asc, eq, gte, inArray, lt, type SQL } from 'drizzle-orm';
+import { writePrimaryUnitsCsv, writePrimaryUnitsWorkbook } from '@reb/schema/export';
+import { and, asc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
 
 export interface ReprocessFilter {
   from?: Date;
@@ -46,11 +46,23 @@ export async function reprocess(
 /** Loads units (active by default) and writes them in the Primary Units template layout. */
 export async function exportUnits(
   database: Database,
-  options: { usdToEgp: number | undefined; messageIds?: number[]; includeInactive?: boolean },
+  options: {
+    usdToEgp: number | undefined;
+    messageIds?: number[];
+    includeInactive?: boolean;
+    /** Exactly these units, in this order (a firm's search results). */
+    unitIds?: number[];
+    format?: 'xlsx' | 'csv';
+  },
 ): Promise<{ file: Buffer; count: number }> {
   const { db } = database;
   const conditions: SQL[] = [];
-  if (!options.includeInactive) conditions.push(eq(units.status, 'active'));
+  if (options.unitIds) {
+    if (options.unitIds.length === 0) conditions.push(sql`false`);
+    else conditions.push(inArray(units.id, options.unitIds));
+  } else if (!options.includeInactive) {
+    conditions.push(eq(units.status, 'active'));
+  }
   if (options.messageIds?.length) {
     const ids = options.messageIds;
     conditions.push(
@@ -82,6 +94,14 @@ export async function exportUnits(
     cityName: (id) => cityNames.get(id),
     usdToEgp: options.usdToEgp,
   };
-  const file = await writePrimaryUnitsWorkbook(rows as unknown as Unit[], ctx);
+  if (options.unitIds) {
+    const position = new Map(options.unitIds.map((id, i) => [id, i]));
+    rows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+  }
+  const list = rows as unknown as Unit[];
+  const file =
+    options.format === 'csv'
+      ? writePrimaryUnitsCsv(list, ctx)
+      : await writePrimaryUnitsWorkbook(list, ctx);
   return { file, count: rows.length };
 }

@@ -21,6 +21,23 @@ export async function writePrimaryUnitsWorkbook(
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
+/**
+ * The same rows as CSV: the template headers, UTF-8 with a byte-order mark
+ * so Excel shows Arabic correctly, Windows line endings, cells quoted when
+ * needed.
+ */
+export function writePrimaryUnitsCsv(units: Unit[], ctx: ExportContext): Buffer {
+  const cell = (value: string | number | null) => {
+    if (value === null) return '';
+    const text = String(value);
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const lines = [TEMPLATE_HEADERS, ...units.map((u) => toTemplateRow(u, ctx))].map((row) =>
+    row.map(cell).join(','),
+  );
+  return Buffer.from(`\uFEFF${lines.join('\r\n')}\r\n`, 'utf8');
+}
+
 /** Name of the first sheet of a workbook (used by tests). */
 export async function readSheetName(file: Buffer | string): Promise<string | undefined> {
   const workbook = new ExcelJS.Workbook();
