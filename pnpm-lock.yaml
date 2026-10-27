@@ -304,6 +304,9 @@ importers:
       '@reb/schema':
         specifier: workspace:*
         version: link:../../packages/schema
+      '@reb/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       '@tanstack/react-query':
         specifier: 5.104.1
         version: 5.104.1(react@19.3.1)

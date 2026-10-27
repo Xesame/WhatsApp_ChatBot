@@ -1,24 +1,41 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router';
-import { api, ApiError, type Owner } from './api.ts';
+import { api, ApiError } from './api.ts';
+import { Listing } from './firm/Listing.tsx';
+import { Saved } from './firm/Saved.tsx';
+import { Search } from './firm/Search.tsx';
+import { DashboardShell, useMe } from './firm/Shell.tsx';
+import { Team } from './firm/Team.tsx';
+import { useDocumentLanguage } from './i18n.tsx';
 import { Entities } from './pages/Entities.tsx';
+import { Firms } from './pages/Firms.tsx';
 import { Groups } from './pages/Groups.tsx';
 import { Jobs } from './pages/Jobs.tsx';
 import { Login } from './pages/Login.tsx';
 import { Overview } from './pages/Overview.tsx';
 import { Review } from './pages/Review.tsx';
+import { SetPassword } from './pages/SetPassword.tsx';
 import { Settings } from './pages/Settings.tsx';
 import { WhatsApp } from './pages/WhatsApp.tsx';
 import { Button, cx, ErrorNote, Loading } from './ui.tsx';
 
-// The owner's admin console (Phase 5). The firm dashboard joins in Phase 6.
+// Two apps in one: the firm dashboard under /app (Arabic or English) and the
+// owner's admin console at / (English). Firm users never see the console.
 export function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/set-password" element={<SetPassword />} />
+        <Route path="/app" element={<DashboardShell />}>
+          <Route index element={<Search />} />
+          <Route path="listings/:id" element={<Listing />} />
+          <Route path="saved" element={<Saved />} />
+          <Route path="team" element={<Team />} />
+        </Route>
         <Route element={<Shell />}>
           <Route index element={<Overview />} />
+          <Route path="firms" element={<Firms />} />
           <Route path="whatsapp" element={<WhatsApp />} />
           <Route path="groups" element={<Groups />} />
           <Route path="review" element={<Review />} />
@@ -34,6 +51,8 @@ export function App() {
 
 const NAV = [
   ['/', 'Overview'],
+  ['/firms', 'Firms'],
+  ['/app', 'Listings (firm view)'],
   ['/whatsapp', 'WhatsApp'],
   ['/groups', 'Groups'],
   ['/review', 'Review'],
@@ -42,27 +61,31 @@ const NAV = [
   ['/settings', 'Settings & export'],
 ] as const;
 
-/** Signed-in layout: redirects to /login when there is no owner session. */
+/** The admin console layout: owner only (firm users go to their dashboard), always in English. */
 function Shell() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Owner>('/api/admin/me') });
+  const me = useMe();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  useDocumentLanguage('en');
 
-  if (me.isPending)
+  if (me.isPending) {
     return (
       <div className="p-8">
         <Loading />
       </div>
     );
+  }
   if (me.error instanceof ApiError && (me.error.status === 401 || me.error.status === 403)) {
     return <Navigate to="/login" replace />;
   }
-  if (me.error)
+  if (me.error) {
     return (
       <div className="p-8">
         <ErrorNote error={me.error} />
       </div>
     );
+  }
+  if (me.data.role !== 'owner') return <Navigate to="/app" replace />;
 
   const signOut = async () => {
     await api('/api/auth/sign-out', { method: 'POST', body: {} }).catch(() => undefined);
@@ -98,7 +121,7 @@ function Shell() {
         </nav>
         <div className="hidden px-4 py-4 text-xs text-slate-500 md:block">
           <p className="truncate">{me.data.email}</p>
-          <Button variant="ghost" className="mt-1 -ml-3" onClick={() => void signOut()}>
+          <Button variant="ghost" className="mt-1 -ms-3" onClick={() => void signOut()}>
             Sign out
           </Button>
         </div>

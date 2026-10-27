@@ -1,11 +1,17 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type SyntheticEvent } from 'react';
-import { useNavigate } from 'react-router';
-import { api, ApiError } from '../api.ts';
+import { useNavigate, useSearchParams } from 'react-router';
+import { api, ApiError, type Me } from '../api.ts';
+import { useDocumentLanguage, useI18n } from '../i18n.tsx';
 import { Button, Card, ErrorNote, Input, Label } from '../ui.tsx';
 
+/** One sign-in page for the owner and firm users, in English or Arabic. */
 export function Login() {
-  const [email, setEmail] = useState('');
+  const i18n = useI18n();
+  const { t, locale, setLocale } = i18n;
+  useDocumentLanguage(locale);
+  const [params] = useSearchParams();
+  const [email, setEmail] = useState(params.get('email') ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -18,17 +24,18 @@ export function Login() {
     setError(null);
     try {
       await api('/api/auth/sign-in/email', { method: 'POST', body: { email, password } });
-      await queryClient.invalidateQueries({ queryKey: ['me'] });
-      await navigate('/');
+      queryClient.clear();
+      const me = await api<Me>('/api/app/me');
+      await navigate(me.role === 'owner' ? '/' : '/app');
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 429
-          ? 'Too many attempts. Wait a minute and try again.'
+          ? t('login.tooMany')
           : e instanceof ApiError && e.status === 401
-            ? 'Wrong e-mail or password.'
-            : e instanceof Error
-              ? e.message
-              : String(e),
+            ? t('login.wrong')
+            : e instanceof ApiError && e.status === 403
+              ? t('login.blocked')
+              : t('common.error'),
       );
     } finally {
       setBusy(false);
@@ -38,19 +45,27 @@ export function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold">Real Estate Bot</h1>
-        <p className="mb-4 text-sm text-slate-500">Sign in to the admin console</p>
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-semibold">{t('app.name')}</h1>
+            <p className="text-sm text-slate-500">{t('login.subtitle')}</p>
+          </div>
+          <Button variant="ghost" onClick={() => setLocale(locale === 'ar' ? 'en' : 'ar')}>
+            {t('lang.switch')}
+          </Button>
+        </div>
         <form className="space-y-3" onSubmit={(e) => void submit(e)}>
-          <Label text="E-mail">
+          <Label text={t('login.email')}>
             <Input
               type="email"
+              dir="ltr"
               autoComplete="username"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
           </Label>
-          <Label text="Password">
+          <Label text={t('login.password')}>
             <Input
               type="password"
               autoComplete="current-password"
@@ -61,7 +76,7 @@ export function Login() {
           </Label>
           <ErrorNote error={error} />
           <Button type="submit" disabled={busy} className="w-full">
-            {busy ? 'Signing in…' : 'Sign in'}
+            {busy ? t('login.busy') : t('login.submit')}
           </Button>
         </form>
       </Card>

@@ -146,3 +146,138 @@ export interface Settings {
   usdEgpRate: number | null;
   usdEgpRateFallback: number | null;
 }
+
+// Firm dashboard (Phase 6)
+
+export interface Me {
+  id: string;
+  name: string;
+  email: string;
+  role: 'owner' | 'firm_admin' | 'agent';
+  locale: 'en' | 'ar';
+  firm: { id: number; name: string } | null;
+}
+
+export interface Names {
+  en: string;
+  ar: string;
+}
+
+export interface SearchItem {
+  id: number;
+  project: Names | null;
+  developer: Names | null;
+  city: Names | null;
+  category: string | null;
+  unitType: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  minArea: number | null;
+  maxArea: number | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  priceCurrency: string;
+  minPriceEgp: number | null;
+  maxPriceEgp: number | null;
+  pricePerSqm: number | null;
+  previousMinPrice: number | null;
+  downPayment: number | null;
+  installmentYears: number | null;
+  deliveryYear: number | null;
+  readyToMove: boolean;
+  finishingSpecs: string | null;
+  status: string;
+  sourceCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
+export interface SearchPage {
+  items: SearchItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface FilterOptions {
+  cities: (Names & { id: number })[];
+  developers: (Names & { id: number })[];
+  projects: (Names & { id: number; developerId: number; cityId: number })[];
+}
+
+export interface ListingDetail {
+  unit: Record<string, unknown> & { id: number; status: string; priceCurrency: string };
+  names: { project: Names | null; developer: Names | null; city: Names | null };
+  prices: {
+    minPrice: number | null;
+    maxPrice: number | null;
+    priceCurrency: string;
+    downPayment: number | null;
+    installmentYears: number | null;
+    observedAt: string;
+  }[];
+  sources: {
+    role: string;
+    sentAt: string;
+    postedIn: string | null;
+    text: string | null;
+    media: { id: number; kind: string; mimeType: string | null; text: string | null } | null;
+  }[];
+  notes: {
+    id: number;
+    body: string;
+    authorName: string | null;
+    mine: boolean;
+    createdAt: string;
+  }[];
+  usdEgpRate: number | null;
+}
+
+export interface SavedSearch {
+  id: number;
+  name: string;
+  filters: Record<string, unknown>;
+  alertChannel: 'none' | 'whatsapp' | 'telegram';
+  active: boolean;
+  ownerName: string | null;
+  mine: boolean;
+  createdAt: string;
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  locale: string;
+  status: 'invited' | 'active' | 'removed';
+  createdAt: string;
+}
+
+export interface CreatedLink {
+  link: string;
+  expiresAt: string;
+  purpose?: 'invite' | 'reset';
+  userId?: string;
+}
+
+export interface UsageRow {
+  day: string;
+  kind: string;
+  count: number;
+}
+
+export interface FirmSummary {
+  id: number;
+  name: string;
+  plan: string;
+  status: 'active' | 'suspended';
+  maxUsers: number;
+  contractStart: string | null;
+  contractEnd: string | null;
+  notes: string | null;
+  activeUsers: number;
+  searches30d: number;
+  exports30d: number;
+  createdAt: string;
+}
