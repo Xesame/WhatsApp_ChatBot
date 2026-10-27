@@ -3,7 +3,9 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -38,6 +40,35 @@ const updatedAt = timestamp('updated_at', { withTimezone: true })
   .$onUpdate(() => new Date());
 
 export const USER_ROLES = ['owner', 'firm_admin', 'agent'] as const;
+export const FIRM_STATUSES = ['active', 'suspended'] as const;
+export const LOCALES = ['en', 'ar'] as const;
+
+/**
+ * A brokerage firm that pays for access (Phase 6). Only the owner creates
+ * firms. Listings are shared by all firms; the firm's users, notes, saved
+ * searches and usage are private to it.
+ */
+export const firms = pgTable(
+  'firms',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    name: text('name').notNull().unique(),
+    // Plans and pricing are still open (build plan, section 13), so the plan
+    // is a free label for now; the limit that is enforced is max_users.
+    plan: text('plan').notNull().default('trial'),
+    status: text('status', { enum: FIRM_STATUSES }).notNull().default('active'),
+    maxUsers: integer('max_users').notNull().default(5),
+    contractStart: date('contract_start'),
+    contractEnd: date('contract_end'),
+    notes: text('notes'),
+    createdAt,
+    updatedAt,
+  },
+  (t) => [
+    oneOf('firms_status_check', t.status, FIRM_STATUSES),
+    check('firms_max_users_check', sql`${t.maxUsers} between 1 and 1000`),
+  ],
+);
 
 export const users = pgTable(
   'users',
@@ -49,10 +80,19 @@ export const users = pgTable(
     image: text('image'),
     role: text('role', { enum: USER_ROLES }).notNull().default('agent'),
     phone: text('phone'),
+    // Phase 6: the firm a firm admin or agent belongs to (the owner has none)
+    firmId: integer('firm_id').references(() => firms.id, { onDelete: 'restrict' }),
+    locale: text('locale', { enum: LOCALES }).notNull().default('en'),
+    disabled: boolean('disabled').notNull().default(false),
     createdAt,
     updatedAt,
   },
-  (t) => [oneOf('users_role_check', t.role, USER_ROLES)],
+  (t) => [
+    oneOf('users_role_check', t.role, USER_ROLES),
+    oneOf('users_locale_check', t.locale, LOCALES),
+    check('users_firm_check', sql`(${t.role} = 'owner') = (${t.firmId} is null)`),
+    index('users_firm_idx').on(t.firmId),
+  ],
 );
 
 export const sessions = pgTable(

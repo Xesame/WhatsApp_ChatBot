@@ -4,6 +4,8 @@
 
 ```mermaid
 erDiagram
+  users ||--o{ access_links : "user_id"
+  users ||--o{ access_links : "created_by"
   users ||--o{ accounts : "user_id"
   users ||--o{ audit_log : "user_id"
   cities ||--o{ entity_aliases : "city_id"
@@ -11,6 +13,9 @@ erDiagram
   projects ||--o{ entity_aliases : "project_id"
   messages ||--o{ extraction_runs : "message_id"
   media_files ||--o{ extraction_runs : "media_file_id"
+  firms ||--o{ firm_notes : "firm_id"
+  units ||--o{ firm_notes : "unit_id"
+  users ||--o{ firm_notes : "author_id"
   messages ||--o{ media_files : "message_id"
   wa_groups ||--o{ messages : "group_id"
   developers ||--o{ projects : "developer_id"
@@ -18,6 +23,8 @@ erDiagram
   units ||--o{ review_corrections : "unit_id"
   messages ||--o{ review_corrections : "message_id"
   users ||--o{ review_corrections : "reviewer_id"
+  firms ||--o{ saved_searches : "firm_id"
+  users ||--o{ saved_searches : "user_id"
   users ||--o{ sessions : "user_id"
   users ||--o{ settings : "updated_by"
   units ||--o{ unit_prices : "unit_id"
@@ -29,6 +36,19 @@ erDiagram
   cities ||--o{ units : "city_id"
   messages ||--o{ units : "sold_by_message_id"
   extraction_runs ||--o{ units : "extraction_run_id"
+  firms ||--o{ usage_events : "firm_id"
+  users ||--o{ usage_events : "user_id"
+  firms ||--o{ users : "firm_id"
+  access_links {
+    integer id PK
+    text user_id FK
+    text token_hash
+    text purpose
+    text created_by FK
+    timestamp_with_time_zone expires_at
+    timestamp_with_time_zone used_at
+    timestamp_with_time_zone created_at
+  }
   accounts {
     text id PK
     text user_id FK
@@ -96,6 +116,27 @@ erDiagram
     text error
     timestamp_with_time_zone created_at
   }
+  firm_notes {
+    integer id PK
+    integer firm_id FK
+    bigint unit_id FK
+    text author_id FK
+    text body
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
+  firms {
+    integer id PK
+    text name
+    text plan
+    text status
+    integer max_users
+    date contract_start
+    date contract_end
+    text notes
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
   media_files {
     bigint id PK
     bigint message_id FK
@@ -154,6 +195,17 @@ erDiagram
     jsonb after
     text reviewer_id FK
     timestamp_with_time_zone created_at
+  }
+  saved_searches {
+    integer id PK
+    integer firm_id FK
+    text user_id FK
+    text name
+    jsonb filters
+    text alert_channel
+    boolean active
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
   }
   sessions {
     text id PK
@@ -240,6 +292,14 @@ erDiagram
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
+  usage_events {
+    bigint id PK
+    integer firm_id FK
+    text user_id FK
+    text kind
+    jsonb details
+    timestamp_with_time_zone created_at
+  }
   users {
     text id PK
     text name
@@ -248,6 +308,9 @@ erDiagram
     text image
     text role
     text phone
+    integer firm_id FK
+    text locale
+    boolean disabled
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
@@ -289,6 +352,26 @@ erDiagram
     timestamp_with_time_zone updated_at
   }
 ```
+
+## `access_links`
+
+One-time links to set a password: invitations and password resets. Only a SHA-256 hash of the token is stored.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | primary key | Identity primary key. |
+| `user_id` | text | no | → users.id | Whose password the link sets. |
+| `token_hash` | text | no | unique | SHA-256 of the secret token in the link. |
+| `purpose` | text | no |  | `invite` or `reset`. |
+| `created_by` | text | yes | → users.id | Who created the link. |
+| `expires_at` | timestamp with time zone | no |  | After this the link no longer works (7 days for invitations, 1 day for resets). |
+| `used_at` | timestamp with time zone | yes |  | When it was used. A link works once. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+
+**Indexes and constraints**
+
+- Index `access_links_user_idx` on (user_id)
+- Check `access_links_purpose_check`
 
 ## `accounts`
 
@@ -411,6 +494,47 @@ Every model call (classification or extraction): request, answer, tokens, cost, 
 - Check `extraction_runs_purpose_check`
 - Check `extraction_runs_status_check`
 
+## `firm_notes`
+
+A firm's private notes on a listing. Other firms never see them.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | primary key | Identity primary key. |
+| `firm_id` | integer | no | → firms.id | The firm the note belongs to. |
+| `unit_id` | bigint | no | → units.id | The listing. |
+| `author_id` | text | yes | → users.id | Who wrote it. |
+| `body` | text | no |  | The note (1-2,000 characters). |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Index `firm_notes_firm_unit_idx` on (firm_id, unit_id)
+- Check `firm_notes_body_check`
+
+## `firms`
+
+Brokerage firms that pay for access. Only the owner creates them.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | primary key | Identity primary key. |
+| `name` | text | no | unique | Firm name. Unique. |
+| `plan` | text | no |  | Plan label (pricing is not decided yet), e.g. `trial`. |
+| `status` | text | no |  | `active` or `suspended`. Users of a suspended firm cannot sign in. |
+| `max_users` | integer | no |  | How many active users the firm may have (1-1000). |
+| `contract_start` | date | yes |  | Contract start date. |
+| `contract_end` | date | yes |  | Contract end date. After it, the firm cannot sign in. |
+| `notes` | text | yes |  | Owner-only notes about the firm. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Check `firms_status_check`
+- Check `firms_max_users_check`
+
 ## `media_files`
 
 The image, video, voice note or document attached to a message. Identical files are stored once on disk (named by hash).
@@ -516,6 +640,27 @@ Every change made in the review queue, field by field. Corrected units become ev
 
 - Index `review_corrections_unit_idx` on (unit_id)
 - Check `review_corrections_action_check`
+
+## `saved_searches`
+
+Filters an agent saved. Private to the firm; alerts on them arrive in Phase 7.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | primary key | Identity primary key. |
+| `firm_id` | integer | no | → firms.id | The firm it belongs to. |
+| `user_id` | text | no | → users.id | The agent who saved it. |
+| `name` | text | no |  | Name the agent gave it. |
+| `filters` | jsonb | no |  | The search filters (the shape is defined in `@reb/search`). |
+| `alert_channel` | text | no |  | `none`, `whatsapp` or `telegram` (Phase 7). |
+| `active` | boolean | no |  | Whether alerts are on. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Index `saved_searches_firm_user_idx` on (firm_id, user_id)
+- Check `saved_searches_alert_channel_check`
 
 ## `sessions`
 
@@ -660,6 +805,24 @@ One row per unit offering: the 26 Primary Units template columns, then internal 
 - Check `units_down_payment_range`
 - Check `units_price_order`
 
+## `usage_events`
+
+Searches, exports and listing views per firm, for billing and plan limits.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `firm_id` | integer | no | → firms.id | The firm. |
+| `user_id` | text | yes | → users.id | Who did it. |
+| `kind` | text | no |  | `search`, `export`, `listing_view` or `chat_query` (Phase 7). |
+| `details` | jsonb | yes |  | The filters used, number of results or the listing id. |
+| `created_at` | timestamp with time zone | no |  | When. |
+
+**Indexes and constraints**
+
+- Index `usage_events_firm_created_idx` on (firm_id, created_at)
+- Check `usage_events_kind_check`
+
 ## `users`
 
 People who can log in: the owner (Phase 5), firm admins and agents (Phase 6). Managed by Better Auth.
@@ -673,12 +836,18 @@ People who can log in: the owner (Phase 5), firm admins and agents (Phase 6). Ma
 | `image` | text | yes |  | Profile picture URL (not used). |
 | `role` | text | no |  | `owner`, `firm_admin` or `agent`. Only the owner can use the admin pages. |
 | `phone` | text | yes |  | Phone number (Phase 7: links chat accounts). |
+| `firm_id` | integer | yes | → firms.id | The firm a firm admin or agent belongs to. Empty for the owner, required for everyone else (checked). |
+| `locale` | text | no |  | Language of the dashboard: `en` or `ar` (right to left). |
+| `disabled` | boolean | no |  | Set when a firm admin or the owner removes the person: they can no longer sign in. |
 | `created_at` | timestamp with time zone | no |  | When the row was created. |
 | `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
 
 **Indexes and constraints**
 
+- Index `users_firm_idx` on (firm_id)
 - Check `users_role_check`
+- Check `users_locale_check`
+- Check `users_firm_check`
 
 ## `verifications`
 

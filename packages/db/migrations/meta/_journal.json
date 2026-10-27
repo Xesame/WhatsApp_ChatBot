@@ -57,6 +57,13 @@
       "when": 1793021808241,
       "tag": "0007_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793107353769,
+      "tag": "0008_firms",
+      "breakpoints": true
     }
   ]
 }
