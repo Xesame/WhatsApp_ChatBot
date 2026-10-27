@@ -12,6 +12,23 @@ Sign-in, sign-out and session routes under `/api/auth/*` are served by [Better A
 
 The signed-in owner
 
+### `POST /api/links/info`
+
+Who a set-password link is for (name, e-mail, firm), or 404 if expired or used
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| body | `token` | string | yes |
+
+### `POST /api/links/redeem`
+
+Set the password (at least 10 characters) through a link, once
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| body | `token` | string | yes |
+| body | `password` | string | yes |
+
 ## WhatsApp
 
 ### `GET /api/admin/whatsapp`
@@ -175,3 +192,231 @@ Download units in the Primary Units template (active only unless all=true)
 | In | Name | Type | Required |
 | --- | --- | --- | --- |
 | query | `all` | string | no |
+
+## Firms
+
+### `GET /api/admin/firms`
+
+Every firm with its plan, users and usage in the last 30 days
+
+### `POST /api/admin/firms`
+
+Create a firm
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| body | `name` | string | yes |
+| body | `plan` | string | no |
+| body | `maxUsers` | integer (1–1000) | no |
+| body | `status` | `"active"` / `"suspended"` | no |
+| body | `contractStart` | string (date) | no |
+| body | `contractEnd` | string (date) | no |
+| body | `notes` | string | no |
+
+### `PATCH /api/admin/firms/{id}`
+
+Change a firm: plan, user limit, contract dates, notes; suspend (signs its users out) or reactivate
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+| body | `name` | string | no |
+| body | `plan` | string | no |
+| body | `maxUsers` | integer (1–1000) | no |
+| body | `status` | `"active"` / `"suspended"` | no |
+| body | `contractStart` | string (date) | no |
+| body | `contractEnd` | string (date) | no |
+| body | `notes` | string | no |
+
+### `GET /api/admin/firms/{id}/team`
+
+A firm's users: invited, active or removed
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+
+### `GET /api/admin/firms/{id}/usage`
+
+Searches, exports and listing views per day
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| query | `days` | integer (1–365) | no |
+| path | `id` | integer (1–…) | yes |
+
+### `POST /api/admin/firms/{id}/invitations`
+
+Add a firm admin or agent; returns the invitation link to send them (valid 7 days)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+| body | `name` | string | yes |
+| body | `email` | string (email) | yes |
+| body | `role` | `"firm_admin"` / `"agent"` | yes |
+| body | `locale` | `"en"` / `"ar"` | no |
+| body | `phone` | string | no |
+
+### `POST /api/admin/users/{userId}/link`
+
+A new invitation (if they never signed in) or password-reset link for a firm user
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `userId` | string (uuid) | yes |
+
+### `PATCH /api/admin/users/{userId}`
+
+Remove a firm user (signs them out, blocks sign-in) or restore them
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `userId` | string (uuid) | yes |
+| body | `removed` | boolean | yes |
+
+## Dashboard
+
+### `GET /api/app/me`
+
+The signed-in person and their firm
+
+### `PUT /api/app/me/locale`
+
+Dashboard language: en or ar
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| body | `locale` | `"en"` / `"ar"` | yes |
+
+### `GET /api/app/options`
+
+Cities, developers and projects for the filters, in both languages
+
+### `GET /api/app/listings`
+
+Search listings. Filters as query parameters (lists comma-separated): q, cityIds, developerIds, projectIds, unitTypes, categories, finishing, bedroomsMin/Max, areaMin/Max (m²), priceMin/Max (EGP), deliveryYearMax, readyToMove, downPaymentMax, installmentYearsMin, priceDropped, statuses, sort; plus page and pageSize
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| query | `type` | any | no |
+| query | `additionalProperties` | string | no |
+
+### `GET /api/app/listings/{id}`
+
+One listing: every field, price history, source messages (no sender or group), and your firm’s notes
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+
+### `GET /api/app/media/{id}`
+
+A flyer or document behind a listing
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+
+### `GET /api/app/export`
+
+Download the current search (same filters as /listings, up to 5000 listings) in the Primary Units template, as xlsx or csv
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| query | `type` | any | no |
+| query | `additionalProperties` | string | no |
+
+### `POST /api/app/listings/{id}/notes`
+
+Add a private note to a listing; only your firm sees it
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+| body | `body` | string | yes |
+
+### `DELETE /api/app/notes/{id}`
+
+Delete a note (its author or a firm admin)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+
+### `GET /api/app/saved-searches`
+
+Your saved searches (a firm admin sees the whole firm’s)
+
+### `POST /api/app/saved-searches`
+
+Save a search; alerts on it arrive with the chat bots (Phase 7)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| body | `name` | string | yes |
+| body | `filters` | object | yes |
+| body | `alertChannel` | `"none"` / `"whatsapp"` / `"telegram"` | yes |
+| body | `active` | boolean | yes |
+
+### `PATCH /api/app/saved-searches/{id}`
+
+Rename, change filters or alert channel, pause
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+| body | `name` | string | no |
+| body | `filters` | object | no |
+| body | `alertChannel` | `"none"` / `"whatsapp"` / `"telegram"` | no |
+| body | `active` | boolean | no |
+
+### `DELETE /api/app/saved-searches/{id}`
+
+Delete a saved search
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+
+## Team
+
+### `GET /api/app/team`
+
+Your firm’s users (firm admins)
+
+### `POST /api/app/team`
+
+Add an agent to your firm; returns the invitation link to send them (firm admins)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| body | `name` | string | yes |
+| body | `email` | string (email) | yes |
+| body | `locale` | `"en"` / `"ar"` | no |
+| body | `phone` | string | no |
+
+### `POST /api/app/team/{userId}/link`
+
+A new invitation or password-reset link for a member (firm admins)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `userId` | string (uuid) | yes |
+
+### `PATCH /api/app/team/{userId}`
+
+Remove or restore an agent (firm admins)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `userId` | string (uuid) | yes |
+| body | `removed` | boolean | yes |
+
+### `GET /api/app/usage`
+
+Your firm’s searches, exports and listing views per day (firm admins)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| query | `days` | integer (1–365) | no |

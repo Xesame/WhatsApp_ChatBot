@@ -7,7 +7,6 @@ import {
   getSetting,
   listEntities,
   mergeEntities,
-  NotFoundError,
   removeAlias,
   renameEntity,
   retryJob,
@@ -22,14 +21,24 @@ import type { Auth } from '@reb/auth';
 import { mediaFiles, messages, waGroups, GROUP_SOURCE_TYPES, type Database } from '@reb/db';
 import { exportUnits } from '@reb/pipeline';
 import type { PgBoss } from '@reb/queue';
-import { fromNodeHeaders } from 'better-auth/node';
 import { asc, count, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginCallback, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
 import { z } from 'zod';
+import {
+  createFirm,
+  firmInputSchema,
+  inviteSchema,
+  inviteUser,
+  listFirms,
+  listTeam,
+  newAccessLink,
+  setRemoved,
+  updateFirm,
+  usageByDay,
+  type Actor,
+} from '@reb/firms';
+import { fromOtherSite, passwordLink, sendError, sendMediaFile, sessionUser } from './http.ts';
 
 export interface AdminOptions {
   auth: Auth;
@@ -77,19 +86,19 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
   api.decorateRequest('owner', null);
 
   api.addHook('onRequest', async (request, reply) => {
-    // Changes only from our own pages: a second guard behind the
-    // SameSite session cookie against cross-site requests.
-    const origin = request.headers.origin;
-    if (request.method !== 'GET' && origin !== undefined && origin !== publicOrigin) {
+    if (fromOtherSite(request, publicOrigin)) {
       return reply.code(403).send({ error: 'Request from another site refused' });
     }
-    const session = await options.auth.api.getSession({
-      headers: fromNodeHeaders(request.headers),
-    });
-    if (!session) return reply.code(401).send({ error: 'Sign in first' });
-    const user = session.user as typeof session.user & { role?: string };
+    const result = await sessionUser(options.auth, db, request);
+    if ('status' in result) return reply.code(result.status).send({ error: result.error });
+    const { user } = result;
     if (user.role !== 'owner') return reply.code(403).send({ error: 'Owner only' });
-    request.owner = { id: user.id, name: user.name, email: user.email, role: user.role };
+    request.owner = { id: user.userId, name: user.name, email: user.email, role: user.role };
+  });
+  const actorOf = (request: FastifyRequest): Actor => ({
+    userId: request.owner?.id ?? '',
+    role: 'owner',
+    firmId: null,
   });
 
   const log = (
@@ -249,22 +258,7 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
     },
     async (request, reply) => {
       const [file] = await db.select().from(mediaFiles).where(eq(mediaFiles.id, request.params.id));
-      const root = resolve(options.mediaDir);
-      const path = file?.path ? resolve(root, file.path) : null;
-      if (!file || !path?.startsWith(root + sep))
-        return reply.code(404).send({ error: 'File not found' });
-      const info = await stat(path).catch(() => null);
-      if (!info?.isFile()) return reply.code(404).send({ error: 'File not found' });
-      return reply
-        .type(file.mimeType ?? 'application/octet-stream')
-        .header('content-length', info.size)
-        .header('cache-control', 'private, max-age=86400')
-        .header('x-content-type-options', 'nosniff')
-        .header(
-          'content-security-policy',
-          "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
-        )
-        .send(createReadStream(path));
+      return sendMediaFile(reply, options.mediaDir, file);
     },
   );
 
@@ -469,28 +463,146 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
     },
   );
 
-  api.setErrorHandler((error, _request, reply) => {
-    if (error instanceof NotFoundError) return reply.code(404).send({ error: error.message });
-    if (error instanceof z.ZodError) {
-      return reply.code(400).send({
-        error: 'Invalid value',
-        issues: error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
+  // Firms and their users (Phase 6)
+
+  api.get(
+    '/firms',
+    {
+      schema: {
+        tags: ['Firms'],
+        summary: 'Every firm with its plan, users and usage in the last 30 days',
+      },
+    },
+    (request) => listFirms(db, actorOf(request)),
+  );
+
+  api.post(
+    '/firms',
+    {
+      schema: {
+        tags: ['Firms'],
+        summary: 'Create a firm',
+        body: firmInputSchema.required({ name: true }),
+      },
+    },
+    async (request, reply) => {
+      const firmId = await createFirm(db, actorOf(request), request.body);
+      await log(request, 'firm.create', `firm:${firmId}`, request.body);
+      return reply.code(201).send({ id: firmId });
+    },
+  );
+
+  api.patch(
+    '/firms/:id',
+    {
+      schema: {
+        tags: ['Firms'],
+        summary:
+          'Change a firm: plan, user limit, contract dates, notes; suspend (signs its users out) or reactivate',
+        params: z.object({ id }),
+        body: firmInputSchema,
+      },
+    },
+    async (request) => {
+      await updateFirm(db, actorOf(request), request.params.id, request.body);
+      await log(request, 'firm.update', `firm:${request.params.id}`, request.body);
+      return { ok: true };
+    },
+  );
+
+  api.get(
+    '/firms/:id/team',
+    {
+      schema: {
+        tags: ['Firms'],
+        summary: "A firm's users: invited, active or removed",
+        params: z.object({ id }),
+      },
+    },
+    (request) => listTeam(db, actorOf(request), request.params.id),
+  );
+
+  api.get(
+    '/firms/:id/usage',
+    {
+      schema: {
+        tags: ['Firms'],
+        summary: 'Searches, exports and listing views per day',
+        params: z.object({ id }),
+        querystring: z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }),
+      },
+    },
+    (request) => usageByDay(db, request.params.id, request.query.days),
+  );
+
+  api.post(
+    '/firms/:id/invitations',
+    {
+      schema: {
+        tags: ['Firms'],
+        summary:
+          'Add a firm admin or agent; returns the invitation link to send them (valid 7 days)',
+        params: z.object({ id }),
+        body: inviteSchema,
+      },
+    },
+    async (request, reply) => {
+      const invited = await inviteUser(db, actorOf(request), request.params.id, request.body);
+      await log(request, 'user.invite', `user:${invited.userId}`, {
+        firmId: request.params.id,
+        role: request.body.role,
+        email: request.body.email,
       });
-    }
-    const e = error as {
-      statusCode?: number;
-      validation?: unknown;
-      message?: string;
-      code?: string;
-      cause?: { code?: string };
-    };
-    if (e.validation) return reply.code(400).send({ error: e.message });
-    if (e.code === '23505' || e.cause?.code === '23505')
-      return reply.code(409).send({ error: 'That name is already used' });
-    if (e.statusCode && e.statusCode < 500)
-      return reply.code(e.statusCode).send({ error: e.message });
-    reply.log.error({ err: error }, 'Admin request failed');
-    return reply.code(500).send({ error: 'Something went wrong; see the API log' });
-  });
+      return reply.code(201).send({
+        userId: invited.userId,
+        link: passwordLink(options.publicUrl, invited.token),
+        expiresAt: invited.expiresAt,
+      });
+    },
+  );
+
+  api.post(
+    '/users/:userId/link',
+    {
+      schema: {
+        tags: ['Firms'],
+        summary:
+          'A new invitation (if they never signed in) or password-reset link for a firm user',
+        params: z.object({ userId: z.uuid() }),
+      },
+    },
+    async (request) => {
+      const created = await newAccessLink(db, actorOf(request), request.params.userId);
+      await log(request, `user.link.${created.purpose}`, `user:${request.params.userId}`);
+      return {
+        purpose: created.purpose,
+        link: passwordLink(options.publicUrl, created.token),
+        expiresAt: created.expiresAt,
+      };
+    },
+  );
+
+  api.patch(
+    '/users/:userId',
+    {
+      schema: {
+        tags: ['Firms'],
+        summary: 'Remove a firm user (signs them out, blocks sign-in) or restore them',
+        params: z.object({ userId: z.uuid() }),
+        body: z.object({ removed: z.boolean() }),
+      },
+    },
+    async (request) => {
+      await setRemoved(db, actorOf(request), request.params.userId, request.body.removed);
+      await log(
+        request,
+        request.body.removed ? 'user.remove' : 'user.restore',
+        `user:${request.params.userId}`,
+      );
+      return { ok: true };
+    },
+  );
+
+  api.setErrorHandler(sendError);
   done();
 };

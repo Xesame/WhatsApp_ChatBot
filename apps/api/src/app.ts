@@ -8,7 +8,9 @@ import {
   validatorCompiler,
 } from 'fastify-type-provider-zod';
 import { adminRoutes, type AdminOptions } from './admin-routes.ts';
+import { appRoutes } from './app-routes.ts';
 import { authRoutes } from './auth-routes.ts';
+import { linkRoutes } from './link-routes.ts';
 
 /**
  * Builds the Fastify app without starting it, so tests can call routes with
@@ -43,6 +45,16 @@ export function buildApp(options: { logger: Logger; database: Database; admin?: 
       ...options.admin,
       database: options.database,
       prefix: '/api/admin',
+    });
+    void app.register(appRoutes, {
+      ...options.admin,
+      database: options.database,
+      prefix: '/api/app',
+    });
+    void app.register(linkRoutes, {
+      db: options.database.db,
+      publicUrl: options.admin.publicUrl,
+      prefix: '/api/links',
     });
   }
   return app;
