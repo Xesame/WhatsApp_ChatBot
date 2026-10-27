@@ -1,5 +1,14 @@
 import { createAuth, upsertOwner } from '@reb/auth';
-import { auditLog, mediaFiles, messages, units, unitSources, waGroups, users } from '@reb/db';
+import {
+  auditLog,
+  firms,
+  mediaFiles,
+  messages,
+  units,
+  unitSources,
+  waGroups,
+  users,
+} from '@reb/db';
 import { seed } from '@reb/db/seed-runner';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { startQueue, type PgBoss } from '@reb/queue';
@@ -89,7 +98,11 @@ describe.skipIf(!testDatabaseUrl)('admin API (real Postgres, real Better Auth)',
       email: 'agent@example.com',
       password: 'agent password 1',
     });
-    await testDb.database.db.update(users).set({ role: 'agent' }).where(eq(users.id, id));
+    const [firm] = await testDb.database.db.insert(firms).values({ name: 'Some Firm' }).returning();
+    await testDb.database.db
+      .update(users)
+      .set({ role: 'agent', firmId: firm?.id ?? null })
+      .where(eq(users.id, id));
     const response = await signIn('agent@example.com', 'agent password 1', '10.1.1.2');
     const agentCookie = String(response.headers['set-cookie']).split(';')[0] ?? '';
     expect(

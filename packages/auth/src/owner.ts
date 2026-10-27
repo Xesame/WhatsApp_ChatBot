@@ -8,6 +8,26 @@ import { randomUUID } from 'node:crypto';
  * `create-owner` (setup) and by tests. The password is stored as a scrypt
  * hash in `accounts.password`, the format Better Auth checks at login.
  */
+/** Sets (or replaces) a user's password, in the format Better Auth checks at login. */
+export async function setPassword(db: Db, userId: string, password: string): Promise<void> {
+  if (password.length < 10) throw new Error('Password must be at least 10 characters');
+  const hash = await hashPassword(password);
+  const updated = await db
+    .update(accounts)
+    .set({ password: hash })
+    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'credential')))
+    .returning({ id: accounts.id });
+  if (updated.length === 0) {
+    await db.insert(accounts).values({
+      id: randomUUID(),
+      userId,
+      accountId: userId,
+      providerId: 'credential',
+      password: hash,
+    });
+  }
+}
+
 export async function upsertOwner(
   db: Db,
   input: { name: string; email: string; password: string },

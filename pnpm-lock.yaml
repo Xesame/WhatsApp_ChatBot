@@ -440,6 +440,24 @@ importers:
         specifier: workspace:*
         version: link:../schema
 
+  packages/firms:
+    dependencies:
+      '@reb/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@reb/db':
+        specifier: workspace:*
+        version: link:../db
+      '@reb/search':
+        specifier: workspace:*
+        version: link:../search
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
   packages/ingest:
     dependencies:
       '@reb/db':
@@ -564,6 +582,27 @@ importers:
       exceljs:
         specifier: 4.4.0
         version: 4.4.0
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
+  packages/search:
+    dependencies:
+      '@reb/db':
+        specifier: workspace:*
+        version: link:../db
+      '@reb/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@reb/normalize':
+        specifier: workspace:*
+        version: link:../normalize
+      '@reb/schema':
+        specifier: workspace:*
+        version: link:../schema
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
       zod:
         specifier: 4.6.7
         version: 4.6.7
