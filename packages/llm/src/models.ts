@@ -4,7 +4,7 @@
  *
  * Models are configured as "provider:model" lists in the environment, in
  * fallback order, e.g.
- * LLM_EXTRACT_MODELS=gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free
+ * LLM_EXTRACT_MODELS=gemini:gemini-flash-latest,gemini:gemini-flash-lite-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free
  *
  * Adding a provider = one entry here + its API key variable in
  * packages/config/src/env.ts.

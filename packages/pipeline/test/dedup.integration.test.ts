@@ -294,6 +294,64 @@ describe.skipIf(!testDatabaseUrl)('dedup and price history (real Postgres)', () 
     ]);
   });
 
+  it('a sold notice naming only the developer finds the one unit that fits', async () => {
+    const [g1] = groups as [number];
+    await apply(await post(g1, '2026-10-20T10:00:00Z'), 'listing', [
+      unit({ minArea: 130, maxArea: 130, bedrooms: 2 }),
+    ]);
+    const notice = await post(g1, '2026-10-21T10:00:00Z');
+    const result = await apply(notice, 'sold', [
+      unit({
+        projectId: null,
+        cityId: null,
+        minArea: 130,
+        maxArea: 130,
+        bedrooms: null,
+        minPrice: null,
+        maxPrice: null,
+      }),
+    ]);
+    expect(result.sold).toHaveLength(1);
+    const [row] = await testDb.database.db.select().from(units);
+    expect(row?.status).toBe('sold');
+  });
+
+  it('a sold notice naming only the developer, when several units fit, flags them instead of guessing', async () => {
+    const [g1] = groups as [number];
+    const [other] = await testDb.database.db
+      .insert(projects)
+      .values({
+        nameEn: 'Other Project',
+        nameAr: 'مشروع آخر',
+        developerId: mivida.developerId,
+        cityId: mivida.cityId,
+      })
+      .returning();
+    await apply(await post(g1, '2026-10-20T10:00:00Z'), 'listing', [
+      unit({ minArea: 130, maxArea: 130 }),
+    ]);
+    await apply(await post(g1, '2026-10-20T11:00:00Z'), 'listing', [
+      unit({ projectId: other?.id ?? null, minArea: 130, maxArea: 130 }),
+    ]);
+    const result = await apply(await post(g1, '2026-10-21T10:00:00Z'), 'sold', [
+      unit({
+        projectId: null,
+        cityId: null,
+        minArea: 130,
+        maxArea: 130,
+        minPrice: null,
+        maxPrice: null,
+      }),
+    ]);
+    expect(result.sold).toEqual([]);
+    expect(result.notes.join()).toMatch(/2 units could be meant/);
+    const rows = await testDb.database.db.select().from(units);
+    expect(rows.map((r) => [r.status, r.needsReview])).toEqual([
+      ['active', true],
+      ['active', true],
+    ]);
+  });
+
   it('reprocessing messages never duplicates, and retracting the only source removes the unit', async () => {
     const [g1, g2] = groups as [number, number];
     const a = await post(g1, '2026-10-20T10:00:00Z');

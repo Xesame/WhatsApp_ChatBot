@@ -108,12 +108,29 @@ export async function applyExtraction(tx: Db, input: ApplyInput): Promise<ApplyR
         continue;
       }
       targets = picked.targets;
-    } else {
-      const match =
-        update.projectId != null
-          ? findMatch(await candidatesFor(tx, update as Unit), update as Unit, input.tolerances)
-          : null;
+    } else if (update.projectId != null) {
+      const match = findMatch(
+        await candidatesFor(tx, update as Unit),
+        update as Unit,
+        input.tolerances,
+      );
       targets = match ? [match] : [];
+    } else {
+      // No project named ("the Palm Hills 130 m flat is sold"): look among the
+      // developer's units of that type, and act only when exactly one fits.
+      const fits = await developerMatches(tx, update, input.tolerances);
+      if (fits.length > 1) {
+        result.notes.push(
+          `${input.intent}: ${fits.length} units could be meant; flagged for review`,
+        );
+        await flag(
+          tx,
+          fits,
+          `Possible ${input.intent} in message ${input.message.id} (unclear which unit)`,
+        );
+        continue;
+      }
+      targets = fits;
     }
     if (targets.length === 0) {
       result.notes.push(`${input.intent}: no matching unit found`);
@@ -155,6 +172,32 @@ async function candidatesFor(
         inArray(units.status, ['active', 'stale']),
       ),
     );
+}
+
+/**
+ * For an update that names a developer but no project: the developer's units
+ * of the same type that would match if the update were about their project.
+ */
+async function developerMatches(
+  tx: Db,
+  update: Partial<Unit>,
+  tolerances: Tolerances,
+): Promise<UnitRow[]> {
+  if (update.developerId == null || update.unitType == null) return [];
+  if (update.minArea == null && update.maxArea == null && update.bedrooms == null) return [];
+  const rows = await tx
+    .select()
+    .from(units)
+    .where(
+      and(
+        eq(units.developerId, update.developerId),
+        eq(units.unitType, update.unitType),
+        inArray(units.status, ['active', 'stale']),
+      ),
+    );
+  return rows.filter(
+    (row) => findMatch([row], { ...update, projectId: row.projectId } as Unit, tolerances) !== null,
+  );
 }
 
 /** Units that came from the message this one replies to (or edits). */
