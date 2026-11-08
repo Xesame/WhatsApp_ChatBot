@@ -9,13 +9,14 @@
     "pipeline": "node --env-file-if-exists=../../.env src/cli.ts"
   },
   "dependencies": {
-    "@reb/runtime": "workspace:*",
-    "@reb/queue": "workspace:*",
+    "@reb/admin": "workspace:*",
     "@reb/config": "workspace:*",
     "@reb/db": "workspace:*",
+    "@reb/ingest": "workspace:*",
     "@reb/llm": "workspace:*",
     "@reb/pipeline": "workspace:*",
-    "@reb/admin": "workspace:*"
+    "@reb/queue": "workspace:*",
+    "@reb/runtime": "workspace:*"
   },
   "devDependencies": {}
 }

@@ -7,3 +7,9 @@ dist
 coverage
 # Runtime data (WhatsApp sessions, downloaded media) never goes into git.
 data/
+
+# Sample messages for local testing (may contain real posts): never committed
+samples/*
+!samples/README.md
+# a made-up example export to try the importer with
+!samples/demo-export/

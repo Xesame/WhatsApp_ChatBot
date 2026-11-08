@@ -350,6 +350,9 @@ importers:
       '@reb/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@reb/ingest':
+        specifier: workspace:*
+        version: link:../../packages/ingest
       '@reb/llm':
         specifier: workspace:*
         version: link:../../packages/llm
@@ -472,6 +475,9 @@ importers:
       '@reb/db':
         specifier: workspace:*
         version: link:../db
+      '@reb/normalize':
+        specifier: workspace:*
+        version: link:../normalize
       '@reb/queue':
         specifier: workspace:*
         version: link:../queue

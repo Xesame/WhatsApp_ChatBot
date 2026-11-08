@@ -10,9 +10,10 @@
   },
   "dependencies": {
     "@reb/db": "workspace:*",
+    "@reb/normalize": "workspace:*",
     "@reb/queue": "workspace:*",
-    "drizzle-orm": "0.45.4",
     "@reb/whatsapp": "workspace:*",
+    "drizzle-orm": "0.45.4",
     "pino": "10.4.0"
   },
   "devDependencies": {}

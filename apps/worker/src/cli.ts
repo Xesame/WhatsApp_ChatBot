@@ -1,9 +1,11 @@
 import { usdToEgpRate } from '@reb/admin';
 import { loadConfigOrExit } from '@reb/config';
 import { createDatabase, MESSAGE_STATUSES } from '@reb/db';
+import { importSamples, parseSamples } from '@reb/ingest';
 import { exportUnits, reprocess, type ReprocessFilter } from '@reb/pipeline';
 import { startQueue } from '@reb/queue';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 
 // Command-line tools for the pipeline. Logic lives in packages/pipeline.
@@ -11,10 +13,14 @@ const usage = `Usage:
   reprocess [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--group <id>] [--status skipped,failed] [--message <id,...>]
       Send stored messages through the pipeline again (after a prompt or model change).
   export --out <file.xlsx> [--usd-egp-rate <n>] [--message <id,...>] [--all]
-      Write units in the Primary Units template layout. Active units only unless --all.`;
+      Write units in the Primary Units template layout. Active units only unless --all.
+  import <file.txt> [--group <name>] [--type developer|broker] [--keep-dates]
+      Feed sample messages through the pipeline without WhatsApp: a WhatsApp "Export chat"
+      file (attached files in the same folder) or a plain file with messages separated by ---.
+      Times move forward so the newest message is now, unless --keep-dates.`;
 
 const [command, ...rest] = process.argv.slice(2);
-const { values } = parseArgs({
+const { values, positionals } = parseArgs({
   args: rest,
   options: {
     from: { type: 'string' },
@@ -25,9 +31,12 @@ const { values } = parseArgs({
     out: { type: 'string' },
     'usd-egp-rate': { type: 'string' },
     all: { type: 'boolean' },
+    type: { type: 'string' },
+    'keep-dates': { type: 'boolean' },
   },
+  allowPositionals: true,
 });
-if (command !== 'reprocess' && command !== 'export') {
+if (command !== 'reprocess' && command !== 'export' && command !== 'import') {
   console.log(usage);
   process.exit(command ? 1 : 0);
 }
@@ -63,6 +72,46 @@ try {
     const count = await reprocess(database, boss, filter);
     await boss.stop({ graceful: true });
     console.log(`Queued ${count} message(s) for processing.`);
+  } else if (command === 'import') {
+    const file = positionals.at(0);
+    if (!file) throw new Error('import needs a file: import <file.txt>');
+    if (!config.SENDER_HASH_SALT)
+      throw new Error('Set SENDER_HASH_SALT in .env first (senders are stored only as a hash)');
+    const type = values.type ?? null;
+    if (type !== null && type !== 'developer' && type !== 'broker')
+      throw new Error('--type is developer or broker');
+    const samples = parseSamples(await readFile(file, 'utf8'));
+    if (samples.length === 0) throw new Error(`No messages found in ${file}`);
+    const boss = await startQueue(config.DATABASE_URL, {
+      supervise: false,
+      onError: () => undefined,
+    });
+    const result = await importSamples(database, boss, samples, {
+      groupName: values.group ?? `Samples: ${basename(file)}`,
+      sourceType: type,
+      salt: config.SENDER_HASH_SALT,
+      mediaDir: config.MEDIA_DIR,
+      maxMediaBytes: config.MEDIA_MAX_BYTES,
+      filesDir: dirname(file),
+      shiftToNow: !values['keep-dates'],
+    });
+    await boss.stop({ graceful: true });
+    console.log(
+      `Imported ${result.saved} message(s) (${result.withFiles} with files); ${result.alreadyImported} already imported.`,
+    );
+    if (result.mediaOmitted > 0) {
+      console.log(
+        `${result.mediaOmitted} message(s) had their media left out of the export ("Media omitted"): export again "with media" to include flyers.`,
+      );
+    }
+    if (result.missingFiles.length > 0) {
+      console.log(
+        `Files not found next to the export, imported without them: ${result.missingFiles.join(', ')}`,
+      );
+    }
+    console.log(
+      'The worker is processing them now: watch Overview and Review in the admin console.',
+    );
   } else {
     if (!values.out) throw new Error('export needs --out <file.xlsx>');
     // --usd-egp-rate, else the rate the owner set in the admin console, else USD_EGP_RATE

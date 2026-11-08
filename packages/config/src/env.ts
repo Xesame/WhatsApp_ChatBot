@@ -104,7 +104,7 @@ export const envSchema = z.object({
     .meta({
       description:
         'Secret mixed into every sender hash, so a stored hash cannot be turned back into a phone number by hashing guesses. Generate with `openssl rand -hex 32`. Never change it after messages are stored: the same sender would get a different hash.',
-      usedBy: 'capture',
+      usedBy: 'capture, worker (import command)',
       requiredFor: ['capture'],
       examples: ['replace-with-output-of-openssl-rand-hex-32'],
       secret: true,
@@ -191,12 +191,16 @@ export const envSchema = z.object({
     }),
   LLM_EXTRACT_MODELS: z
     .string()
-    .default('gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free')
+    .default(
+      'gemini:gemini-flash-latest,gemini:gemini-flash-lite-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free',
+    )
     .meta({
       description:
-        'Models that extract units, as `provider:model`, comma-separated, in fallback order.',
+        'Models that extract units, as `provider:model`, comma-separated, in fallback order. Flash-Lite has its own free quota, so it takes over when Flash is busy or rate-limited.',
       usedBy: 'worker',
-      examples: ['gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free'],
+      examples: [
+        'gemini:gemini-flash-latest,gemini:gemini-flash-lite-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free',
+      ],
     }),
   LLM_VISION_MODELS: z
     .string()

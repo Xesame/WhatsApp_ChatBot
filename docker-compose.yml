@@ -82,6 +82,8 @@ services:
     environment:
       <<: *app-env
       MEDIA_DIR: /app/data/media
+      # Only for the import command (sample messages); capture requires it.
+      SENDER_HASH_SALT: ${SENDER_HASH_SALT:-}
       # Empty values fall back to the defaults in packages/config.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
@@ -103,6 +105,8 @@ services:
       STALE_AFTER_DAYS: ${STALE_AFTER_DAYS:-}
     volumes:
       - media:/app/data/media
+      # Sample messages to import (the samples/ folder next to this file), read-only.
+      - ./samples:/app/samples:ro
 
   chatbot:
     <<: *app
