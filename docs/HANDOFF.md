@@ -1,0 +1,94 @@
+# Handoff: the story so far
+
+Written 20 November 2026 so a new Claude Code session (on Hassan's Windows laptop, or anywhere) can continue without the earlier chat. Read `CLAUDE.md` first for how to work; this file is what happened.
+
+## Where things are
+
+| What                                                                                  | Where                                                                                                                       |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Code                                                                                  | github.com/Xesame/WhatsApp_ChatBot, branch `main` (the repository is **public**)                                            |
+| Technical manual: architecture, data model, setup, operations, runbooks, decision log | `PROJECT.md`                                                                                                                |
+| Plain-language pitch for investors and buyers                                         | `PITCH.md`                                                                                                                  |
+| Generated reference: env variables, database, Excel template, API                     | `docs/generated/`                                                                                                           |
+| Accuracy test set and its tools                                                       | `eval/` (`eval/README.md`)                                                                                                  |
+| Sample messages for local testing (not committed, except the made-up demo)            | `samples/`                                                                                                                  |
+| The original build plan (Hassan's document, 25 Oct 2026)                              | Hassan has it; it is not in the repository because the repository is public. Its binding rules are copied into `CLAUDE.md`. |
+| Business playbook: setup, pricing, selling, legal, 90-day plan                        | Claude Doc: https://claude.ai/artifact/7cSP5naPM5yZL3nb5s1rJd                                                               |
+| Step-by-step local test guide (Windows and Mac)                                       | Claude Doc: https://claude.ai/artifact/EJ8rwj75kxzkBA2JMfPvux                                                               |
+| Clickable preview of the console and dashboard on sample data                         | https://claude.ai/artifact/Y92bSaVHMEq5oYR4TnMpj7                                                                           |
+
+## Build status
+
+| Phase                                                                                                                    | Status                                                |
+| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| 0 Foundation (monorepo, config, Docker, database, seed)                                                                  | Done                                                  |
+| 1 Capture (Baileys, messages, media)                                                                                     | Done; live WhatsApp test waits for the scraper number |
+| 2 Text extraction + eval harness                                                                                         | Built; accuracy on real messages not yet measured     |
+| 3 Media (images, PDFs, Excel; voice notes dropped)                                                                       | Built                                                 |
+| 4 Dedup, price history, sold/stale                                                                                       | Done                                                  |
+| 5 Owner admin console (login, pairing QR, groups, review, names, stats, jobs, settings)                                  | Done                                                  |
+| 6 Firm dashboard (firms, invitations, search, listing page, notes, saved searches, exports, share cards, Arabic/English) | Done                                                  |
+| After 6: `import` command for sample messages; Flash-Lite extraction fallback; sold notices find their unit              | Done (8 Nov)                                          |
+| 7 Chat bots and alerts (WhatsApp query bot, Telegram, alerts)                                                            | Not started                                           |
+| 8 Hardening and deploy (server, HTTPS, backups, monitoring)                                                              | Not started                                           |
+
+432 tests pass (`pnpm check`). Everything runs with `docker compose up -d --build`.
+
+## Decisions Hassan made
+
+| Date   | Decision                                                                                                                                                                                                                     |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 25 Oct | Seed lists: separate cities; Sarai under Mostakbal City; short project names; SouthMED = Ras El Hekma                                                                                                                        |
+| 25 Oct | Categories: Residential, Commercial, Administrative, Medical. Down payment stored as percent and amount. Maintenance currency EGP, USD or %. Ready-to-move units have no delivery year. One row per unit type                |
+| 25 Oct | EGP is the main currency; USD prices converted at a rate the owner sets (now on the console's Settings page; `USD_EGP_RATE` is a fallback)                                                                                   |
+| 26 Oct | Models: Gemini first (text and images), then Groq, then OpenRouter. Cerebras went paid; kept only as an option                                                                                                               |
+| 26 Oct | Voice notes are not processed (rare in the groups)                                                                                                                                                                           |
+| 26 Oct | Images may be sent to the vision model as they are (the groups are semi-public)                                                                                                                                              |
+| 26 Oct | A lone "من" / "from" before a price means "starting from" (minimum)                                                                                                                                                          |
+| 27 Oct | Only the owner creates firms; firms never self-sign-up                                                                                                                                                                       |
+| 27 Oct | Arabic and English from day one for firm users, per-user language, right to left; the owner console stays English                                                                                                            |
+| 27 Oct | Firms never see sender, group name or contact details in text (only "developer group" / "broker group")                                                                                                                      |
+| 27 Oct | Pricing recommended in the playbook: Solo EGP 1,500, Team (5 users) 4,500, Office (15) 9,900, Enterprise from 15,000 a month; annual = 10 months; first 10 firms 40% off for 12 months. Not yet confirmed by Hassan as final |
+
+The full technical decision log is the last chapter of `PROJECT.md`.
+
+## First test on sample messages (8 November, made-up demo export)
+
+- 10 messages imported; 6 listings, all in EGP. The Mivida flat posted as text, in a PDF and as a price update became one unit with three price records. The Palm Hills flat was marked sold. "Good morning" and a media-omitted message were skipped.
+- 3 listings flagged for review, each for a real reason: two "iCity" projects exist; "Palm Hills" matched by similarity; "SODIC East" is not in the project list (matched SODIC West). Add SODIC East (and the area New Heliopolis) in Places & names.
+- Found and fixed: Gemini Flash was rate-limited on the free tier for most calls, so Flash-Lite is now the second extraction model; a sold notice naming only the developer matched nothing, so the extraction prompt (`extract-2026-11-08.1`) now returns the unit a sold/price notice is about, and such a notice updates the one unit that fits or flags all candidates.
+
+## Waiting on Hassan
+
+- [ ] Run the system on his laptop and import his real sample messages (local guide above). Send back the accuracy report (`eval/reports/`), notes on missing/duplicate/wrong listings, and names he had to add.
+- [ ] The dedicated scraper WhatsApp number (and later a second number for the query bot).
+- [ ] Gemini key in his own `.env` (optional Groq / OpenRouter keys as fallbacks).
+- [ ] A lawyer on Egypt's data protection law (Law 151 of 2020; its regulations' one-year grace period ended around November 2026), hosting abroad, WhatsApp terms, showing flyers to firms.
+- [ ] Company, tax card, VAT and e-invoicing before charging anyone; confirm the prices.
+
+## Setting up on Hassan's laptop (Windows)
+
+Connecting his laptop folder to the cloud session didn't work (the folder `WhatsApp_Chatbot` on computer `HassanElshimy` was listed but not offered to cloud sessions, even after updating the app), so the next session runs locally in that folder. Steps, also in the local guide:
+
+1. Install Docker Desktop (WSL 2) and Git if missing; Docker must show "Engine running".
+2. Clone the repository into the folder, or `git pull` if it is already there.
+3. `copy .env.example .env`, then set `POSTGRES_PASSWORD`, `AUTH_SECRET`, `SENDER_HASH_SALT` to new random values (`docker run --rm node:24-alpine node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) and let Hassan type `GEMINI_API_KEY` himself.
+4. `docker compose up -d --build`; all services healthy in `docker compose ps`.
+5. `docker compose exec -it api node apps/api/src/create-owner.ts --email <his e-mail> --name Hassan` (he types the password).
+6. Open http://localhost:4173.
+7. Import samples: unzip each WhatsApp export into `samples/<name>/`, then `docker compose exec worker node apps/worker/src/cli.ts import "samples/<name>/<file>.txt" --group "<name>" --type broker`.
+
+## Known gaps
+
+- Two duplicate units can't be merged by hand in the console yet (duplicate names can).
+- Only flagged listings can be edited in Review; mistakes in unflagged ones must be noted by hand.
+- Plan export caps are a contract term only; the system enforces the user limit per firm.
+- Flyer images are shown to firms as posted and may contain a broker's phone number.
+- WhatsApp may ban the scraper number (unofficial client); keep a second number warmed up.
+- On the Gemini free tier, about 10 requests a minute: 100 messages take 15 to 25 minutes.
+
+## What's next
+
+1. Hassan's local test with real samples, then tune spellings, tolerances and prompts from his findings.
+2. Phase 8 (server, HTTPS, nightly backups with a tested restore, monitoring) before any firm uses it.
+3. Phase 7 (WhatsApp query bot, Telegram fallback, alerts on saved searches) after that.
