@@ -139,10 +139,15 @@ export function Review() {
   const [afterId, setAfterId] = useState<number | undefined>(undefined);
   // `/review?unit=123` opens that one unit (linked from Places & names).
   const [params, setParams] = useSearchParams();
-  // The short "Approved ✓" message lives here, not in the unit, because the
-  // unit on screen changes as soon as a decision is saved.
-  const [notice, setNotice] = useState<string | null>(null);
   const wanted = Number(params.get('unit')) || undefined;
+  // The short "Approved ✓" message lives here, not in the unit, because the
+  // unit on screen changes as soon as a decision is saved. It remembers which
+  // page (`?unit=` value) it belongs to, so browser back/forward never shows it
+  // on the wrong page.
+  const [noticeState, setNotice] = useState<{ text: string; unit: number | undefined } | null>(
+    null,
+  );
+  const notice = noticeState && noticeState.unit === wanted ? noticeState.text : null;
   const queue = useQuery({
     queryKey: ['review', afterId, wanted],
     queryFn: async () => {
@@ -225,9 +230,10 @@ export function Review() {
         <ReviewItem
           key={item.unit.id}
           view={item}
+          onStart={() => setNotice(null)}
           onDone={(action) => {
             const next = afterReview(action, Boolean(wanted));
-            setNotice(next.message);
+            setNotice({ text: next.message, unit: next.backToQueue ? undefined : wanted });
             if (next.backToQueue) setParams({});
             // The save may have re-checked other waiting units (fresh queue) and
             // learned a spelling (fresh name lists, so it isn't offered again).
@@ -243,9 +249,11 @@ export function Review() {
 
 function ReviewItem({
   view,
+  onStart,
   onDone,
 }: {
   view: UnitView;
+  onStart: () => void;
   onDone: (action: 'save' | 'approve' | 'reject') => void;
 }) {
   const { unit } = view;
@@ -291,6 +299,7 @@ function ReviewItem({
     onError: (e) => setFormError(e instanceof Error ? e.message : String(e)),
   });
   const run = (action: 'save' | 'approve' | 'reject') => {
+    onStart(); // the previous "Approved ✓" must not sit beside a new result or error
     setFormError(null);
     try {
       review.mutate(action);
