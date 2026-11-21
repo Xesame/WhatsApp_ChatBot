@@ -533,7 +533,7 @@ docker compose exec -it api node apps/api/src/create-owner.ts --email you@exampl
 pnpm eval:from-review          # reviewed messages → eval/cases/review-message-<id>/ (on your machine)
 ```
 
-Running `create-owner` again for the same e-mail resets the password.
+Running `create-owner` again for the same e-mail resets the password. The password is typed at a hidden prompt (nothing is shown, not even `*`; Backspace works, Ctrl-C cancels), handled in `apps/api/src/hidden-input.ts` with Node's public terminal API only. Without a terminal (for example `exec -T`), set `OWNER_PASSWORD` instead.
 
 **Firm dashboard (Phase 6)** at `PUBLIC_URL/app`, in Arabic (right to left) or English, chosen per user with the switch in the top bar.
 
