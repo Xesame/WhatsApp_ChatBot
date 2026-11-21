@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appearsIn,
   isNameReason,
+  MILLIONS_ASSUMED_REASON,
   normalizeUnit,
   scoreConfidence,
   type NormalizeContext,
@@ -223,6 +224,20 @@ describe('names', () => {
     expect(unit.reviewReasons).toContain(
       'project "Zomra East" is not in the known list (closest: ZED East, 0.43)',
     );
+  });
+
+  it('keeps the price score it used, for later re-checks', () => {
+    // A plain-digit price has no "million"/"thousand": it scores 0.6 without any reason.
+    const text = 'ميفيدا شقة 150 متر السعر 6500000';
+    const plain = normalizeUnit(
+      { ...raw, city: null, price: 'السعر 6500000', evidence: { ...raw.evidence, price: null } },
+      ctx({ sourceText: text, city: null }),
+    );
+    expect(plain.minPrice).toBe(650_000_000);
+    expect(plain.reviewReasons).not.toContain(MILLIONS_ASSUMED_REASON);
+    expect(plain.extras.priceFactor).toBe(0.6);
+    expect(normalizeUnit(raw, ctx()).extras.priceFactor).toBe(1);
+    expect(normalizeUnit({ ...raw, price: null }, ctx()).extras.priceFactor).toBe(0);
   });
 
   it('records names as written', () => {

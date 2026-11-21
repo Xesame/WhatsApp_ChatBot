@@ -85,11 +85,7 @@ const COPIED_FIELDS = [
   'cash_discount',
 ] as const satisfies readonly (keyof RawUnit)[];
 
-/**
- * The review reason added when a price had no "million"/"thousand" and was
- * read as millions. Exported so the re-check (pipeline) can tell such units
- * apart and score their price the same way (0.6 instead of 1).
- */
+/** The review reason added when a price had no "million"/"thousand" and was read as millions. */
 export const MILLIONS_ASSUMED_REASON = 'Price had no "million"/"thousand"; read as millions';
 
 const toMinor = (major: number | null) => (major === null ? null : Math.round(major * 100));
@@ -282,6 +278,10 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
   if (raw.unit_type === null) reasons.push('No unit type');
 
   // 9. Confidence: how much of what matters was found, and how surely.
+  // A price without "million"/"thousand" counts for less, even when no reason
+  // was recorded for it (a plain "6500000"). The factor is kept in extras so
+  // a later re-check of the names scores the price exactly the same way.
+  const priceFactor = minPrice !== null ? (price.explicitUnits ? 1 : 0.6) : 0;
   const confidence = scoreConfidence({
     projectSimilarity: project?.similarity ?? 0,
     developerPart: Math.max(
@@ -290,7 +290,7 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
       cityId !== null ? 0.6 : 0,
     ),
     hasUnitType: raw.unit_type !== null,
-    priceFactor: minPrice !== null ? (price.explicitUnits ? 1 : 0.6) : 0,
+    priceFactor,
     hasArea: minArea !== null,
   });
 
@@ -333,6 +333,7 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
     reviewReasons: reasons,
     extras: {
       written,
+      priceFactor,
       ...(Object.keys(unmatched).length ? { unmatched } : {}),
       ...(Object.keys(suggested).length ? { suggested } : {}),
     },

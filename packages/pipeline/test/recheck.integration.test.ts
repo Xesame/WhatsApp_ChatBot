@@ -1,10 +1,21 @@
 import { addAlias, createEntity, removeAlias } from '@reb/admin';
-import { entityAliases, projects, reviewCorrections, units } from '@reb/db';
+import {
+  developers,
+  entityAliases,
+  messages,
+  projects,
+  reviewCorrections,
+  units,
+  waGroups,
+} from '@reb/db';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
+import { DEFAULT_TOLERANCES } from '@reb/dedup';
+import { normalizeUnit } from '@reb/normalize';
+import type { RawUnit } from '@reb/schema';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { recheckWaitingUnits } from '../src/index.ts';
+import { applyExtraction, matchEntities, recheckWaitingUnits } from '../src/index.ts';
 
 /**
  * Re-checking waiting units when the bot learns a name: a unit that was
@@ -35,6 +46,7 @@ describe.skipIf(!testDatabaseUrl)('re-checking waiting units (real Postgres)', (
         extras: {
           written: { developer: [], project: ['Jamila'], city: [] },
           unmatched: { project: 'Jamila' },
+          priceFactor: 1,
         },
         firstSeenAt: new Date('2026-11-01T10:00:00Z'),
         lastSeenAt: new Date('2026-11-01T10:00:00Z'),
@@ -102,7 +114,10 @@ describe.skipIf(!testDatabaseUrl)('re-checking waiting units (real Postgres)', (
       confidence: 1,
       flaggedOnArrival: true,
     });
-    expect(after?.extras).toEqual({ written: { developer: [], project: ['Jamila'], city: [] } });
+    expect(after?.extras).toEqual({
+      written: { developer: [], project: ['Jamila'], city: [] },
+      priceFactor: 1,
+    });
     expect(await allUnits()).toHaveLength(1);
   });
 
@@ -154,7 +169,7 @@ describe.skipIf(!testDatabaseUrl)('re-checking waiting units (real Postgres)', (
     const written = { developer: [], project: ['Zomra East'], city: [] };
     const unit = await waiting({
       reviewReasons: [unknown('Zomra East')],
-      extras: { written, unmatched: { project: 'Zomra East' } },
+      extras: { written, unmatched: { project: 'Zomra East' }, priceFactor: 1 },
     });
     // Hassan already answered this one by hand: it keeps his answer throughout.
     const reviewed = await waiting({
@@ -213,11 +228,121 @@ describe.skipIf(!testDatabaseUrl)('re-checking waiting units (real Postgres)', (
   it('also re-checks units saved before names as written were kept', async () => {
     // Older units have no `written` names: they are read back from the
     // unmatched names and the quoted name in the old reason.
-    const unit = await waiting({ extras: { unmatched: { project: 'Jamila' } } });
+    const unit = await waiting({ confidence: 0.6, extras: { unmatched: { project: 'Jamila' } } });
     const jamila = await makeProject('Jamila', 'جميلة');
     expect(await recheckWaitingUnits(testDb.database)).toEqual({ checked: 1, cleared: 1 });
     const after = await unitRow(unit.id);
-    expect(after).toMatchObject({ projectId: jamila, needsReview: false, reviewReasons: [] });
+    // No stored price score: the old score keeps its price part, the name parts are swapped.
+    expect(after).toMatchObject({
+      projectId: jamila,
+      needsReview: false,
+      reviewReasons: [],
+      confidence: 1,
+    });
     expect(after?.extras).toEqual({ written: { developer: [], project: ['Jamila'], city: [] } });
+  });
+
+  it('keeps the price score a unit got when it arrived', async () => {
+    // Through the real path: exact developer, no project, a plain-digit price.
+    // normalizeUnit scores such a price 0.6 without recording a reason.
+    const [developer] = await testDb.database.db
+      .select({ name: developers.nameEn })
+      .from(developers)
+      .where(eq(developers.id, mivida.developerId));
+    const developerName = developer?.name ?? '';
+    const text = `${developerName} شقة 150 متر السعر 6500000`;
+    const raw: RawUnit = {
+      category: null,
+      developer: developerName,
+      project: null,
+      city: null,
+      unit_type: 'Apartment',
+      unit_code: null,
+      floor: null,
+      finishing: null,
+      bedrooms: null,
+      bathrooms: null,
+      area: '150 متر',
+      land_area: null,
+      garden_area: null,
+      outdoor_area: null,
+      price: 'السعر 6500000',
+      delivery: null,
+      maintenance: null,
+      down_payment: null,
+      installments: null,
+      cash_discount: null,
+      notes: null,
+      evidence: { project: null, unit_type: null, area: null, price: null },
+    };
+    const found = await matchEntities(testDb.database.db, raw);
+    expect(found.developer?.similarity).toBe(1);
+    const sentAt = new Date('2026-11-01T10:00:00Z');
+    const normalized = normalizeUnit(raw, { sourceText: text, sentAt, ...found });
+    expect(normalized).toMatchObject({ confidence: 0.65, needsReview: true, reviewReasons: [] });
+
+    const [group] = await testDb.database.db
+      .insert(waGroups)
+      .values({ jid: `g${Math.random()}@g.us`, name: 'Brokers', watched: true })
+      .returning();
+    const [message] = await testDb.database.db
+      .insert(messages)
+      .values({
+        groupId: group?.id ?? 0,
+        waMessageId: `R${Math.random()}`,
+        senderHash: 'h'.repeat(64),
+        sentAt,
+        text,
+      })
+      .returning();
+    if (!message) throw new Error('insert failed');
+    await testDb.database.transaction((tx) =>
+      applyExtraction(tx, {
+        message,
+        intent: 'listing',
+        units: [normalized],
+        extractionRunId: null,
+        tolerances: DEFAULT_TOLERANCES,
+      }),
+    );
+
+    // An unrelated change: a new spelling for another project.
+    await addAlias(testDb.database.db, 'project', mivida.id, 'Mivida Gardens test');
+    expect(await recheckWaitingUnits(testDb.database)).toEqual({ checked: 1, cleared: 0 });
+    const [row] = await allUnits();
+    expect(row).toMatchObject({
+      confidence: normalized.confidence,
+      needsReview: normalized.needsReview,
+      reviewReasons: [],
+    });
+  });
+
+  it('swaps only the name parts of an older score', async () => {
+    // An older unit: no written names, no stored price score, and the name
+    // only in a "matched by similarity" reason.
+    const jamila = await makeProject('Jamila', 'جميلة');
+    const unit = await waiting({
+      projectId: jamila,
+      developerId: mivida.developerId,
+      cityId: mivida.cityId,
+      confidence: 0.7,
+      reviewReasons: ['project "Jamla" matched "Jamila" by similarity (0.82)'],
+      extras: {},
+    });
+    await addAlias(testDb.database.db, 'project', jamila, 'Jamla');
+    expect(await recheckWaitingUnits(testDb.database)).toEqual({ checked: 1, cleared: 1 });
+    const after = await unitRow(unit.id);
+    // Old name parts: 0.25 x 0.82 + 0.15 x 1; new: 0.25 x 1 + 0.15 x 1.
+    const expected =
+      Math.round((0.7 - (0.25 * 0.82 + 0.15 * 1) + (0.25 * 1 + 0.15 * 1)) * 100) / 100;
+    expect(after).toMatchObject({
+      projectId: jamila,
+      reviewReasons: [],
+      needsReview: false,
+      confidence: expected,
+    });
+    expect((after?.extras as { written: { project: string[] } }).written.project).toEqual([
+      'Jamla',
+    ]);
   });
 });

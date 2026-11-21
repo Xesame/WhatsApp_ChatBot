@@ -10,7 +10,6 @@ import {
 import {
   entityOutcome,
   isNameReason,
-  MILLIONS_ASSUMED_REASON,
   scoreConfidence,
   type Suggestion,
   type WrittenNames,
@@ -55,12 +54,52 @@ const QUOTED_NAME_PATTERNS = [
 
 interface UnitExtras {
   written?: WrittenNames;
+  /** The price score normalizeUnit used (0, 0.6 or 1); missing on older units. */
+  priceFactor?: number;
   unmatched?: Partial<Record<Field, string>>;
   suggested?: Partial<Record<Field, Suggestion>>;
   [key: string]: unknown;
 }
 
 type UnitRow = typeof units.$inferSelect;
+
+/** An old `<field> "x" matched "y" by similarity (0.82)` reason: its similarity. */
+const SIMILARITY_REASON =
+  /^(developer|project|city) ".*" matched ".*" by similarity \((\d+(?:\.\d+)?)\)$/;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * The part of the confidence that depends on names, exactly as in
+ * scoreConfidence: 0.25 x project similarity + 0.15 x developer part.
+ */
+const nameParts = (parts: { projectSimilarity: number; developerPart: number }) =>
+  0.25 * parts.projectSimilarity + 0.15 * parts.developerPart;
+
+/**
+ * The name parts a unit was scored with, read back from its ids and reasons:
+ * an attached id counts 1, unless an old reason says it matched by
+ * similarity (then that number); no id counts 0. The developer part follows
+ * normalizeUnit's rule (a developer match, else 1 with a project, else 0.6
+ * with a city).
+ */
+function oldNameParts(unit: UnitRow) {
+  const similarity: Partial<Record<Field, number>> = {};
+  for (const reason of unit.reviewReasons) {
+    const found = SIMILARITY_REASON.exec(reason);
+    if (found?.[1] && found[2]) similarity[found[1] as Field] = Number(found[2]);
+  }
+  const developer = unit.developerId === null ? 0 : (similarity.developer ?? 1);
+  const project = unit.projectId === null ? 0 : (similarity.project ?? 1);
+  return {
+    projectSimilarity: project,
+    developerPart: Math.max(
+      developer,
+      unit.projectId !== null ? 1 : 0,
+      unit.cityId !== null ? 0.6 : 0,
+    ),
+  };
+}
 
 /** Compares two JSON values, ignoring the order of object keys (jsonb reorders them). */
 function sameJson(a: unknown, b: unknown): boolean {
@@ -238,19 +277,45 @@ async function recompute(db: Db, unit: UnitRow) {
     ctx,
   );
   const reasons = [...new Set([...otherReasons, ...outcome.reasons])];
-  // Same arithmetic as normalizeUnit step 9 (rule 4: in code, never the model).
-  const confidence = scoreConfidence({
+  const newParts = {
     projectSimilarity: ctx.project?.similarity ?? 0,
     developerPart: Math.max(
       ctx.developer?.similarity ?? 0,
       ctx.project ? 1 : 0,
       outcome.cityId !== null ? 0.6 : 0,
     ),
-    hasUnitType: unit.unitType !== null,
-    priceFactor:
-      unit.minPrice === null ? 0 : unit.reviewReasons.includes(MILLIONS_ASSUMED_REASON) ? 0.6 : 1,
-    hasArea: unit.minArea !== null,
-  });
+  };
+  // Confidence is the same arithmetic as normalizeUnit step 9 (rule 4: in
+  // code, never the model), with the price scored as it was at creation.
+  let confidence: number;
+  let needsReview: boolean | null = null;
+  if (typeof extras.priceFactor === 'number') {
+    confidence = scoreConfidence({
+      ...newParts,
+      hasUnitType: unit.unitType !== null,
+      priceFactor: extras.priceFactor,
+      hasArea: unit.minArea !== null,
+    });
+  } else {
+    // Older units did not keep their price score, and it cannot always be
+    // told from the unit (a plain "6500000" scored 0.6 with no reason). So
+    // only the name parts are swapped: the rest of the old score stays.
+    const before = oldNameParts(unit);
+    const sameNames =
+      outcome.developerId === unit.developerId &&
+      outcome.projectId === unit.projectId &&
+      outcome.cityId === unit.cityId &&
+      before.projectSimilarity === newParts.projectSimilarity &&
+      before.developerPart === newParts.developerPart;
+    if (sameNames) {
+      // Nothing about the names changed: score and decision stay as they are.
+      confidence = unit.confidence;
+      needsReview = unit.needsReview;
+    } else {
+      const score = unit.confidence - nameParts(before) + nameParts(newParts);
+      confidence = Math.min(1, Math.max(0, round2(score)));
+    }
+  }
   // Other extras stay as they are; unmatched and suggested are replaced.
   const rest: UnitExtras = { ...extras };
   delete rest.unmatched;
@@ -261,7 +326,7 @@ async function recompute(db: Db, unit: UnitRow) {
     cityId: outcome.cityId,
     reviewReasons: reasons,
     confidence,
-    needsReview: reasons.length > 0 || confidence < 0.7,
+    needsReview: needsReview ?? (reasons.length > 0 || confidence < 0.7),
     extras: {
       ...rest,
       written,
