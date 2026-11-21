@@ -289,13 +289,16 @@ describe.skipIf(!testDatabaseUrl)('admin API (real Postgres, real Better Auth)',
       payload: { nameEn: 'Acme Developments', nameAr: 'أكمي' },
     });
     expect(created.statusCode).toBe(201);
-    const { id } = created.json<{ id: number }>();
-    await app.inject({
+    const { id, recheck } = created.json<{ id: number; recheck: unknown }>();
+    // Every change to names re-checks the waiting units and says how many it fixed.
+    expect(recheck).toMatchObject({ cleared: 0 });
+    const alias = await app.inject({
       method: 'POST',
       url: `/api/admin/entities/developer/${String(id)}/aliases`,
       headers: as(cookie),
       payload: { alias: 'Akmi' },
     });
+    expect(alias.json()).toMatchObject({ added: true, recheck: { cleared: 0 } });
     const list = (
       await app.inject({ url: '/api/admin/entities/developer?search=Acme', headers: as(cookie) })
     ).json<{ aliases: { alias: string }[] }[]>();

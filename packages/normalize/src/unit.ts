@@ -85,6 +85,13 @@ const COPIED_FIELDS = [
   'cash_discount',
 ] as const satisfies readonly (keyof RawUnit)[];
 
+/**
+ * The review reason added when a price had no "million"/"thousand" and was
+ * read as millions. Exported so the re-check (pipeline) can tell such units
+ * apart and score their price the same way (0.6 instead of 1).
+ */
+export const MILLIONS_ASSUMED_REASON = 'Price had no "million"/"thousand"; read as millions';
+
 const toMinor = (major: number | null) => (major === null ? null : Math.round(major * 100));
 const plausibleArea = (n: number | null) => (n !== null && n >= 10 && n <= 100_000 ? n : null);
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -212,7 +219,7 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
     // Brokers often write "السعر 6.5" meaning 6.5 million.
     minPrice *= 1e6;
     maxPrice = maxPrice === null ? null : maxPrice < 1000 ? maxPrice * 1e6 : maxPrice;
-    reasons.push('Price had no "million"/"thousand"; read as millions');
+    reasons.push(MILLIONS_ASSUMED_REASON);
   }
   if (priceCurrency === 'USD') reasons.push('Priced in USD');
 

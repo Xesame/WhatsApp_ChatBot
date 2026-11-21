@@ -19,7 +19,7 @@ import {
 } from '@reb/admin';
 import type { Auth } from '@reb/auth';
 import { mediaFiles, messages, waGroups, GROUP_SOURCE_TYPES, type Database } from '@reb/db';
-import { exportUnits } from '@reb/pipeline';
+import { exportUnits, recheckWaitingUnits } from '@reb/pipeline';
 import type { PgBoss } from '@reb/queue';
 import { asc, count, eq, sql } from 'drizzle-orm';
 import type { FastifyPluginCallback, FastifyRequest } from 'fastify';
@@ -100,6 +100,13 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
     role: 'owner',
     firmId: null,
   });
+  /**
+   * After a change to names (a new entity, a spelling added or removed, a
+   * merge, a rename, or a spelling remembered in Review), units waiting only
+   * because a name was unknown are checked again. It runs here, after the
+   * change has been saved, so the counts come back in the same response.
+   */
+  const recheck = () => recheckWaitingUnits(database);
 
   const log = (
     request: FastifyRequest,
@@ -247,7 +254,8 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
       await log(request, `unit.${request.body.action}`, `unit:${unit.id}`, {
         fields: Object.keys(request.body.changes ?? {}),
       });
-      return unit;
+      // A remembered spelling may also fix other waiting units.
+      return request.body.remember?.length ? { ...unit, recheck: await recheck() } : unit;
     },
   );
 
@@ -305,7 +313,7 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
       }
       const created = await createEntity(db, params.kind, body);
       await log(request, `${params.kind}.create`, `${params.kind}:${created}`, body);
-      return reply.code(201).send({ id: created });
+      return reply.code(201).send({ id: created, recheck: await recheck() });
     },
   );
 
@@ -323,7 +331,7 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
       const { kind: k, id: entityId } = request.params;
       await renameEntity(db, k, entityId, request.body);
       await log(request, `${k}.rename`, `${k}:${entityId}`, request.body);
-      return { ok: true };
+      return { ok: true, recheck: await recheck() };
     },
   );
 
@@ -341,7 +349,7 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
       const { kind: k, id: entityId } = request.params;
       const added = await addAlias(db, k, entityId, request.body.alias);
       if (added) await log(request, 'alias.add', `${k}:${entityId}`, request.body);
-      return { added };
+      return { added, recheck: await recheck() };
     },
   );
 
@@ -351,7 +359,7 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
     async (request) => {
       await removeAlias(db, request.params.id);
       await log(request, 'alias.remove', `alias:${request.params.id}`);
-      return { ok: true };
+      return { ok: true, recheck: await recheck() };
     },
   );
 
@@ -372,7 +380,7 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
         return reply.code(400).send({ error: 'Cannot merge an entity into itself' });
       await mergeEntities(database, k, fromId, request.body.intoId);
       await log(request, `${k}.merge`, `${k}:${fromId}`, { intoId: request.body.intoId });
-      return { ok: true };
+      return { ok: true, recheck: await recheck() };
     },
   );
 

@@ -26,3 +26,4 @@ export {
 } from './steps.ts';
 export { exportUnits, reprocess, type ReprocessFilter } from './admin.ts';
 export { applyExtraction, markStale, retract, type ApplyInput, type ApplyResult } from './apply.ts';
+export { recheckWaitingUnits } from './recheck.ts';

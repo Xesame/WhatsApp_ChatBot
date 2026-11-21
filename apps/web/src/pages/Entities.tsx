@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SyntheticEvent } from 'react';
 import { Link } from 'react-router';
 import { api, type Entity, type EntityKind } from '../api.ts';
+import { recheckMessage, type Recheck } from './learning.ts';
 import {
   Badge,
   Button,
@@ -37,7 +38,16 @@ export function Entities() {
         `/api/admin/entities/${kind}${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''}`,
       ),
   });
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['entities'] });
+  // After a change the server checks waiting units again; its counts are shown here.
+  const [recheck, setRecheck] = useState<Recheck | null>(null);
+  const changed = async (result: unknown) => {
+    const counts = (result as { recheck?: Recheck } | null | undefined)?.recheck;
+    if (counts) setRecheck(counts);
+    // Waiting units may have been fixed: refresh the review queue and counts too.
+    void queryClient.invalidateQueries({ queryKey: ['review'] });
+    void queryClient.invalidateQueries({ queryKey: ['stats'] });
+    await queryClient.invalidateQueries({ queryKey: ['entities'] });
+  };
 
   return (
     <>
@@ -45,6 +55,11 @@ export function Entities() {
         title="Places & names"
         subtitle="Projects, developers and areas, with every spelling that should be recognised as each."
       />
+      {recheck && (
+        <p role="status" className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+          {recheckMessage(recheck)}
+        </p>
+      )}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {KINDS.map((k) => (
           <Button
@@ -67,11 +82,11 @@ export function Entities() {
           {list.isPending && <Loading />}
           <ErrorNote error={list.error} />
           {list.data?.map((entity) => (
-            <EntityCard key={entity.id} kind={kind} entity={entity} onChange={refresh} />
+            <EntityCard key={entity.id} kind={kind} entity={entity} onChange={changed} />
           ))}
           {list.data?.length === 0 && <p className="text-sm text-slate-500">Nothing found.</p>}
         </div>
-        <CreateEntity kind={kind} onCreated={refresh} />
+        <CreateEntity kind={kind} onCreated={(_id, counts) => changed({ recheck: counts })} />
       </div>
     </>
   );
@@ -84,7 +99,8 @@ function EntityCard({
 }: {
   kind: EntityKind;
   entity: Entity;
-  onChange: () => Promise<void>;
+  /** Called with the server's answer (it carries the re-check counts). */
+  onChange: (result: unknown) => Promise<void>;
 }) {
   const [alias, setAlias] = useState('');
   const [editing, setEditing] = useState(false);
@@ -99,7 +115,7 @@ function EntityCard({
   const call = useMutation({
     mutationFn: (request: { path: string; method: string; body?: unknown }) =>
       api(request.path, request),
-    onSuccess: () => onChange(),
+    onSuccess: (result) => onChange(result),
   });
   const base = `/api/admin/entities/${kind}/${entity.id}`;
 
@@ -258,7 +274,8 @@ export function CreateEntity({
   title,
 }: {
   kind: EntityKind;
-  onCreated: (id: number) => Promise<void> | void;
+  /** Gets the new id, and the re-check counts the server sends back. */
+  onCreated: (id: number, recheck?: Recheck) => Promise<void> | void;
   initial?: { nameEn?: string; nameAr?: string; developerId?: string; cityId?: string };
   title?: string;
 }) {
@@ -276,7 +293,7 @@ export function CreateEntity({
   });
   const create = useMutation({
     mutationFn: () =>
-      api<{ id: number }>(`/api/admin/entities/${kind}`, {
+      api<{ id: number; recheck?: Recheck }>(`/api/admin/entities/${kind}`, {
         method: 'POST',
         body: {
           nameEn: form.nameEn,
@@ -286,9 +303,9 @@ export function CreateEntity({
             : {}),
         },
       }),
-    onSuccess: async ({ id }) => {
+    onSuccess: async ({ id, recheck }) => {
       setForm(blank);
-      await onCreated(id);
+      await onCreated(id, recheck);
     },
   });
   const label = KINDS.find((k) => k.kind === kind)?.label.toLowerCase() ?? kind;

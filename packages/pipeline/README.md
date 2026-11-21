@@ -9,6 +9,7 @@ The processing steps the worker runs for each message, plus reprocessing and exp
 | `src/prefilter.ts` | Free keyword check before any model call                                                                          |
 | `src/entities.ts`  | Name → canonical city / developer / project (exact, contained, fuzzy)                                             |
 | `src/admin.ts`     | `reprocess()` (send messages through again) and `exportUnits()` (Excel)                                           |
+| `src/recheck.ts`   | `recheckWaitingUnits()`: after a name is learned, fixes waiting units in place (never ones Hassan reviewed)       |
 
 **Flow**
 
@@ -31,4 +32,5 @@ preprocess ──► classify ──► extract ──► units
 - **Idempotent.** Applying a message first undoes everything it did before (`retract`: its sources, price rows, sold mark, and units only it created), then applies it again. Re-running `extract` never duplicates; new `extraction_runs` rows are added.
 - **Lifecycle.** A daily job (03:17 Cairo time) marks active units not seen for `STALE_AFTER_DAYS` (45) as `stale`; a repost makes them `active` again.
 - **The model reads, code decides.** `runExtraction` gets raw phrases from the model, then matches names (`entities.ts`) and normalizes every field (`@reb/normalize`): numbers, currencies, the no-invention check, confidence and review reasons.
+- **Re-check in place.** When Hassan adds a project, a spelling, or merges or renames an entry, the API runs `recheckWaitingUnits()` right after the change is saved and shows the counts ("Re-checked N waiting units, M cleared"). It matches each waiting unit's names again as the broker wrote them and recomputes its names, review reasons and confidence exactly as a fresh extraction would; the unit keeps its id and is never merged into another unit. Units Hassan touched in Review are skipped (checked again with the row locked). Units flagged on arrival are included even once cleared, so removing a learned spelling puts them back in the queue. Older units without `extras.written` get their names read back from `extras.unmatched` and the quoted names in their reasons. It is synchronous rather than a queue job: a few hundred units at most, no model calls. Running it twice changes nothing.
 - **Media waits for Phase 3.** Images, PDFs and videos are marked `skipped` with the reason "Media extraction arrives in Phase 3"; `reprocess --status skipped` sends them through again once it exists. Voice notes are not processed (decided with Hassan).

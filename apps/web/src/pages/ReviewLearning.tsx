@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { api, type Entity, type EntityKind, type UnitView } from '../api.ts';
 import { Button } from '../ui.tsx';
 import { CreateEntity } from './Entities.tsx';
+import { rememberKey, spellingsToOffer } from './learning.ts';
 
 /**
  * The "teach the system" controls on the Review page: next to Project,
@@ -18,8 +19,6 @@ const WORD: Record<EntityKind, string> = {
   city: 'area',
 };
 
-const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-
 /** The list of entities of one kind. Same cache entry the drop-downs use. */
 export function useEntities(kind: EntityKind) {
   return useQuery({
@@ -28,24 +27,6 @@ export function useEntities(kind: EntityKind) {
     staleTime: 60_000,
   });
 }
-
-/**
- * Written names worth remembering for the chosen entity: the ones that are
- * not already one of its names or spellings. Empty when nothing is chosen.
- */
-export function spellingsToOffer(written: string[], chosen: Entity | undefined): string[] {
-  if (!chosen) return [];
-  const known = [chosen.nameEn, chosen.nameAr, ...chosen.aliases.map((a) => a.alias)];
-  const offers: string[] = [];
-  for (const w of written) {
-    if (w.trim() && !known.some((k) => same(k, w)) && !offers.some((o) => same(o, w)))
-      offers.push(w);
-  }
-  return offers;
-}
-
-export const rememberKey = (kind: EntityKind, alias: string) =>
-  `${kind}:${alias.trim().toLowerCase()}`;
 
 export function LearnControls({
   kind,

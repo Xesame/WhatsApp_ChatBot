@@ -24,7 +24,8 @@ import {
   PageTitle,
   Select,
 } from '../ui.tsx';
-import { LearnControls, rememberKey, spellingsToOffer, useEntities } from './ReviewLearning.tsx';
+import { rememberedSpellings } from './learning.ts';
+import { LearnControls, useEntities } from './ReviewLearning.tsx';
 
 /**
  * Side-by-side review: the original message (and its flyer or PDF) on the
@@ -196,8 +197,11 @@ export function Review() {
           key={item.unit.id}
           view={item}
           onDone={() => {
+            // The save may have re-checked other waiting units (fresh queue) and
+            // learned a spelling (fresh name lists, so it isn't offered again).
             void queryClient.invalidateQueries({ queryKey: ['review'] });
             void queryClient.invalidateQueries({ queryKey: ['stats'] });
+            void queryClient.invalidateQueries({ queryKey: ['entities'] });
           }}
         />
       )}
@@ -228,17 +232,9 @@ function ReviewItem({ view, onDone }: { view: UnitView; onDone: () => void }) {
     developer: useEntities('developer').data,
     city: useEntities('city').data,
   };
-  const KEY_OF = { project: 'projectId', developer: 'developerId', city: 'cityId' } as const;
   /** The ticked spellings to send along with the save. */
   const remembered = () =>
-    (['project', 'developer', 'city'] as const).flatMap((kind) => {
-      const key = KEY_OF[kind];
-      if (values[key] === initial[key]) return [];
-      const chosen = lists[kind]?.find((e) => String(e.id) === values[key]);
-      return spellingsToOffer(view.learning.written[kind], chosen)
-        .filter((alias) => !unticked.has(rememberKey(kind, alias)))
-        .map((alias) => ({ kind, alias }));
-    });
+    rememberedSpellings({ values, initial, lists, written: view.learning.written, unticked });
 
   const review = useMutation({
     mutationFn: (action: 'save' | 'approve' | 'reject') => {
