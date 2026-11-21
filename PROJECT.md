@@ -500,7 +500,7 @@ Among several matches, the closest area wins. When unsure, the rules say "differ
 
 **Teaching the bot from Review.** When a name in the unit was not recognised, Review shows, under that field, what the broker wrote and what it can do about it:
 
-- **Remember '<written>' as a spelling of <name>** (ticked by default when the unit has a known name that differs from what was written): saves the spelling with source `review` and the unit's id.
+- **Remember '<written>' as a spelling of <name>** (shown, ticked by default, when you choose a project, developer or area whose known spellings don't include the name as written; untick it to fix only this unit): saves the spelling with source `review` and the unit's id.
 - **Use <suggestion>**: one click puts the closest known name in the field (and remembers the spelling).
 - **+ New project / developer / area named '<written>'**: creates it, with the written name as its first spelling.
 
