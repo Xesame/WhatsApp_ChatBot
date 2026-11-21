@@ -71,6 +71,13 @@
       "when": 1795265256689,
       "tag": "0009_learning",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795277874358,
+      "tag": "0010_name_lookups",
+      "breakpoints": true
     }
   ]
 }

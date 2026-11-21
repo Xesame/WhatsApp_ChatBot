@@ -1,5 +1,6 @@
 export * as classifyPrompt from '../prompts/classify.ts';
 export * as extractPrompt from '../prompts/extract.ts';
+export * as lookupPrompt from '../prompts/lookup.ts';
 export * as transcribePrompt from '../prompts/transcribe.ts';
 export {
   LlmClient,

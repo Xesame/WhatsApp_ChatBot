@@ -177,6 +177,18 @@ erDiagram
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
+  name_lookups {
+    integer id PK
+    text name
+    text name_normalized
+    text developer
+    text city
+    boolean known
+    text model
+    text prompt_version
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
   projects {
     integer id PK
     text name_en
@@ -603,6 +615,27 @@ Raw messages from watched groups, stored once and never changed by processing ex
 - Index `messages_sender_sent_at_idx` on (sender_hash, sent_at)
 - Check `messages_status_check`
 - Check `messages_media_type_check`
+
+## `name_lookups`
+
+What the model remembers about a project name we had not seen before. Only a hint on the Review page; never copied into a listing.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | primary key | Identity primary key. |
+| `name` | text | no |  | The name as first written in a message. |
+| `name_normalized` | text | no |  | The name in comparable form. Unique: each name is asked about once. |
+| `developer` | text | yes |  | The developer the model named, or empty if it was unsure. |
+| `city` | text | yes |  | The city or area the model named, or empty if it was unsure. |
+| `known` | boolean | no |  | Whether the model said it recognises the project. |
+| `model` | text | no |  | Which model gave the answer. |
+| `prompt_version` | text | no |  | Which version of the lookup prompt was used. |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+| `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
+
+**Indexes and constraints**
+
+- Unique index `name_lookups_name_normalized_key` on (name_normalized)
 
 ## `projects`
 

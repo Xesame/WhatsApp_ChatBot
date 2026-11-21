@@ -63,9 +63,21 @@ export const classificationSchema = z.strictObject({
     ),
 });
 
+/**
+ * The model's answer when asked what it remembers about a project name
+ * (the "names from Gemini's memory" lookup). Only names go in and out.
+ * `known: false` with two nulls means "I am not sure".
+ */
+export const lookupResultSchema = z.strictObject({
+  known: z.boolean().describe('true only if you are confident this project exists in Egypt'),
+  developer: z.string().nullable().describe('Developer that builds it, or null if unsure'),
+  city: z.string().nullable().describe('City or area it is in, or null if unsure'),
+});
+
 export type RawUnit = z.infer<typeof rawUnitSchema>;
 export type ExtractionResult = z.infer<typeof extractionResultSchema>;
 export type Classification = z.infer<typeof classificationSchema>;
+export type LookupResult = z.infer<typeof lookupResultSchema>;
 
 /** JSON Schema sent to the model; generated, never written by hand (build plan, section 7). */
 export function jsonSchemaFor(schema: z.ZodType): Record<string, unknown> {

@@ -85,6 +85,29 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
     ]);
   });
 
+  it('adds the name_lookups table', async () => {
+    const columns = await db().pool.query<{ column_name: string; is_nullable: string }>(
+      `SELECT column_name, is_nullable FROM information_schema.columns
+       WHERE table_name = 'name_lookups' ORDER BY column_name`,
+    );
+    expect(columns.rows).toEqual([
+      { column_name: 'city', is_nullable: 'YES' },
+      { column_name: 'created_at', is_nullable: 'NO' },
+      { column_name: 'developer', is_nullable: 'YES' },
+      { column_name: 'id', is_nullable: 'NO' },
+      { column_name: 'known', is_nullable: 'NO' },
+      { column_name: 'model', is_nullable: 'NO' },
+      { column_name: 'name', is_nullable: 'NO' },
+      { column_name: 'name_normalized', is_nullable: 'NO' },
+      { column_name: 'prompt_version', is_nullable: 'NO' },
+      { column_name: 'updated_at', is_nullable: 'NO' },
+    ]);
+    const indexes = await db().pool.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes WHERE tablename = 'name_lookups' AND indexdef LIKE '%UNIQUE%'`,
+    );
+    expect(indexes.rows.some((r) => r.indexdef.includes('(name_normalized)'))).toBe(true);
+  });
+
   it('loads the seed, and a second run adds nothing', async () => {
     const first = await seed(db().db);
     expect(first.aliasesAdded).toBeGreaterThan(0);

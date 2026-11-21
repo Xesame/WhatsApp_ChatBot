@@ -11,6 +11,7 @@ import {
 import {
   extractionResultSchema,
   jsonSchemaFor,
+  lookupResultSchema,
   MissingExchangeRateError,
   TEMPLATE_HEADERS,
   toTemplateRow,
@@ -231,5 +232,16 @@ describe('LLM JSON schema', () => {
 
   it('describes the fields for the model', () => {
     expect(JSON.stringify(schema)).toContain('Price phrase as written');
+  });
+});
+
+describe('name lookup answer', () => {
+  it('accepts a lookup answer', () => {
+    const answer = { known: true, developer: 'Dubai Misr', city: 'Mostakbal City' };
+    expect(lookupResultSchema.safeParse(answer).success).toBe(true);
+    expect(
+      lookupResultSchema.safeParse({ known: false, developer: null, city: null }).success,
+    ).toBe(true);
+    expect(lookupResultSchema.safeParse({ ...answer, extra: 1 }).success).toBe(false);
   });
 });

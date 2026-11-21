@@ -425,6 +425,22 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       updated_at: 'When the row was last changed.',
     },
   },
+  name_lookups: {
+    description:
+      'What the model remembers about a project name we had not seen before. Only a hint on the Review page; never copied into a listing.',
+    columns: {
+      id: 'Identity primary key.',
+      name: 'The name as first written in a message.',
+      name_normalized: 'The name in comparable form. Unique: each name is asked about once.',
+      developer: 'The developer the model named, or empty if it was unsure.',
+      city: 'The city or area the model named, or empty if it was unsure.',
+      known: 'Whether the model said it recognises the project.',
+      model: 'Which model gave the answer.',
+      prompt_version: 'Which version of the lookup prompt was used.',
+      created_at: 'When the row was created.',
+      updated_at: 'When the row was last changed.',
+    },
+  },
   usage_events: {
     description: 'Searches, exports and listing views per firm, for billing and plan limits.',
     columns: {
