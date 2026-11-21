@@ -47,17 +47,17 @@ Hassan asked for both now, before the remaining learning work (the Overview prog
 
 **Plans storage.**
 
-| | What | Trade-off |
-|---|---|---|
-| **A (chosen)** | A `unit_payment_plans` table, one row per plan | Easy to search ("any plan with ≤ 10% down") and to show; one migration |
-| B | A JSON list on the unit | No new table, but searching inside JSON is slower and awkward to keep correct |
+|                | What                                           | Trade-off                                                                     |
+| -------------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| **A (chosen)** | A `unit_payment_plans` table, one row per plan | Easy to search ("any plan with ≤ 10% down") and to show; one migration        |
+| B              | A JSON list on the unit                        | No new table, but searching inside JSON is slower and awkward to keep correct |
 
 **Name lookup.**
 
-| | What | Trade-off |
-|---|---|---|
+|                | What                                                                                              | Trade-off                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | **A (chosen)** | A separate small Gemini call per unknown name, cached in a table, run as its own low-priority job | Keeps the extraction rule "never fill from general knowledge" intact; each name costs one call, once |
-| B | Ask for developer/area inside the extraction prompt | No extra call, but mixes remembered facts into copied data and breaks the no-invention check |
+| B              | Ask for developer/area inside the extraction prompt                                               | No extra call, but mixes remembered facts into copied data and breaks the no-invention check         |
 
 ## Part 1: Payment plans
 
@@ -73,24 +73,24 @@ Plans that apply to every unit in the message are copied into each unit entry, l
 
 `unit_payment_plans` (Drizzle migration): `unit_id`, `position` (order in the message), `label`, `down_payment_percent`, `down_payment_amount` (minor units), `installment_amount` (minor units), `installment_frequency` (monthly / quarterly / semi-annual / annual), `installments_count`, `installment_years`, `plan_price` (minor units, null when it is the unit's price), `cash` (boolean, a pay-in-full option), `notes`, `currency`. Parsing reuses the existing parsers in `@reb/normalize` (percent or amount, installments, money).
 
-- **The unit's own columns** (down payment, installments, template columns) keep coming from the **first plan listed**, so the Excel template and today's behaviour stay the same when a message has one plan. *(Claude's call: messages list their headline plan first.)*
-- **Reposts and updates** *(Hassan, 21 Nov: "newest post wins", including over his Review corrections)*: the unit's plans are always those of the **newest message (by sent time) that stated plans**; a message without plans leaves them as they are. Each plan row records the message it came from (`source_message_id`, or `null` with `source = 'review'` for plans Hassan typed), so retracting or reprocessing a message recomputes the current plans exactly as price history does today (rule 6), and re-running a group out of date order still ends with the newest message's plans. A newer post replaces plans Hassan corrected.
-- **Price-only updates** *(Hassan, 21 Nov)*: when a message changes a unit's price but states no plans, the plans stay visible and the unit goes back to Review with the reason `Price changed; check the payment plans` (only when the unit has plans with amounts).
-- **Price history**: the first plan's terms already feed the unit's down-payment and installment columns, which are part of the price snapshot (`PRICE_FIELDS` in `packages/dedup`), so a change to the headline plan writes a price-history row exactly as today; changes to the other plans don't. *(Claude's call: no change to dedup or price history.)*
-- **Top-level fields vs plans**: the prompt tells the model to put every plan, including a single one, in `payment_plans`; code fills the unit's columns from the first plan, and falls back to the old top-level `down_payment` / `installments` / `cash_discount` only when the model returned no plans (old recordings, fallback models). *(Claude's call.)*
+- **The unit's own columns** (down payment, installments, template columns) keep coming from the **first plan listed**, so the Excel template and today's behaviour stay the same when a message has one plan. _(Claude's call: messages list their headline plan first.)_
+- **Reposts and updates** _(Hassan, 21 Nov: "newest post wins", including over his Review corrections)_: the unit's plans are always those of the **newest message (by sent time) that stated plans**; a message without plans leaves them as they are. Each plan row records the message it came from (`source_message_id`, or `null` with `source = 'review'` for plans Hassan typed), so retracting or reprocessing a message recomputes the current plans exactly as price history does today (rule 6), and re-running a group out of date order still ends with the newest message's plans. A newer post replaces plans Hassan corrected.
+- **Price-only updates** _(Hassan, 21 Nov)_: when a message changes a unit's price but states no plans, the plans stay visible and the unit goes back to Review with the reason `Price changed; check the payment plans` (only when the unit has plans with amounts).
+- **Price history**: the first plan's terms already feed the unit's down-payment and installment columns, which are part of the price snapshot (`PRICE_FIELDS` in `packages/dedup`), so a change to the headline plan writes a price-history row exactly as today; changes to the other plans don't. _(Claude's call: no change to dedup or price history.)_
+- **Top-level fields vs plans**: the prompt tells the model to put every plan, including a single one, in `payment_plans`; code fills the unit's columns from the first plan, and falls back to the old top-level `down_payment` / `installments` / `cash_discount` only when the model returned no plans (old recordings, fallback models). _(Claude's call.)_
 - **Monthly equivalent** for search: computed in code from amount and frequency (quarterly ÷ 3, semi-annual ÷ 6, annual ÷ 12), never by the model.
 
 ### Review
 
 Review shows a **Payment plans** table under the unit's fields: one row per plan with the stored values, editable, with "+ Add plan" and "Remove". Edits are validated by their own plan schema in `packages/schema` (rule 1) and saved in the same transaction as the other corrections; each change is a `review_corrections` row (field `paymentPlans`, before/after as JSON). Saved plans get `source = 'review'`.
 
-**Test cases from reviews**: `eval:from-review` builds the expected plans only from plans whose source is that case's message (or Hassan's own edits made while reviewing it), never from a later repost. Eval gets a plan comparison (plans matched by position; down payment, installment amount, frequency, years compared), reported separately and **not** part of the deploy-blocking key-field rule until at least 20 real reviewed cases exist. The hand-written example cases and their recordings are updated with `payment_plans` so `pnpm eval --replay` keeps working. *(Claude's calls.)*
+**Test cases from reviews**: `eval:from-review` builds the expected plans only from plans whose source is that case's message (or Hassan's own edits made while reviewing it), never from a later repost. Eval gets a plan comparison (plans matched by position; down payment, installment amount, frequency, years compared), reported separately and **not** part of the deploy-blocking key-field rule until at least 20 real reviewed cases exist. The hand-written example cases and their recordings are updated with `payment_plans` so `pnpm eval --replay` keeps working. _(Claude's calls.)_
 
 ### Firms
 
 - **Listing page**: a "Payment plans" section (Arabic and English) listing each plan: down payment (percent and amount), installment amount and frequency, years, plan price when different, notes.
 - **Search filters** (`packages/search/src/filters.ts`): `downPaymentMax` and `installmentYearsMin` now match **any** of a unit's plans (falling back to the unit columns when it has no plans); new `monthlyInstallmentMax` (EGP per month equivalent, any plan). Saved searches keep working (new filter is optional).
-- **Excel export** *(Hassan, 21 Nov: second sheet is fine)*: the 26-column sheet is unchanged; a second sheet **"Payment plans"** lists every plan with the unit's row number, unit code, project and unit type so it can be matched to the first sheet. Same for the owner's export. CSV export is unchanged.
+- **Excel export** _(Hassan, 21 Nov: second sheet is fine)_: the 26-column sheet is unchanged; a second sheet **"Payment plans"** lists every plan with the unit's row number, unit code, project and unit type so it can be matched to the first sheet. Same for the owner's export. CSV export is unchanged.
 
 ### Accuracy
 
@@ -106,9 +106,9 @@ After a unit is created or re-checked, if its project is known or written but it
 
 A small separate prompt (`packages/llm/prompts/lookup.ts`, its own `VERSION`): "Egyptian real estate: for the project '<name>' (developer as written: '<developer or none>'), which developer builds it and in which city or area? Answer only if you know; otherwise say unknown." It returns `developer`, `city`, `confidence_words` (as the model states it). Only the names are sent.
 
-- **Gemini only** (`gemini:` models from the extraction list); no Groq or OpenRouter fallback, because the answer is labelled "Gemini thinks" and a weak free model would be cached. If no Gemini model is available, the job waits and retries (idempotent). *(Claude's call.)*
-- **Cache**: a known answer is kept; an "unknown" answer is retried after 30 days (new projects become known). *(Claude's call.)*
-- **Extraction first**: the lookup job only calls the model when the extract queue is empty, and otherwise re-queues itself with a short delay, since the worker's queues run side by side and share one rate limit. *(Claude's call.)*
+- **Gemini only** (`gemini:` models from the extraction list); no Groq or OpenRouter fallback, because the answer is labelled "Gemini thinks" and a weak free model would be cached. If no Gemini model is available, the job waits and retries (idempotent). _(Claude's call.)_
+- **Cache**: a known answer is kept; an "unknown" answer is retried after 30 days (new projects become known). _(Claude's call.)_
+- **Extraction first**: the lookup job only calls the model when the extract queue is empty, and otherwise re-queues itself with a short delay, since the worker's queues run side by side and share one rate limit. _(Claude's call.)_
 
 ### What Hassan sees
 
@@ -120,7 +120,7 @@ In Review, under Developer and City/area, when a lookup answer exists: **"Gemini
 2. **Payment plans**: storage, extraction prompt and eval, Review editing: checkpoint, re-running the friend's chat (costs about 30 free Gemini calls).
 3. **Firms**: listing page, search filters, Excel sheet: checkpoint.
 
-Each checkpoint: lint, types, tests, generated docs, eval (rule 8); PROJECT.md and PITCH.md updated (claim only what is built and tested); commits labelled `phase-5:` *(Claude's call: both extend the review and listing data built in phases 5–6)*. Built on top of the learning-from-reviews branch; its Overview progress table (Task 7) comes after.
+Each checkpoint: lint, types, tests, generated docs, eval (rule 8); PROJECT.md and PITCH.md updated (claim only what is built and tested); commits labelled `phase-5:` _(Claude's call: both extend the review and listing data built in phases 5–6)_. Built on top of the learning-from-reviews branch; its Overview progress table (Task 7) comes after.
 
 ## Left to the builder
 
