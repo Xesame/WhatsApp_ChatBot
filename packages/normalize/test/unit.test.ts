@@ -5,6 +5,8 @@ import {
   isNameReason,
   MILLIONS_ASSUMED_REASON,
   normalizeUnit,
+  PRICE_RANGE_FACTOR,
+  priceReason,
   scoreConfidence,
   type NormalizeContext,
 } from '../src/index.ts';
@@ -293,5 +295,44 @@ describe('names', () => {
         hasArea: true,
       }),
     ).toBe(0.54);
+  });
+});
+
+describe('learned price range', () => {
+  const usual = { median: 41_000, projectName: 'Dejoya 2 R8', unitType: 'Apartment' };
+  const text = 'شقة 264 متر السعر 1091000';
+  const priced = { ...raw, area: '264 متر', price: 'السعر 1091000' };
+
+  it('flags a price far from the usual one', () => {
+    const unit = normalizeUnit(priced, ctx({ sourceText: text, usualPricePerM2: usual }));
+    expect(unit.reviewReasons).toContain(
+      'Price per m² 4,133 EGP is far from the usual 41,000 for Dejoya 2 R8 apartments',
+    );
+  });
+
+  it('accepts a price within 2.5x', () => {
+    expect(PRICE_RANGE_FACTOR).toBe(2.5);
+    expect(priceReason(30_000, usual)).toBeNull();
+    expect(priceReason(41_000 * 2.5, usual)).toBeNull();
+    expect(priceReason(41_000 / 2.5 - 1, usual)).not.toBeNull();
+  });
+
+  it('falls back to the fixed range without a learned one', () => {
+    expect(priceReason(4_132, null)).toBeNull();
+    expect(priceReason(2_000, null)).toBe('Price per m² (2000 EGP) looks wrong');
+  });
+
+  it('skips the check without area or in USD', () => {
+    const noArea = normalizeUnit(
+      { ...priced, area: null },
+      ctx({ sourceText: text, usualPricePerM2: usual }),
+    );
+    expect(noArea.reviewReasons.some((r) => r.startsWith('Price per m²'))).toBe(false);
+    const usd = normalizeUnit(
+      { ...priced, price: 'السعر 1091000 دولار' },
+      ctx({ sourceText: `${text} دولار`, usualPricePerM2: usual }),
+    );
+    expect(usd.reviewReasons).toContain('Priced in USD');
+    expect(usd.reviewReasons.some((r) => r.startsWith('Price per m²'))).toBe(false);
   });
 });

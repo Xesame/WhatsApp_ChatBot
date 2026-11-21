@@ -7,7 +7,7 @@ import {
   type LlmClient,
   type ModelRef,
 } from '@reb/llm';
-import { normalizeUnit } from '@reb/normalize';
+import { normalizeUnit, type NormalizeContext } from '@reb/normalize';
 import { describeMedia } from '@reb/media';
 import { enqueueInTransaction, type PgBoss } from '@reb/queue';
 import { readFile } from 'node:fs/promises';
@@ -28,6 +28,7 @@ import { applyExtraction, type ApplyResult } from './apply.ts';
 import { assembleContext, nearbyTexts, type MessageContext } from './context.ts';
 import { matchEntities } from './entities.ts';
 import { mightBeListing } from './prefilter.ts';
+import { usualPricePerM2 } from './price-range.ts';
 
 export interface MediaSettings {
   /** Where capture saved the files (MEDIA_DIR). */
@@ -154,8 +155,26 @@ export async function runExtraction(
   const normalized: Unit[] = [];
   for (const raw of result.data?.units ?? []) {
     const entities = await matchEntities(db, raw);
+    // What approved units of this project and type usually cost per square metre
+    // (only when the project matched and the type is known).
+    let usual: NormalizeContext['usualPricePerM2'] = null;
+    if (entities.project && raw.unit_type) {
+      const learned = await usualPricePerM2(db, entities.project.id, raw.unit_type);
+      if (learned) {
+        usual = {
+          median: learned.median,
+          projectName: entities.project.name,
+          unitType: raw.unit_type,
+        };
+      }
+    }
     normalized.push(
-      normalizeUnit(raw, { sourceText: context.sourceText, sentAt: context.sentAt, ...entities }),
+      normalizeUnit(raw, {
+        sourceText: context.sourceText,
+        sentAt: context.sentAt,
+        ...entities,
+        usualPricePerM2: usual,
+      }),
     );
   }
   return { ...result, units: normalized };

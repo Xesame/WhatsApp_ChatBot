@@ -47,6 +47,47 @@ export interface NormalizeContext {
     project: Suggestion | null;
     city: Suggestion | null;
   };
+  /**
+   * What approved units of the same project and type usually cost per m²
+   * (EGP), when the bot has learned it. Looked up by the pipeline, since
+   * this package never touches the database.
+   */
+  usualPricePerM2?: { median: number; projectName: string; unitType: string } | null;
+}
+
+/** A price per m² more than this many times above or below the usual one is flagged. */
+export const PRICE_RANGE_FACTOR = 2.5;
+
+const withCommas = (n: number) => Math.round(n).toLocaleString('en-US');
+
+/** "Apartment" -> "apartments", "Duplex" -> "duplexes", "Penthouse" -> "penthouses". */
+function plural(unitType: string): string {
+  const t = unitType.toLowerCase();
+  if (/[sx]$/.test(t) || /(ch|sh)$/.test(t)) return `${t}es`;
+  if (/[^aeiou]y$/.test(t)) return `${t.slice(0, -1)}ies`;
+  return `${t}s`;
+}
+
+/**
+ * The review reason for a price per m² (EGP), or null when it looks fine.
+ * With a learned usual price it flags anything more than 2.5x above or below
+ * it; without one it uses the fixed 3,000 to 1,000,000 range. All the maths
+ * is here in code (rule 4).
+ */
+export function priceReason(
+  perMetre: number,
+  usual: NormalizeContext['usualPricePerM2'],
+): string | null {
+  if (usual && usual.median > 0) {
+    const off =
+      perMetre > usual.median * PRICE_RANGE_FACTOR || perMetre < usual.median / PRICE_RANGE_FACTOR;
+    return off
+      ? `Price per m² ${withCommas(perMetre)} EGP is far from the usual ${withCommas(usual.median)} for ${usual.projectName} ${plural(usual.unitType)}`
+      : null;
+  }
+  return perMetre < 3_000 || perMetre > 1_000_000
+    ? `Price per m² (${Math.round(perMetre)} EGP) looks wrong`
+    : null;
 }
 
 /** Compares text ignoring case, spacing, punctuation, diacritics and digit style. */
@@ -269,9 +310,8 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
   // 8. Sanity check on price per square metre (EGP).
   if (minPrice !== null && minArea !== null && priceCurrency === 'EGP') {
     const perMetre = minPrice / minArea;
-    if (perMetre < 3_000 || perMetre > 1_000_000) {
-      reasons.push(`Price per m² (${Math.round(perMetre)} EGP) looks wrong`);
-    }
+    const reason = priceReason(perMetre, ctx.usualPricePerM2);
+    if (reason) reasons.push(reason);
   }
   if (minPrice === null) reasons.push('No price');
   if (minArea === null && raw.unit_type !== 'Studio') reasons.push('No area');

@@ -164,6 +164,54 @@ describe.skipIf(!testDatabaseUrl)('re-checking waiting units (real Postgres)', (
     expect(rows.every((r) => r.projectId === jamila && r.status === 'active')).toBe(true);
   });
 
+  describe('price check once the project is learned', () => {
+    /** Three approved Jamila apartments at 40,000 / 41,000 / 45,000 EGP per m2. */
+    const approveThree = async (jamila: number) => {
+      for (const perMetre of [40_000, 41_000, 45_000]) {
+        const unit = await waiting({
+          projectId: jamila,
+          developerId: mivida.developerId,
+          cityId: mivida.cityId,
+          minArea: 100,
+          maxArea: 100,
+          minPrice: perMetre * 100 * 100,
+          maxPrice: perMetre * 100 * 100,
+          needsReview: false,
+          flaggedOnArrival: false,
+          reviewReasons: [],
+          confidence: 1,
+        });
+        await correct(unit.id, 'approve');
+      }
+    };
+
+    it('stays waiting with the learned price reason when far off', async () => {
+      const unit = await waiting({ minPrice: 100_000_000, maxPrice: 100_000_000 });
+      const jamila = await makeProject('Jamila', 'جميلة');
+      await approveThree(jamila);
+      expect(await recheckWaitingUnits(testDb.database)).toEqual({ checked: 1, cleared: 0 });
+      expect(await unitRow(unit.id)).toMatchObject({
+        projectId: jamila,
+        needsReview: true,
+        reviewReasons: [
+          'Price per m² 6,667 EGP is far from the usual 41,000 for Jamila apartments',
+        ],
+      });
+    });
+
+    it('clears when the price is within range', async () => {
+      const unit = await waiting({ minPrice: 600_000_000, maxPrice: 600_000_000 });
+      const jamila = await makeProject('Jamila', 'جميلة');
+      await approveThree(jamila);
+      expect(await recheckWaitingUnits(testDb.database)).toEqual({ checked: 1, cleared: 1 });
+      expect(await unitRow(unit.id)).toMatchObject({
+        projectId: jamila,
+        needsReview: false,
+        reviewReasons: [],
+      });
+    });
+  });
+
   it('reverts when a learned spelling is removed', async () => {
     const zomra = await makeProject('Zomra East Residence', 'زمرة ايست ريزيدنس');
     const written = { developer: [], project: ['Zomra East'], city: [] };

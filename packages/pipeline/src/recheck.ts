@@ -10,12 +10,14 @@ import {
 import {
   entityOutcome,
   isNameReason,
+  priceReason,
   scoreConfidence,
   type Suggestion,
   type WrittenNames,
 } from '@reb/normalize';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { matchEntities, type EntityMatches, type EntitySuggestions } from './entities.ts';
+import { usualPricePerM2 } from './price-range.ts';
 
 /**
  * Re-checking waiting units when the bot learns a name.
@@ -276,7 +278,31 @@ async function recompute(db: Db, unit: UnitRow) {
     },
     ctx,
   );
-  const reasons = [...new Set([...otherReasons, ...outcome.reasons])];
+  // A unit that just gained its project gets its price checked against what
+  // approved units of that project and type cost; other units keep their price
+  // reasons as they are.
+  let otherNow = otherReasons;
+  const gainedProject = unit.projectId === null && outcome.projectId !== null;
+  if (
+    gainedProject &&
+    ctx.project &&
+    unit.unitType !== null &&
+    unit.minPrice !== null &&
+    unit.minArea !== null &&
+    unit.minArea > 0 &&
+    unit.priceCurrency === 'EGP'
+  ) {
+    const learned = await usualPricePerM2(db, ctx.project.id, unit.unitType);
+    const reason = priceReason(
+      unit.minPrice / 100 / unit.minArea,
+      learned
+        ? { median: learned.median, projectName: ctx.project.name, unitType: unit.unitType }
+        : null,
+    );
+    otherNow = otherReasons.filter((r) => !r.startsWith('Price per m²'));
+    if (reason) otherNow = [...otherNow, reason];
+  }
+  const reasons = [...new Set([...otherNow, ...outcome.reasons])];
   const newParts = {
     projectSimilarity: ctx.project?.similarity ?? 0,
     developerPart: Math.max(
