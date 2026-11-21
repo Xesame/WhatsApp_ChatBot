@@ -13,6 +13,7 @@
     "@reb/dedup": "workspace:*",
     "@reb/ingest": "workspace:*",
     "@reb/normalize": "workspace:*",
+    "@reb/pipeline": "workspace:*",
     "@reb/queue": "workspace:*",
     "@reb/schema": "workspace:*",
     "drizzle-orm": "0.45.4",

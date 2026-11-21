@@ -79,6 +79,16 @@ Correct fields, approve, or reject a unit. Corrections are kept for the accuracy
 | body | `changes` | object | no |
 | body | `remember` | list of object | no |
 
+### `POST /api/admin/units/{id}/lookup-used`
+
+Note that the person used a developer or area Gemini remembered (for accuracy)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+| body | `kind` | `"developer"` / `"city"` | yes |
+| body | `name` | string | yes |
+
 ### `GET /api/admin/media/{id}`
 
 The original image, PDF or sheet a listing came from

@@ -24,7 +24,7 @@ import {
   PageTitle,
   Select,
 } from '../ui.tsx';
-import { afterReview, rememberedSpellings, unitStateLabel } from './learning.ts';
+import { afterReview, lookupOffer, rememberedSpellings, unitStateLabel } from './learning.ts';
 import { LearnControls, useEntities } from './ReviewLearning.tsx';
 
 /**
@@ -278,6 +278,11 @@ function ReviewItem({
     developer: useEntities('developer').data,
     city: useEntities('city').data,
   };
+  /** The id (as text) of the developer / area Gemini named, when we already have it. */
+  const known = (kind: 'developer' | 'city') => {
+    const offer = lookupOffer(view.learning.lookup?.[kind] ?? null, lists[kind]);
+    return offer?.kind === 'use' ? String(offer.id) : '';
+  };
   /** The ticked spellings to send along with the save. */
   const remembered = () =>
     rememberedSpellings({ values, initial, lists, written: view.learning.written, unticked });
@@ -405,8 +410,9 @@ function ReviewItem({
                             }))
                           }
                           defaults={{
-                            developerId: values.developerId ?? '',
-                            cityId: values.cityId ?? '',
+                            // An empty developer / area starts as the one Gemini named, if we know it.
+                            developerId: values.developerId || known('developer'),
+                            cityId: values.cityId || known('city'),
                           }}
                         />
                       ) : undefined

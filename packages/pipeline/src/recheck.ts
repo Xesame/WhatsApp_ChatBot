@@ -16,6 +16,7 @@ import {
   type WrittenNames,
 } from '@reb/normalize';
 import type { PgBoss } from '@reb/queue';
+import type { Logger } from 'pino';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { matchEntities, type EntityMatches, type EntitySuggestions } from './entities.ts';
 import { queueLookups } from './lookup.ts';
@@ -368,11 +369,12 @@ const CHECKED_STATUSES = ['active', 'stale'] as const;
 
 /**
  * With `boss`, units the re-check changed that still miss a developer or
- * city/area get a name lookup queued (see lookup.ts).
+ * city/area get a name lookup queued (see lookup.ts). A failure to queue is
+ * only logged (to `logger`): the changes are already saved.
  */
 export async function recheckWaitingUnits(
   database: Database,
-  options: { boss?: PgBoss } = {},
+  options: { boss?: PgBoss; logger?: Pick<Logger, 'warn'> } = {},
 ): Promise<{ checked: number; cleared: number }> {
   const notReviewed = sql`not exists (select 1 from ${reviewCorrections} where ${reviewCorrections.unitId} = ${units.id})`;
   const candidates = await database.db
@@ -428,6 +430,17 @@ export async function recheckWaitingUnits(
       if (result.updated) updated.push(id);
     }
   }
-  if (options.boss) await queueLookups(database.db, options.boss, updated);
+  // The changes are saved; a queue or database error here must not fail the
+  // request that triggered the re-check. The lookup is queued on a later change.
+  if (options.boss) {
+    try {
+      await queueLookups(database.db, options.boss, updated);
+    } catch (error) {
+      options.logger?.warn(
+        { reason: error instanceof Error ? error.message : String(error) },
+        'Could not queue name lookups after a re-check',
+      );
+    }
+  }
   return { checked, cleared };
 }

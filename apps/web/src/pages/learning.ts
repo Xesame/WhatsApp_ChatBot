@@ -81,6 +81,23 @@ export function newEntityOption(
 }
 
 /**
+ * What to offer for the developer / area Gemini remembered: use the one we
+ * already have under that name or spelling, or add it as new. Null when
+ * there is no answer.
+ */
+export function lookupOffer(
+  answer: string | null,
+  known: Entity[] | undefined,
+): { kind: 'use'; id: number; name: string } | { kind: 'new'; name: string } | null {
+  const name = answer?.trim() ?? '';
+  if (!name) return null;
+  const match = (known ?? []).find((e) =>
+    [e.nameEn, e.nameAr, ...e.aliases.map((a) => a.alias)].some((k) => same(k, name)),
+  );
+  return match ? { kind: 'use', id: match.id, name: match.nameEn } : { kind: 'new', name };
+}
+
+/**
  * What a key press means inside the small "new developer / area" box.
  * Enter saves it (only with both names filled in, and not twice); Escape
  * cancels. The page must stop Enter from reaching the project form around

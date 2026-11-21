@@ -3,6 +3,7 @@ import type { Entity } from '../src/api.ts';
 import {
   afterReview,
   inlineKeyAction,
+  lookupOffer,
   newEntityOption,
   recheckMessage,
   rememberedSpellings,
@@ -109,5 +110,32 @@ describe('Review feedback', () => {
       'Withdrawn (not a listing)',
     );
     expect(unitStateLabel({ needsReview: true, status: 'active' })).toBeNull();
+  });
+});
+
+describe('what to do with an answer from Gemini’s memory', () => {
+  const emaar = {
+    id: 5,
+    nameEn: 'Emaar Misr',
+    nameAr: 'إعمار مصر',
+    aliases: [{ alias: 'إعمار' }],
+    unitCount: 0,
+  } as Entity;
+
+  it('uses the known developer, matching any spelling', () => {
+    const use = { kind: 'use', id: 5, name: 'Emaar Misr' };
+    expect(lookupOffer('  emaar MISR ', [emaar])).toEqual(use);
+    expect(lookupOffer('إعمار', [emaar])).toEqual(use);
+    expect(lookupOffer('إعمار مصر', [emaar])).toEqual(use);
+  });
+
+  it('offers a new entry for a name nobody knows', () => {
+    expect(lookupOffer('Palm Hills', [emaar])).toEqual({ kind: 'new', name: 'Palm Hills' });
+    expect(lookupOffer('Palm Hills', undefined)).toEqual({ kind: 'new', name: 'Palm Hills' });
+  });
+
+  it('offers nothing without an answer', () => {
+    expect(lookupOffer(null, [emaar])).toBeNull();
+    expect(lookupOffer('   ', [emaar])).toBeNull();
   });
 });

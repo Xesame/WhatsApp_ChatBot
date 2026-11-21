@@ -106,6 +106,8 @@ export interface UnitView {
   learning: {
     written: { developer: string[]; project: string[]; city: string[] };
     suggested: Partial<Record<EntityKind, { id: number; name: string; similarity: number }>>;
+    /** What Gemini remembers about the project's name; a hint to check, never saved by itself. */
+    lookup: { developer: string | null; city: string | null } | null;
   };
 }
 

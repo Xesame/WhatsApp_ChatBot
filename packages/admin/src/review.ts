@@ -1,6 +1,7 @@
 import {
   cities,
   developers,
+  entityAliases,
   mediaFiles,
   messages,
   projects,
@@ -14,9 +15,11 @@ import {
 } from '@reb/db';
 import { PRICE_FIELDS, snapshotOf } from '@reb/dedup';
 import { normalizeName, type Suggestion, type WrittenNames } from '@reb/normalize';
+import { lookupFor } from '@reb/pipeline';
 import { unitSchema } from '@reb/schema';
 import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
 import { z } from 'zod';
+import { audit } from './audit.ts';
 import { addAlias, type EntityKind } from './entities.ts';
 
 type UnitRow = typeof units.$inferSelect;
@@ -93,7 +96,16 @@ export interface UnitView {
    * written in the message, and the closest existing entity when one was
    * close enough to suggest. Empty for units made before this was recorded.
    */
-  learning: { written: WrittenNames; suggested: Record<string, Suggestion> };
+  learning: {
+    written: WrittenNames;
+    suggested: Record<string, Suggestion>;
+    /**
+     * What Gemini remembers about the project's name (a hint, checked by the
+     * person): its developer and area. Null when nothing was looked up, or
+     * the model was not sure.
+     */
+    lookup: { developer: string | null; city: string | null } | null;
+  };
 }
 
 async function nameOf(
@@ -106,7 +118,7 @@ async function nameOf(
   return row?.name ?? null;
 }
 
-function learningOf(extras: unknown): UnitView['learning'] {
+function learningOf(extras: unknown): Omit<UnitView['learning'], 'lookup'> {
   const e = (extras ?? {}) as { written?: Partial<WrittenNames>; suggested?: unknown };
   return {
     written: {
@@ -158,8 +170,52 @@ export async function unitView(db: Db, unitId: number): Promise<UnitView | null>
     },
     sources: sourceRows.map((s) => ({ ...s, media: s.media?.id ? s.media : null })),
     prices,
-    learning: learningOf(unit.extras),
+    learning: { ...learningOf(unit.extras), lookup: await rememberedNames(db, unit) },
   };
+}
+
+/** Gemini's saved answer for this unit's project name, or null (no answer, or "not sure"). */
+async function rememberedNames(db: Db, unit: UnitRow): Promise<UnitView['learning']['lookup']> {
+  const found = await lookupFor(db, unit);
+  if (!found?.known || (!found.developer && !found.city)) return null;
+  return { developer: found.developer, city: found.city };
+}
+
+/** What the person did with a remembered answer, kept so its accuracy can be measured later. */
+export async function recordLookupUsed(
+  db: Db,
+  userId: string | null,
+  input: { unitId: number; kind: 'developer' | 'city'; name: string },
+  ipAddress?: string,
+): Promise<void> {
+  await audit(db, {
+    userId,
+    action: 'lookup.used',
+    target: input.name,
+    details: { unitId: input.unitId, kind: input.kind },
+    ipAddress,
+  });
+}
+
+/**
+ * Whether a saved developer / area is the one Gemini named: any of its
+ * names or spellings, compared the way names are everywhere (same letters
+ * whatever the spelling, upper or lower case).
+ */
+async function isAnswer(db: Db, kind: 'developer' | 'city', id: number, answer: string) {
+  const table = kind === 'developer' ? developers : cities;
+  const [row] = await db
+    .select({ nameEn: table.nameEn, nameAr: table.nameAr })
+    .from(table)
+    .where(eq(table.id, id));
+  const aliases = await db
+    .select({ alias: entityAliases.alias })
+    .from(entityAliases)
+    .where(eq(kind === 'developer' ? entityAliases.developerId : entityAliases.cityId, id));
+  const wanted = normalizeName(answer);
+  return [row?.nameEn, row?.nameAr, ...aliases.map((a) => a.alias)].some(
+    (name) => name !== undefined && normalizeName(name) === wanted,
+  );
 }
 
 /** Units waiting for review, oldest first, `limit` at a time after `afterId`. */
@@ -260,6 +316,25 @@ export async function reviewUnit(
       }
     }
     if (!saved) throw new NotFoundError(`Unit ${unitId} not found`);
+
+    // A developer / area picked where Gemini had named another one: kept as
+    // `lookup.ignored` (and `lookup.used` when the answer is clicked in Review).
+    const remembered = await rememberedNames(tx, unit);
+    for (const [kind, field] of [
+      ['developer', 'developerId'],
+      ['city', 'cityId'],
+    ] as const) {
+      const answer = remembered?.[kind];
+      const chosen = changes[field];
+      if (!answer || unit[field] !== null || typeof chosen !== 'number') continue;
+      if (await isAnswer(tx, kind, chosen, answer)) continue;
+      await audit(tx, {
+        userId: reviewerId,
+        action: 'lookup.ignored',
+        target: answer,
+        details: { unitId, kind },
+      });
+    }
 
     // Spellings to remember go to the entity the unit has now (after the
     // changes above). Same transaction: a failed save learns nothing. A

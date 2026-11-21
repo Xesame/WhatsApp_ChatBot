@@ -117,6 +117,8 @@ export async function queueLookups(db: Db, boss: PgBoss, unitIds: number[]): Pro
   for (const { nameNormalized } of answered) wanted.delete(nameNormalized);
   if (wanted.size === 0) return 0;
 
+  // Small race: two requests can both pass this check and queue the same name;
+  // the second job returns early on the fresh-row check in runLookup.
   // pg-boss's singletonKey only blocks duplicates on some queue policies, so
   // we also check for a lookup that is already waiting for the same name.
   const keys = [...wanted.keys()].map(keyOf);

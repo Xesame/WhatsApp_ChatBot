@@ -380,6 +380,9 @@ importers:
       '@reb/normalize':
         specifier: workspace:*
         version: link:../normalize
+      '@reb/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
       '@reb/queue':
         specifier: workspace:*
         version: link:../queue

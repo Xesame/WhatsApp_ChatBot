@@ -2,8 +2,10 @@ import {
   cities,
   developers,
   entityAliases,
+  auditLog,
   extractionRuns,
   messages,
+  nameLookups,
   projects,
   reviewCorrections,
   unitPrices,
@@ -15,7 +17,7 @@ import {
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
 import { matchEntities } from '@reb/pipeline';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, ne } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   addAlias,
@@ -24,6 +26,7 @@ import {
   getSetting,
   listEntities,
   mergeEntities,
+  recordLookupUsed,
   renameEntity,
   reviewCases,
   reviewQueue,
@@ -334,6 +337,82 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
         null,
       );
       expect((await aliasesOf(projectId)).filter((a) => a.source === 'review')).toEqual([]);
+    });
+  });
+
+  describe('what Gemini remembers about a waiting project', () => {
+    const waiting = () =>
+      listing({
+        projectId: null,
+        developerId: null,
+        cityId: null,
+        extras: { written: { developer: [], project: ['Lumia Lagoons'], city: [] } },
+      });
+    const remember = (row: Partial<typeof nameLookups.$inferInsert> = {}) =>
+      testDb.database.db.insert(nameLookups).values({
+        name: 'Lumia Lagoons',
+        nameNormalized: 'lumia lagoons',
+        known: true,
+        developer: 'Emaar Misr',
+        city: 'New Cairo',
+        model: 'gemini-test',
+        promptVersion: 'test',
+        ...row,
+      });
+    const actions = async () =>
+      (await testDb.database.db.select().from(auditLog).orderBy(asc(auditLog.id))).filter((r) =>
+        r.action.startsWith('lookup.'),
+      );
+    beforeEach(async () => {
+      await testDb.database.pool.query('truncate name_lookups, audit_log');
+    });
+
+    it('shows what Gemini remembers for a waiting unit', async () => {
+      const { unit } = await waiting();
+      expect((await unitView(testDb.database.db, unit.id))?.learning.lookup).toBeNull();
+      await remember();
+      expect((await unitView(testDb.database.db, unit.id))?.learning.lookup).toEqual({
+        developer: 'Emaar Misr',
+        city: 'New Cairo',
+      });
+      // "Not sure" is not an answer to show.
+      await testDb.database.pool.query('truncate name_lookups');
+      await remember({ known: false, developer: null, city: null });
+      expect((await unitView(testDb.database.db, unit.id))?.learning.lookup).toBeNull();
+    });
+
+    it('records when a remembered answer is used or ignored', async () => {
+      await remember();
+      const { unit } = await waiting();
+      await recordLookupUsed(testDb.database.db, null, {
+        unitId: unit.id,
+        kind: 'developer',
+        name: 'Emaar Misr',
+      });
+      // A developer other than the answer was chosen; the area was left alone.
+      const [other] = await testDb.database.db
+        .select({ id: developers.id })
+        .from(developers)
+        .where(ne(developers.id, mivida.developerId))
+        .limit(1);
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        { action: 'save', changes: { developerId: other?.id } },
+        null,
+      );
+      // Choosing the developer Gemini named is not "ignored".
+      const second = await waiting();
+      await reviewUnit(
+        testDb.database,
+        second.unit.id,
+        { action: 'save', changes: { developerId: mivida.developerId } },
+        null,
+      );
+      expect((await actions()).map((a) => [a.action, a.target])).toEqual([
+        ['lookup.used', 'Emaar Misr'],
+        ['lookup.ignored', 'Emaar Misr'],
+      ]);
     });
   });
 
