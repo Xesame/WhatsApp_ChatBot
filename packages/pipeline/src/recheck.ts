@@ -15,8 +15,10 @@ import {
   type Suggestion,
   type WrittenNames,
 } from '@reb/normalize';
+import type { PgBoss } from '@reb/queue';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { matchEntities, type EntityMatches, type EntitySuggestions } from './entities.ts';
+import { queueLookups } from './lookup.ts';
 import { usualPricePerM2 } from './price-range.ts';
 
 /**
@@ -364,8 +366,13 @@ async function recompute(db: Db, unit: UnitRow) {
 
 const CHECKED_STATUSES = ['active', 'stale'] as const;
 
+/**
+ * With `boss`, units the re-check changed that still miss a developer or
+ * city/area get a name lookup queued (see lookup.ts).
+ */
 export async function recheckWaitingUnits(
   database: Database,
+  options: { boss?: PgBoss } = {},
 ): Promise<{ checked: number; cleared: number }> {
   const notReviewed = sql`not exists (select 1 from ${reviewCorrections} where ${reviewCorrections.unitId} = ${units.id})`;
   const candidates = await database.db
@@ -382,6 +389,7 @@ export async function recheckWaitingUnits(
 
   let checked = 0;
   let cleared = 0;
+  const updated: number[] = [];
   for (const { id } of candidates) {
     const result = await database.transaction(async (tx) => {
       // Lock the unit, then make sure it still qualifies: a review may have
@@ -412,12 +420,14 @@ export async function recheckWaitingUnits(
         sameJson(next.extras, unit.extras);
       // flagged_on_arrival is never changed: it records how the unit arrived.
       if (!unchanged) await tx.update(units).set(next).where(eq(units.id, id));
-      return { cleared: unit.needsReview && !next.needsReview };
+      return { cleared: unit.needsReview && !next.needsReview, updated: !unchanged };
     });
     if (result) {
       checked += 1;
       if (result.cleared) cleared += 1;
+      if (result.updated) updated.push(id);
     }
   }
+  if (options.boss) await queueLookups(database.db, options.boss, updated);
   return { checked, cleared };
 }

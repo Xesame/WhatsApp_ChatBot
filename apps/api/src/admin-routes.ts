@@ -106,7 +106,8 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
    * because a name was unknown are checked again. It runs here, after the
    * change has been saved, so the counts come back in the same response.
    */
-  const recheck = () => recheckWaitingUnits(database);
+  // Units it changed that still miss a developer or area get a name lookup queued.
+  const recheck = () => recheckWaitingUnits(database, { boss: options.boss });
 
   const log = (
     request: FastifyRequest,

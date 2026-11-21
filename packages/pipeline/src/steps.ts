@@ -27,6 +27,7 @@ import type { z } from 'zod';
 import { applyExtraction, type ApplyResult } from './apply.ts';
 import { assembleContext, nearbyTexts, type MessageContext } from './context.ts';
 import { matchEntities } from './entities.ts';
+import { queueLookups } from './lookup.ts';
 import { mightBeListing } from './prefilter.ts';
 import { usualPricePerM2 } from './price-range.ts';
 
@@ -436,6 +437,18 @@ export async function extract(
       .where(eq(messages.id, messageId));
     return outcome;
   });
+  // Ask Gemini about project names whose developer or area is missing. This
+  // runs after the units are saved; if it fails, the units stay as they are
+  // and the next message or re-check with that name queues it again, so
+  // the extraction itself is not retried for it.
+  try {
+    await queueLookups(db, deps.boss, [...applied.created, ...applied.merged]);
+  } catch (error) {
+    deps.logger.warn(
+      { messageId, reason: error instanceof Error ? error.message : String(error) },
+      'Could not queue name lookups',
+    );
+  }
   deps.logger.info(
     {
       messageId,

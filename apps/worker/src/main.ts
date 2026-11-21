@@ -4,7 +4,9 @@ import {
   extract,
   markStale,
   preprocess,
+  queueLookupLater,
   RetryableError,
+  runLookup,
   transcribe,
   type PipelineDeps,
 } from '@reb/pipeline';
@@ -14,7 +16,7 @@ import { runService } from '@reb/runtime';
 // The worker runs the pipeline jobs. Logic lives in packages/pipeline; this
 // file only connects queues to it.
 //   preprocess → (transcribe, for files) → classify → extract (with dedup),
-//   plus a daily lifecycle job
+//   plus a daily lifecycle job and name lookups (lookup)
 await runService('worker', async ({ config, logger, database }) => {
   const boss = await startQueue(config.DATABASE_URL, {
     supervise: true,
@@ -77,6 +79,13 @@ await runService('worker', async ({ config, logger, database }) => {
     logger.info({ count, days: config.STALE_AFTER_DAYS }, 'Marked units stale');
   });
   await boss.schedule('lifecycle', '17 3 * * *', {}, { tz: 'Africa/Cairo' });
+
+  // Names from Gemini's memory: one question per unknown project name. It
+  // waits (a minute at a time) while messages are being extracted, and does
+  // nothing without a Gemini model.
+  await handle('lookup', async (data) => {
+    if ((await runLookup(deps, data)) === 'waiting') await queueLookupLater(boss, data);
+  });
 
   // Without a model API key, messages wait in the classify queue (kept 60
   // days) until a key is added and the worker restarts.

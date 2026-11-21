@@ -4,6 +4,8 @@ import { LlmClient } from '@reb/llm';
 export function fakeModel(replies: {
   classification?: unknown;
   extraction?: unknown;
+  /** Answer to name lookups (schema name `lookup`). */
+  lookup?: unknown;
   /** Plain-text answer to image transcription requests. */
   transcription?: string;
   fail?: boolean;
@@ -21,7 +23,13 @@ export function fakeModel(replies: {
     const name = parsed.response_format?.json_schema.name;
     const content = isVision
       ? (replies.transcription ?? '')
-      : JSON.stringify(name === 'classification' ? replies.classification : replies.extraction);
+      : JSON.stringify(
+          name === 'classification'
+            ? replies.classification
+            : name === 'lookup'
+              ? replies.lookup
+              : replies.extraction,
+        );
     return Promise.resolve(
       new Response(
         JSON.stringify({
