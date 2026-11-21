@@ -243,3 +243,61 @@ export const unitPrices = pgTable(
     oneOf('unit_prices_price_currency_check', t.priceCurrency, CURRENCIES),
   ],
 );
+
+export const PLAN_SOURCES = ['message', 'review'] as const;
+
+/**
+ * Every payment plan seen for a unit, one row per plan (0% down, 10% down,
+ * ...), kept per message like price history. A unit's current plans are the
+ * rows of its newest source by `observed_at` (see `currentPlans` in
+ * @reb/pipeline); nothing is marked "current", so retracting a message
+ * simply lets the previous plans show again. The plan fields mirror
+ * `PaymentPlan` in @reb/schema. Money is in minor units of `currency`.
+ */
+export const unitPaymentPlans = pgTable(
+  'unit_payment_plans',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    unitId: bigint('unit_id', { mode: 'number' })
+      .notNull()
+      .references(() => units.id, { onDelete: 'cascade' }),
+    // The message that stated the plan; empty for plans Hassan typed in Review.
+    sourceMessageId: bigint('source_message_id', { mode: 'number' }).references(() => messages.id, {
+      onDelete: 'cascade',
+    }),
+    source: text('source', { enum: PLAN_SOURCES }).notNull(),
+    position: smallint('position').notNull(),
+    label: text('label'),
+    downPaymentPercent: decimal('down_payment_percent'),
+    downPaymentAmount: bigint('down_payment_amount', { mode: 'number' }),
+    installmentAmount: bigint('installment_amount', { mode: 'number' }),
+    installmentFrequency: text('installment_frequency', { enum: INSTALLMENT_FREQUENCIES }),
+    installmentsCount: smallint('installments_count'),
+    installmentYears: decimal('installment_years'),
+    planPrice: bigint('plan_price', { mode: 'number' }),
+    cash: boolean('cash').notNull().default(false),
+    notes: text('notes'),
+    currency: text('currency', { enum: CURRENCIES }).notNull(),
+    observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('unit_payment_plans_unit_observed_idx').on(t.unitId, t.observedAt),
+    index('unit_payment_plans_message_idx').on(t.sourceMessageId),
+    oneOf('unit_payment_plans_source_check', t.source, PLAN_SOURCES),
+    oneOf('unit_payment_plans_currency_check', t.currency, CURRENCIES),
+    oneOf(
+      'unit_payment_plans_installment_frequency_check',
+      t.installmentFrequency,
+      INSTALLMENT_FREQUENCIES,
+    ),
+    // A plan from a message names it; a plan typed in Review has none.
+    check(
+      'unit_payment_plans_source_message',
+      sql`(${t.source} = 'message') = (${t.sourceMessageId} is not null)`,
+    ),
+    check('unit_payment_plans_down_payment_range', sql`${t.downPaymentPercent} between 0 and 100`),
+    check('unit_payment_plans_years_positive', sql`${t.installmentYears} > 0`),
+    check('unit_payment_plans_count_positive', sql`${t.installmentsCount} > 0`),
+  ],
+);

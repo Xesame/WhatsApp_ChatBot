@@ -1,4 +1,4 @@
-import { messages, unitPrices, units, unitSources, type Db } from '@reb/db';
+import { messages, unitPaymentPlans, unitPrices, units, unitSources, type Db } from '@reb/db';
 import {
   applyObservation,
   findMatch,
@@ -11,6 +11,7 @@ import {
 import { isLearnedPriceReason, type WrittenNames } from '@reb/normalize';
 import type { MessageIntent, Unit } from '@reb/schema';
 import { and, desc, eq, inArray, max, min, ne, sql } from 'drizzle-orm';
+import { currentPlans, PLANS_CHECK_REASON, plansHaveAmounts, writePlans } from './plans.ts';
 
 type UnitRow = typeof units.$inferSelect;
 type Role = (typeof unitSources.$inferInsert)['role'];
@@ -238,10 +239,12 @@ async function addPriceRow(
 
 async function create(tx: Db, unit: Unit, input: ApplyInput): Promise<number> {
   const { sentAt, id: messageId } = input.message;
+  // Plans live in their own table, one row per plan.
+  const { paymentPlans, ...columns } = unit;
   const [row] = await tx
     .insert(units)
     .values({
-      ...unit,
+      ...columns,
       firstSeenAt: sentAt,
       lastSeenAt: sentAt,
       extractionRunId: input.extractionRunId,
@@ -250,6 +253,7 @@ async function create(tx: Db, unit: Unit, input: ApplyInput): Promise<number> {
     .returning({ id: units.id });
   if (!row) throw new Error('Failed to create unit');
   await addSource(tx, row.id, messageId, 'listing');
+  await writePlans(tx, row.id, paymentPlans, input.message);
   if (unit.minPrice !== null || unit.maxPrice !== null) {
     await addPriceRow(tx, row.id, snapshotOf(unit), sentAt, messageId);
   }
@@ -297,6 +301,23 @@ async function merge(
     result.priceChanged.push(existing.id);
   }
 
+  // Plans: a message that states them adds its rows (the newest source wins,
+  // see plans.ts). One that changes today's price without stating plans
+  // leaves them, but sends the unit back to Review when the plans hold
+  // amounts (installments, plan totals) that may no longer fit the new price.
+  const statesPlans = (incoming.paymentPlans ?? []).length > 0;
+  await writePlans(tx, existing.id, incoming.paymentPlans, input.message);
+  const priceMoved =
+    next.minPrice !== current.minPrice ||
+    next.maxPrice !== current.maxPrice ||
+    next.priceCurrency !== current.priceCurrency;
+  const checkPlans =
+    changed &&
+    isNewest &&
+    priceMoved &&
+    !statesPlans &&
+    plansHaveAmounts(await currentPlans(tx, existing.id));
+
   // Every spelling seen for a name is kept (order kept, exact duplicates
   // removed) so a reviewer's answer can teach the bot all of them. Other
   // extras keys keep the existing unit's values.
@@ -323,7 +344,13 @@ async function merge(
   const incomingFlags =
     incoming.needsReview === true &&
     (incomingReasons.length > 0 || (incoming.confidence ?? 1) < 0.7);
-  const reasons = [...new Set([...existing.reviewReasons, ...incomingReasons])];
+  const reasons = [
+    ...new Set([
+      ...existing.reviewReasons,
+      ...incomingReasons,
+      ...(checkPlans ? [PLANS_CHECK_REASON] : []),
+    ]),
+  ];
   await tx
     .update(units)
     .set({
@@ -334,7 +361,7 @@ async function merge(
       firstSeenAt: sql`least(${units.firstSeenAt}, ${sentAt.toISOString()}::timestamptz)`,
       lastSeenAt: sql`greatest(${units.lastSeenAt}, ${sentAt.toISOString()}::timestamptz)`,
       extractionRunId: input.extractionRunId ?? existing.extractionRunId,
-      needsReview: existing.needsReview || incomingFlags,
+      needsReview: existing.needsReview || incomingFlags || checkPlans,
       reviewReasons: reasons,
       extras,
       confidence: Math.max(existing.confidence, incoming.confidence ?? 0),
@@ -352,8 +379,9 @@ async function flag(tx: Db, targets: UnitRow[], reason: string): Promise<void> {
 }
 
 /**
- * Undoes everything a message did: its sources, its price rows, a sold mark
- * it set, and units that only it created. Units that keep other sources get
+ * Undoes everything a message did: its sources, its price rows, its payment
+ * plans (the unit's plans fall back to the newest remaining source), a sold
+ * mark it set, and units that only it created. Units that keep other sources get
  * their latest remaining price and their first/last-seen dates recomputed.
  * (Details a message filled in on an existing unit stay: they were true.)
  */
@@ -372,6 +400,7 @@ export async function retract(tx: Db, messageId: number): Promise<void> {
     .update(units)
     .set({ status: 'active', soldByMessageId: null })
     .where(eq(units.soldByMessageId, messageId));
+  await tx.delete(unitPaymentPlans).where(eq(unitPaymentPlans.sourceMessageId, messageId));
   if (affected.length === 0) return;
   await tx.delete(unitPrices).where(eq(unitPrices.sourceMessageId, messageId));
   await tx.delete(unitSources).where(eq(unitSources.messageId, messageId));

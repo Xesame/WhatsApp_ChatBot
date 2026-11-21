@@ -34,7 +34,7 @@ export const paymentPlanSchema = z.object({
   installmentAmount: money.nullable(),
   installmentFrequency: z.enum(INSTALLMENT_FREQUENCIES).nullable(),
   installmentsCount: z.number().int().positive().nullable(),
-  installmentYears: z.number().min(0).max(30).nullable(),
+  installmentYears: z.number().positive().max(30).nullable(),
   /** A total that applies only to this plan; null when it is the unit's price. */
   planPrice: money.nullable(),
   /** A pay-in-full option (no installments). */

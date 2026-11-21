@@ -1,4 +1,4 @@
-import type { RawPaymentPlan } from '@reb/schema';
+import { paymentPlanSchema, type RawPaymentPlan } from '@reb/schema';
 import { describe, expect, it } from 'vitest';
 import { monthlyEquivalent, normalizePlans } from '../src/plans.ts';
 
@@ -144,6 +144,39 @@ describe('normalizePlans', () => {
       unitCurrency: 'USD',
     });
     expect(bare.plans[0]?.currency).toBe('USD');
+  });
+
+  it('does not read a duration as a down payment or installment amount', () => {
+    const text = 'مقدم 10% على 8 سنين قسط شهري 12 قسط';
+    const { plans } = normalizePlans(
+      [plan({ down_payment: 'مقدم 10% على 8 سنين', installment_amount: 'قسط شهري 12 قسط' })],
+      ctx(text),
+    );
+    expect(plans[0]?.downPaymentPercent).toBe(10);
+    expect(plans[0]?.downPaymentAmount).toBeNull();
+    expect(plans[0]?.installmentAmount).toBeNull();
+    const noPercent = normalizePlans(
+      [plan({ down_payment: 'مقدم على 8 سنين' })],
+      ctx('مقدم على 8 سنين'),
+    );
+    expect(noPercent.plans[0]?.downPaymentAmount).toBeNull();
+  });
+
+  it('reads a small amount only when it names a currency', () => {
+    const text = 'Monthly 850 L.E or Monthly 850';
+    const named = normalizePlans([plan({ installment_amount: 'Monthly 850 L.E' })], ctx(text));
+    expect(named.plans[0]?.installmentAmount).toBe(85_000);
+    const bare = normalizePlans([plan({ installment_amount: 'Monthly 850' })], ctx(text));
+    expect(bare.plans[0]?.installmentAmount).toBeNull();
+  });
+
+  it('treats a plan over 0 years as having no length', () => {
+    const { plans } = normalizePlans(
+      [plan({ down_payment: '100%', installments: 'على 0 سنة' })],
+      ctx('100% على 0 سنة'),
+    );
+    expect(plans[0]?.installmentYears).toBeNull();
+    expect(paymentPlanSchema.safeParse({ ...plans[0], installmentYears: 0 }).success).toBe(false);
   });
 
   it('ignores a plan with nothing in it', () => {

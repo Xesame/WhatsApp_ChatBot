@@ -27,6 +27,8 @@ erDiagram
   users ||--o{ saved_searches : "user_id"
   users ||--o{ sessions : "user_id"
   users ||--o{ settings : "updated_by"
+  units ||--o{ unit_payment_plans : "unit_id"
+  messages ||--o{ unit_payment_plans : "source_message_id"
   units ||--o{ unit_prices : "unit_id"
   messages ||--o{ unit_prices : "source_message_id"
   units ||--o{ unit_sources : "unit_id"
@@ -235,6 +237,26 @@ erDiagram
     jsonb value
     text updated_by FK
     timestamp_with_time_zone updated_at
+  }
+  unit_payment_plans {
+    bigint id PK
+    bigint unit_id FK
+    bigint source_message_id FK
+    text source
+    smallint position
+    text label
+    numeric(12,_2) down_payment_percent
+    bigint down_payment_amount
+    bigint installment_amount
+    text installment_frequency
+    smallint installments_count
+    numeric(12,_2) installment_years
+    bigint plan_price
+    boolean cash
+    text notes
+    text currency
+    timestamp_with_time_zone observed_at
+    timestamp_with_time_zone created_at
   }
   unit_prices {
     bigint id PK
@@ -727,6 +749,43 @@ Settings the owner changes from the admin page.
 | `value` | jsonb | no |  | Its value (JSON). |
 | `updated_by` | text | yes | → users.id | Who last changed it. |
 | `updated_at` | timestamp with time zone | no |  | When. |
+
+## `unit_payment_plans`
+
+Every payment plan seen for a unit (0% down, 10% down, ...), one row per plan per message. A unit's current plans are those of its newest source by `observed_at`: the newest message that stated plans, or Hassan's Review correction if that is newer. A message without plans adds no rows, so the plans stay. Retracting a message removes its rows and the previous plans show again.
+
+| Column | Type | Nullable | Keys | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | bigint | no | primary key | Identity primary key. |
+| `unit_id` | bigint | no | → units.id | The unit. |
+| `source_message_id` | bigint | yes | → messages.id | The message that stated the plan. Empty for plans typed in Review. |
+| `source` | text | no |  | `message` (copied from a message) or `review` (typed or corrected by Hassan). |
+| `position` | smallint | no |  | Order in the message, from 0. The first plan also fills the down payment and installment columns of the unit. |
+| `label` | text | yes |  | The name of the plan as written ("Plan 2", "خطة 10%", "Cash"). |
+| `down_payment_percent` | numeric(12, 2) | yes |  | Down payment percent. |
+| `down_payment_amount` | bigint | yes |  | Down payment amount (minor units), when stated. |
+| `installment_amount` | bigint | yes |  | One installment (minor units), when stated. |
+| `installment_frequency` | text | yes |  | `monthly`, `quarterly`, `semi-annual` or `annual`. |
+| `installments_count` | smallint | yes |  | Number of installments. |
+| `installment_years` | numeric(12, 2) | yes |  | Length of the plan in years. |
+| `plan_price` | bigint | yes |  | A total that applies only to this plan (minor units); empty when it is the price of the unit. |
+| `cash` | boolean | no |  | True for a pay-in-full option (no installments). |
+| `notes` | text | yes |  | Other notes on the plan, as written ("Equal installments"). |
+| `currency` | text | no |  | `EGP` or `USD`: the currency of the amounts in the plan. |
+| `observed_at` | timestamp with time zone | no |  | When the message stating the plan was posted (for Review rows: when Hassan saved it). |
+| `created_at` | timestamp with time zone | no |  | When the row was created. |
+
+**Indexes and constraints**
+
+- Index `unit_payment_plans_unit_observed_idx` on (unit_id, observed_at)
+- Index `unit_payment_plans_message_idx` on (source_message_id)
+- Check `unit_payment_plans_source_check`
+- Check `unit_payment_plans_currency_check`
+- Check `unit_payment_plans_installment_frequency_check`
+- Check `unit_payment_plans_source_message`
+- Check `unit_payment_plans_down_payment_range`
+- Check `unit_payment_plans_years_positive`
+- Check `unit_payment_plans_count_positive`
 
 ## `unit_prices`
 

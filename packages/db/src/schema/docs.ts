@@ -268,6 +268,33 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       created_at: 'When the row was created.',
     },
   },
+  unit_payment_plans: {
+    description:
+      "Every payment plan seen for a unit (0% down, 10% down, ...), one row per plan per message. A unit's current plans are those of its newest source by `observed_at`: the newest message that stated plans, or Hassan's Review correction if that is newer. A message without plans adds no rows, so the plans stay. Retracting a message removes its rows and the previous plans show again.",
+    columns: {
+      id: 'Identity primary key.',
+      unit_id: 'The unit.',
+      source_message_id: 'The message that stated the plan. Empty for plans typed in Review.',
+      source: '`message` (copied from a message) or `review` (typed or corrected by Hassan).',
+      position:
+        'Order in the message, from 0. The first plan also fills the down payment and installment columns of the unit.',
+      label: 'The name of the plan as written ("Plan 2", "خطة 10%", "Cash").',
+      down_payment_percent: 'Down payment percent.',
+      down_payment_amount: 'Down payment amount (minor units), when stated.',
+      installment_amount: 'One installment (minor units), when stated.',
+      installment_frequency: '`monthly`, `quarterly`, `semi-annual` or `annual`.',
+      installments_count: 'Number of installments.',
+      installment_years: 'Length of the plan in years.',
+      plan_price:
+        'A total that applies only to this plan (minor units); empty when it is the price of the unit.',
+      cash: 'True for a pay-in-full option (no installments).',
+      notes: 'Other notes on the plan, as written ("Equal installments").',
+      currency: '`EGP` or `USD`: the currency of the amounts in the plan.',
+      observed_at:
+        'When the message stating the plan was posted (for Review rows: when Hassan saved it).',
+      created_at: 'When the row was created.',
+    },
+  },
   users: {
     description:
       'People who can log in: the owner (Phase 5), firm admins and agents (Phase 6). Managed by Better Auth.',
