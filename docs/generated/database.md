@@ -95,6 +95,7 @@ erDiagram
     integer developer_id FK
     integer project_id FK
     text source
+    integer review_unit_id
     timestamp_with_time_zone created_at
   }
   extraction_runs {
@@ -283,6 +284,7 @@ erDiagram
     boolean ready_to_move
     numeric(3,_2) confidence
     boolean needs_review
+    boolean flagged_on_arrival
     text[] review_reasons
     jsonb extras
     bigint sold_by_message_id FK
@@ -453,6 +455,7 @@ Alternate spellings (Arabic, English, abbreviations) mapped to one city, develop
 | `developer_id` | integer | yes | → developers.id | Set when the alias names a developer. |
 | `project_id` | integer | yes | → projects.id | Set when the alias names a project. |
 | `source` | text | no |  | Where the alias came from: `seed` (seed data), `manual` (added by the owner), `review` (learned from a review-queue correction). |
+| `review_unit_id` | integer | yes |  | The unit whose review answer taught this spelling (only for `review` aliases). Not a foreign key, so deleting a unit never removes a learned spelling. |
 | `created_at` | timestamp with time zone | no |  | When the alias was added. |
 
 **Indexes and constraints**
@@ -778,6 +781,7 @@ One row per unit offering: the 26 Primary Units template columns, then internal 
 | `ready_to_move` | boolean | no |  | True for ready-to-move units. |
 | `confidence` | numeric(3, 2) | no |  | 0-1, computed in code from which key fields were found and how well names matched. |
 | `needs_review` | boolean | no |  | True when the review queue should check this unit. |
+| `flagged_on_arrival` | boolean | no |  | True if the unit was flagged for review when it first arrived. Never reset, so it records which units needed a human even after the flag is cleared. |
 | `review_reasons` | text[] | no |  | Plain-English reasons for review, e.g. `No price`. |
 | `extras` | jsonb | no |  | Other data, e.g. names not in the entity list under `unmatched`. |
 | `sold_by_message_id` | bigint | yes | → messages.id | The sold notice that marked the unit sold, if any (lets reprocessing undo it). |

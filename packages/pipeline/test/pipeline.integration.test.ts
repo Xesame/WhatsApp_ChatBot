@@ -391,6 +391,47 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
       expect(suggested?.project?.name).toBe('ZED East');
     });
 
+    it('remembers that a unit arrived flagged', async () => {
+      const flaggedId = await addMessage({ text: 'شقة في Zomra East 150 متر 9 مليون' });
+      const flaggedExtraction = {
+        units: [
+          {
+            ...blank,
+            category: 'Residential',
+            unit_type: 'Apartment',
+            project: 'Zomra East',
+            area: '150 متر',
+            price: '9 مليون',
+            evidence: { project: 'Zomra East', unit_type: null, area: '150 متر', price: '9 مليون' },
+          },
+        ],
+      };
+      await extract(deps(fakeModel({ extraction: flaggedExtraction }).llm), flaggedId, 'listing');
+      const [flagged] = await testDb.database.db.select().from(units);
+      expect(flagged?.needsReview).toBe(true);
+      expect(flagged?.flaggedOnArrival).toBe(true);
+
+      // A clean listing is not flagged on arrival.
+      await testDb.database.pool.query('truncate unit_prices, unit_sources, units cascade');
+      const cleanId = await addMessage({ text: MULTI_UNIT });
+      await extract(deps(fakeModel({ extraction }).llm), cleanId, 'listing');
+      const clean = await testDb.database.db.select().from(units);
+      expect(clean.every((u) => !u.needsReview)).toBe(true);
+      expect(clean.every((u) => !u.flaggedOnArrival)).toBe(true);
+
+      // Pretend these arrived flagged and a reviewer later cleared the flag.
+      // A second post of the same listing merges into them and must not
+      // reset the arrival memory.
+      await testDb.database.pool.query(
+        'update units set flagged_on_arrival = true, needs_review = false',
+      );
+      const again = await addMessage({ text: MULTI_UNIT });
+      const result = await extract(deps(fakeModel({ extraction }).llm), again, 'listing');
+      expect(result?.merged).toHaveLength(3);
+      const merged = await testDb.database.db.select().from(units);
+      expect(merged.every((u) => u.flaggedOnArrival)).toBe(true);
+    });
+
     it('still attaches a close match', async () => {
       const text = 'شقة في Hyde Park 150 متر 9 مليون';
       const id = await addMessage({ text });

@@ -245,6 +245,7 @@ async function create(tx: Db, unit: Unit, input: ApplyInput): Promise<number> {
       firstSeenAt: sentAt,
       lastSeenAt: sentAt,
       extractionRunId: input.extractionRunId,
+      flaggedOnArrival: unit.needsReview,
     })
     .returning({ id: units.id });
   if (!row) throw new Error('Failed to create unit');

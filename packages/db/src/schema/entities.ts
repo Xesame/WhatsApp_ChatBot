@@ -80,6 +80,11 @@ export const entityAliases = pgTable(
     source: text('source', { enum: ['seed', 'manual', 'review'] })
       .notNull()
       .default('manual'),
+    // The unit whose review answer taught this spelling (set when source is
+    // 'review'). Deliberately not a foreign key: units live in listings.ts,
+    // which already imports this file, so a reference would make the two
+    // schema files import each other.
+    reviewUnitId: integer('review_unit_id'),
     createdAt: timestamps.createdAt,
   },
   (t) => [

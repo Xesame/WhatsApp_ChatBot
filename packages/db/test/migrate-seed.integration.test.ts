@@ -57,6 +57,34 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
     await expect(runMigrations(testUrl)).resolves.toBeUndefined();
   });
 
+  it('adds the learning columns', async () => {
+    const result = await db().pool.query<{
+      table_name: string;
+      column_name: string;
+      data_type: string;
+      is_nullable: string;
+    }>(
+      `SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns
+       WHERE (table_name = 'entity_aliases' AND column_name = 'review_unit_id')
+          OR (table_name = 'units' AND column_name = 'flagged_on_arrival')
+       ORDER BY table_name`,
+    );
+    expect(result.rows).toEqual([
+      {
+        table_name: 'entity_aliases',
+        column_name: 'review_unit_id',
+        data_type: 'integer',
+        is_nullable: 'YES',
+      },
+      {
+        table_name: 'units',
+        column_name: 'flagged_on_arrival',
+        data_type: 'boolean',
+        is_nullable: 'NO',
+      },
+    ]);
+  });
+
   it('loads the seed, and a second run adds nothing', async () => {
     const first = await seed(db().db);
     expect(first.aliasesAdded).toBeGreaterThan(0);

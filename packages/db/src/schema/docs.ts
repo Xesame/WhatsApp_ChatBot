@@ -51,6 +51,8 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       project_id: 'Set when the alias names a project.',
       source:
         'Where the alias came from: `seed` (seed data), `manual` (added by the owner), `review` (learned from a review-queue correction).',
+      review_unit_id:
+        'The unit whose review answer taught this spelling (only for `review` aliases). Not a foreign key, so deleting a unit never removes a learned spelling.',
       created_at: 'When the alias was added.',
     },
   },
@@ -220,6 +222,8 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       confidence:
         '0-1, computed in code from which key fields were found and how well names matched.',
       needs_review: 'True when the review queue should check this unit.',
+      flagged_on_arrival:
+        'True if the unit was flagged for review when it first arrived. Never reset, so it records which units needed a human even after the flag is cleared.',
       review_reasons: 'Plain-English reasons for review, e.g. `No price`.',
       extras: 'Other data, e.g. names not in the entity list under `unmatched`.',
       sold_by_message_id:

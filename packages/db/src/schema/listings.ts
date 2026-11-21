@@ -127,6 +127,10 @@ export const units = pgTable(
     readyToMove: boolean('ready_to_move').notNull().default(false),
     confidence: numeric('confidence', { precision: 3, scale: 2, mode: 'number' }).notNull(),
     needsReview: boolean('needs_review').notNull(),
+    // True if the unit was flagged for review when it first arrived. Never
+    // reset afterwards, so we can later tell which units needed a human even
+    // once the flag is cleared.
+    flaggedOnArrival: boolean('flagged_on_arrival').notNull().default(false),
     reviewReasons: text('review_reasons')
       .array()
       .notNull()
