@@ -1,6 +1,12 @@
 import type { RawUnit } from '@reb/schema';
 import { describe, expect, it } from 'vitest';
-import { appearsIn, normalizeUnit, type NormalizeContext } from '../src/index.ts';
+import {
+  appearsIn,
+  isNameReason,
+  normalizeUnit,
+  scoreConfidence,
+  type NormalizeContext,
+} from '../src/index.ts';
 
 const blank: RawUnit = {
   category: null,
@@ -36,6 +42,7 @@ const ctx = (overrides: Partial<NormalizeContext> = {}): NormalizeContext => ({
   developer: null,
   project: { id: 7, name: 'Mivida', similarity: 1, developerId: 2, cityId: 1 },
   city: { id: 1, name: 'New Cairo', similarity: 1 },
+  suggestions: { developer: null, project: null, city: null },
   ...overrides,
 });
 
@@ -158,7 +165,7 @@ describe('normalizeUnit', () => {
       ctx({ sourceText: `${MESSAGE} كمبوند جديد`, project: null, city: null }),
     );
     expect(unit.projectId).toBeNull();
-    expect(unit.extras).toEqual({ unmatched: { project: 'كمبوند جديد', city: 'التجمع' } });
+    expect(unit.extras).toMatchObject({ unmatched: { project: 'كمبوند جديد', city: 'التجمع' } });
     expect(unit.confidence).toBeLessThan(0.7);
     expect(unit.needsReview).toBe(true);
   });
@@ -191,5 +198,84 @@ describe('normalizeUnit', () => {
       ctx({ sourceText: text }),
     );
     expect(unit.reviewReasons.some((r) => r.startsWith('Price per m²'))).toBe(true);
+  });
+});
+
+describe('names', () => {
+  it('suggests instead of attaching a weak match', () => {
+    const text = 'Zomra East شقة 150 متر السعر 9.5 مليون';
+    const unit = normalizeUnit(
+      { ...raw, project: 'Zomra East', city: null, price: 'السعر 9.5 مليون' },
+      ctx({
+        sourceText: text,
+        project: null,
+        city: null,
+        suggestions: {
+          developer: null,
+          project: { id: 7, name: 'ZED East', similarity: 0.43 },
+          city: null,
+        },
+      }),
+    );
+    expect(unit.projectId).toBeNull();
+    expect(unit.extras.unmatched).toMatchObject({ project: 'Zomra East' });
+    expect((unit.extras.suggested as { project: { id: number } }).project.id).toBe(7);
+    expect(unit.reviewReasons).toContain(
+      'project "Zomra East" is not in the known list (closest: ZED East, 0.43)',
+    );
+  });
+
+  it('records names as written', () => {
+    const text = 'Taj misr Dejoya 2 R8 شقة 150 متر السعر 9.5 مليون';
+    const unit = normalizeUnit(
+      {
+        ...raw,
+        developer: 'Taj misr',
+        project: 'Dejoya 2 R8',
+        city: null,
+        price: 'السعر 9.5 مليون',
+      },
+      ctx({ sourceText: text, project: null, city: null }),
+    );
+    expect(unit.extras.written).toEqual({
+      developer: ['Taj misr'],
+      project: ['Dejoya 2 R8'],
+      city: [],
+    });
+  });
+
+  it('recognises name reasons', () => {
+    for (const reason of [
+      'project "X" is not in the known list',
+      'project "X" matched "Y" by similarity (0.77)',
+      'Developer "A" does not build "B"; used the project\'s developer',
+      'Project "B" is not in "C"; used the project\'s city',
+    ]) {
+      expect(isNameReason(reason)).toBe(true);
+    }
+    expect(isNameReason('No area')).toBe(false);
+    expect(isNameReason('Price per m² (4132 EGP) looks wrong')).toBe(false);
+  });
+
+  it('scores confidence like before', () => {
+    expect(normalizeUnit(raw, ctx()).confidence).toBe(1);
+    expect(
+      scoreConfidence({
+        projectSimilarity: 1,
+        developerPart: 1,
+        hasUnitType: true,
+        priceFactor: 1,
+        hasArea: true,
+      }),
+    ).toBe(1);
+    expect(
+      scoreConfidence({
+        projectSimilarity: 0.4,
+        developerPart: 0.6,
+        hasUnitType: false,
+        priceFactor: 0.6,
+        hasArea: true,
+      }),
+    ).toBe(0.54);
   });
 });

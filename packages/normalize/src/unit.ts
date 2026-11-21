@@ -16,6 +16,24 @@ export interface ProjectMatch extends EntityMatch {
   cityId: number;
 }
 
+/**
+ * A weak match: the closest known name when nothing matched well enough to
+ * trust. It is only ever shown to the reviewer as a hint ("closest: ...");
+ * it never sets an id on the unit.
+ */
+export interface Suggestion {
+  id: number;
+  name: string;
+  similarity: number;
+}
+
+/** The names as the broker wrote them on one unit, kept so reviews can teach the bot. */
+export interface WrittenNames {
+  developer: string[];
+  project: string[];
+  city: string[];
+}
+
 export interface NormalizeContext {
   /** The text the model read (message, quoted message), for the no-invention check. */
   sourceText: string;
@@ -23,6 +41,12 @@ export interface NormalizeContext {
   developer: EntityMatch | null;
   project: ProjectMatch | null;
   city: EntityMatch | null;
+  /** Closest weak match per name, when no confident match was found. */
+  suggestions: {
+    developer: Suggestion | null;
+    project: Suggestion | null;
+    city: Suggestion | null;
+  };
 }
 
 /** Compares text ignoring case, spacing, punctuation, diacritics and digit style. */
@@ -64,6 +88,97 @@ const COPIED_FIELDS = [
 const toMinor = (major: number | null) => (major === null ? null : Math.round(major * 100));
 const plausibleArea = (n: number | null) => (n !== null && n >= 10 && n <= 100_000 ? n : null);
 const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/**
+ * Step 7: matches the written names against what the pipeline found. A
+ * matched project also tells us its developer and city. A weak match is only
+ * a suggestion: it adds "(closest: ...)" text for the reviewer and never
+ * sets an id.
+ */
+export function entityOutcome(
+  written: { developer: string | null; project: string | null; city: string | null },
+  ctx: Pick<NormalizeContext, 'developer' | 'project' | 'city' | 'suggestions'>,
+): {
+  developerId: number | null;
+  projectId: number | null;
+  cityId: number | null;
+  reasons: string[];
+  unmatched: Record<string, string>;
+  suggested: Record<string, Suggestion>;
+} {
+  const reasons: string[] = [];
+  const project = ctx.project;
+  let developerId = ctx.developer?.id ?? project?.developerId ?? null;
+  let cityId = ctx.city?.id ?? project?.cityId ?? null;
+  if (project && ctx.developer && ctx.developer.id !== project.developerId) {
+    reasons.push(
+      `Developer "${ctx.developer.name}" does not build "${project.name}"; used the project's developer`,
+    );
+    developerId = project.developerId;
+  }
+  if (project && ctx.city && ctx.city.id !== project.cityId) {
+    reasons.push(`Project "${project.name}" is not in "${ctx.city.name}"; used the project's city`);
+    cityId = project.cityId;
+  }
+  const unmatched: Record<string, string> = {};
+  const suggested: Record<string, Suggestion> = {};
+  for (const [field, match] of [
+    ['developer', ctx.developer],
+    ['project', ctx.project],
+    ['city', ctx.city],
+  ] as const) {
+    const value = written[field];
+    if (value && !match) {
+      unmatched[field] = value;
+      const close = ctx.suggestions[field];
+      if (close) {
+        suggested[field] = close;
+        reasons.push(
+          `${field} "${value}" is not in the known list (closest: ${close.name}, ${close.similarity.toFixed(2)})`,
+        );
+      } else {
+        reasons.push(`${field} "${value}" is not in the known list`);
+      }
+    } else if (match && match.similarity < 1) {
+      reasons.push(
+        `${field} "${value ?? ''}" matched "${match.name}" by similarity (${match.similarity.toFixed(2)})`,
+      );
+    }
+  }
+  return { developerId, projectId: project?.id ?? null, cityId, reasons, unmatched, suggested };
+}
+
+const NAME_REASON_PATTERNS = [
+  /^(developer|project|city) ".*" is not in the known list( \(closest: .*\))?$/,
+  /^(developer|project|city) ".*" matched ".*" by similarity \(\d+(\.\d+)?\)$/,
+  /^Developer ".*" does not build ".*"; used the project's developer$/,
+  /^Project ".*" is not in ".*"; used the project's city$/,
+];
+
+/** True for the review reasons that are about names (the ones a name correction can clear). */
+export function isNameReason(reason: string): boolean {
+  return NAME_REASON_PATTERNS.some((pattern) => pattern.test(reason));
+}
+
+/**
+ * Step 9: confidence is how much of what matters was found, and how surely.
+ * Plain arithmetic in code, never the model (rule 4).
+ */
+export function scoreConfidence(parts: {
+  projectSimilarity: number;
+  developerPart: number;
+  hasUnitType: boolean;
+  priceFactor: number;
+  hasArea: boolean;
+}): number {
+  const score =
+    0.25 * parts.projectSimilarity +
+    0.15 * parts.developerPart +
+    0.15 * (parts.hasUnitType ? 1 : 0) +
+    0.25 * parts.priceFactor +
+    0.2 * (parts.hasArea ? 1 : 0);
+  return Math.round(score * 100) / 100;
+}
 
 /**
  * Turns one raw unit from the model into a normalized unit. Every number,
@@ -136,36 +251,17 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
   const discount = parsePercentOrAmount(raw.cash_discount);
   const cashDiscount = discount.percent ?? discount.amount;
 
-  // 7. Entities. A matched project also tells us its developer and city.
+  // 7. Entities (see entityOutcome).
+  const entities = entityOutcome(raw, ctx);
+  reasons.push(...entities.reasons);
+  const { developerId, cityId, unmatched, suggested } = entities;
   const project = ctx.project;
-  let developerId = ctx.developer?.id ?? project?.developerId ?? null;
-  let cityId = ctx.city?.id ?? project?.cityId ?? null;
-  if (project && ctx.developer && ctx.developer.id !== project.developerId) {
-    reasons.push(
-      `Developer "${ctx.developer.name}" does not build "${project.name}"; used the project's developer`,
-    );
-    developerId = project.developerId;
-  }
-  if (project && ctx.city && ctx.city.id !== project.cityId) {
-    reasons.push(`Project "${project.name}" is not in "${ctx.city.name}"; used the project's city`);
-    cityId = project.cityId;
-  }
-  const unmatched: Record<string, string> = {};
-  for (const [field, match] of [
-    ['developer', ctx.developer],
-    ['project', ctx.project],
-    ['city', ctx.city],
-  ] as const) {
-    const value = raw[field];
-    if (value && !match) {
-      unmatched[field] = value;
-      reasons.push(`${field} "${value}" is not in the known list`);
-    } else if (match && match.similarity < 1) {
-      reasons.push(
-        `${field} "${value ?? ''}" matched "${match.name}" by similarity (${match.similarity.toFixed(2)})`,
-      );
-    }
-  }
+  // Names as written on this unit (after the no-invention check), for learning from reviews.
+  const written: WrittenNames = {
+    developer: raw.developer ? [raw.developer] : [],
+    project: raw.project ? [raw.project] : [],
+    city: raw.city ? [raw.city] : [],
+  };
 
   // 8. Sanity check on price per square metre (EGP).
   if (minPrice !== null && minArea !== null && priceCurrency === 'EGP') {
@@ -179,13 +275,17 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
   if (raw.unit_type === null) reasons.push('No unit type');
 
   // 9. Confidence: how much of what matters was found, and how surely.
-  const score =
-    0.25 * (project?.similarity ?? 0) +
-    0.15 * Math.max(ctx.developer?.similarity ?? 0, project ? 1 : 0, cityId !== null ? 0.6 : 0) +
-    0.15 * (raw.unit_type ? 1 : 0) +
-    0.25 * (minPrice !== null ? (price.explicitUnits ? 1 : 0.6) : 0) +
-    0.2 * (minArea !== null ? 1 : 0);
-  const confidence = Math.round(score * 100) / 100;
+  const confidence = scoreConfidence({
+    projectSimilarity: project?.similarity ?? 0,
+    developerPart: Math.max(
+      ctx.developer?.similarity ?? 0,
+      project ? 1 : 0,
+      cityId !== null ? 0.6 : 0,
+    ),
+    hasUnitType: raw.unit_type !== null,
+    priceFactor: minPrice !== null ? (price.explicitUnits ? 1 : 0.6) : 0,
+    hasArea: minArea !== null,
+  });
 
   return {
     category:
@@ -224,6 +324,10 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
     confidence,
     needsReview: reasons.length > 0 || confidence < 0.7,
     reviewReasons: reasons,
-    extras: Object.keys(unmatched).length ? { unmatched } : {},
+    extras: {
+      written,
+      ...(Object.keys(unmatched).length ? { unmatched } : {}),
+      ...(Object.keys(suggested).length ? { suggested } : {}),
+    },
   };
 }
