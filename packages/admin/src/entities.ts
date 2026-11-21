@@ -34,7 +34,7 @@ export interface EntityView {
   nameAr: string;
   developerId?: number;
   cityId?: number;
-  aliases: { id: number; alias: string; source: string }[];
+  aliases: { id: number; alias: string; source: string; reviewUnitId: number | null }[];
   unitCount: number;
 }
 
@@ -58,6 +58,7 @@ export async function listEntities(
       id: entityAliases.id,
       alias: entityAliases.alias,
       source: entityAliases.source,
+      reviewUnitId: entityAliases.reviewUnitId,
       owner: column,
     })
     .from(entityAliases)
@@ -73,7 +74,7 @@ export async function listEntities(
     ...('developerId' in row ? { developerId: row.developerId, cityId: row.cityId } : {}),
     aliases: aliases
       .filter((a) => a.owner === row.id)
-      .map(({ id, alias, source }) => ({ id, alias, source })),
+      .map(({ id, alias, source, reviewUnitId }) => ({ id, alias, source, reviewUnitId })),
     unitCount: counts.find((c) => c.owner === row.id)?.count ?? 0,
   }));
 }
@@ -84,6 +85,7 @@ export async function addAlias(
   kind: EntityKind,
   entityId: number,
   alias: string,
+  options: { source?: 'manual' | 'review'; reviewUnitId?: number } = {},
 ): Promise<boolean> {
   const aliasNormalized = normalizeName(alias);
   if (!aliasNormalized) throw new Error('The alias is empty after normalization');
@@ -95,7 +97,14 @@ export async function addAlias(
         : { projectId: entityId };
   const inserted = await db
     .insert(entityAliases)
-    .values({ alias: alias.trim(), aliasNormalized, source: 'manual', ...owner })
+    .values({
+      alias: alias.trim(),
+      aliasNormalized,
+      source: options.source ?? 'manual',
+      // Which unit's review taught us this spelling (shown on Places & names).
+      reviewUnitId: options.reviewUnitId ?? null,
+      ...owner,
+    })
     .onConflictDoNothing()
     .returning({ id: entityAliases.id });
   return inserted.length > 0;

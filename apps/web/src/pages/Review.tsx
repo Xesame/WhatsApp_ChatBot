@@ -8,7 +8,8 @@ import {
   MAINTENANCE_CURRENCIES,
   UNIT_TYPES,
 } from '@reb/schema/enums';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router';
 import { api, type Entity, type EntityKind, type UnitView } from '../api.ts';
 import {
   Badge,
@@ -23,6 +24,7 @@ import {
   PageTitle,
   Select,
 } from '../ui.tsx';
+import { LearnControls, rememberKey, spellingsToOffer, useEntities } from './ReviewLearning.tsx';
 
 /**
  * Side-by-side review: the original message (and its flyer or PDF) on the
@@ -134,12 +136,20 @@ function fromInput(def: FieldDef, text: string): unknown {
 export function Review() {
   const queryClient = useQueryClient();
   const [afterId, setAfterId] = useState<number | undefined>(undefined);
+  // `/review?unit=123` opens that one unit (linked from Places & names).
+  const [params, setParams] = useSearchParams();
+  const wanted = Number(params.get('unit')) || undefined;
   const queue = useQuery({
-    queryKey: ['review', afterId],
-    queryFn: () =>
-      api<{ items: UnitView[]; remaining: number }>(
+    queryKey: ['review', afterId, wanted],
+    queryFn: async () => {
+      if (wanted) {
+        const unit = await api<UnitView>(`/api/admin/units/${wanted}`);
+        return { items: [unit], remaining: unit.unit.needsReview ? 1 : 0 };
+      }
+      return api<{ items: UnitView[]; remaining: number }>(
         `/api/admin/review?limit=1${afterId ? `&afterId=${afterId}` : ''}`,
-      ),
+      );
+    },
   });
   const item = queue.data?.items[0];
 
@@ -147,15 +157,24 @@ export function Review() {
     <>
       <PageTitle
         title="Review"
-        subtitle={queue.data ? `${queue.data.remaining} unit(s) waiting. Oldest first.` : undefined}
+        subtitle={
+          queue.data && !wanted
+            ? `${queue.data.remaining} unit(s) waiting. Oldest first.`
+            : undefined
+        }
         actions={
           <div className="flex gap-2">
-            {afterId !== undefined && (
+            {wanted && (
+              <Button variant="secondary" onClick={() => setParams({})}>
+                Back to the queue
+              </Button>
+            )}
+            {!wanted && afterId !== undefined && (
               <Button variant="secondary" onClick={() => setAfterId(undefined)}>
                 Back to first
               </Button>
             )}
-            {item && (
+            {item && !wanted && (
               <Button variant="secondary" onClick={() => setAfterId(item.unit.id)}>
                 Skip
               </Button>
@@ -196,6 +215,31 @@ function ReviewItem({ view, onDone }: { view: UnitView; onDone: () => void }) {
   const [formError, setFormError] = useState<string | null>(null);
   useEffect(() => setValues(initial), [initial]);
 
+  // Spellings offered for remembering are ticked unless the person unticks them.
+  const [unticked, setUnticked] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setUnticked((old) => {
+      const next = new Set(old);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  const lists = {
+    project: useEntities('project').data,
+    developer: useEntities('developer').data,
+    city: useEntities('city').data,
+  };
+  const KEY_OF = { project: 'projectId', developer: 'developerId', city: 'cityId' } as const;
+  /** The ticked spellings to send along with the save. */
+  const remembered = () =>
+    (['project', 'developer', 'city'] as const).flatMap((kind) => {
+      const key = KEY_OF[kind];
+      if (values[key] === initial[key]) return [];
+      const chosen = lists[kind]?.find((e) => String(e.id) === values[key]);
+      return spellingsToOffer(view.learning.written[kind], chosen)
+        .filter((alias) => !unticked.has(rememberKey(kind, alias)))
+        .map((alias) => ({ kind, alias }));
+    });
+
   const review = useMutation({
     mutationFn: (action: 'save' | 'approve' | 'reject') => {
       const changes: Record<string, unknown> = {};
@@ -203,9 +247,10 @@ function ReviewItem({ view, onDone }: { view: UnitView; onDone: () => void }) {
         if (values[def.key] !== initial[def.key])
           changes[def.key] = fromInput(def, values[def.key] ?? '');
       }
+      const remember = remembered();
       return api(`/api/admin/units/${unit.id}/review`, {
         method: 'POST',
-        body: { action, changes },
+        body: { action, changes, ...(remember.length > 0 ? { remember } : {}) },
       });
     },
     onSuccess: onDone,
@@ -298,6 +343,24 @@ function ReviewItem({ view, onDone }: { view: UnitView; onDone: () => void }) {
                     value={values[def.key] ?? ''}
                     changed={values[def.key] !== initial[def.key]}
                     onChange={(v) => setValues((old) => ({ ...old, [def.key]: v }))}
+                    below={
+                      typeof def.kind === 'object' && 'entity' in def.kind ? (
+                        <LearnControls
+                          kind={def.kind.entity}
+                          view={view}
+                          value={values[def.key] ?? ''}
+                          loadedValue={initial[def.key] ?? ''}
+                          entities={lists[def.kind.entity]}
+                          unticked={unticked}
+                          onToggle={toggle}
+                          onPick={(id) => setValues((old) => ({ ...old, [def.key]: String(id) }))}
+                          defaults={{
+                            developerId: values.developerId ?? '',
+                            cityId: values.cityId ?? '',
+                          }}
+                        />
+                      ) : undefined
+                    }
                   />
                 ))}
               </div>
@@ -379,11 +442,13 @@ function Field({
   value,
   changed,
   onChange,
+  below,
 }: {
   def: FieldDef;
   value: string;
   changed: boolean;
   onChange: (v: string) => void;
+  below?: ReactNode;
 }) {
   const ring = changed ? 'border-sky-500 ring-2 ring-sky-100 dark:ring-sky-900' : '';
   const wide = def.key === 'notes' || def.key === 'projectId' ? 'col-span-2 sm:col-span-3' : '';
@@ -424,6 +489,7 @@ function Field({
   return (
     <div className={wide}>
       <Label text={def.label}>{control}</Label>
+      {below}
     </div>
   );
 }

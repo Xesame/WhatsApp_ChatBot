@@ -77,6 +77,7 @@ Correct fields, approve, or reject a unit. Corrections are kept for the accuracy
 | path | `id` | integer (1–…) | yes |
 | body | `action` | `"save"` / `"approve"` / `"reject"` | yes |
 | body | `changes` | object | no |
+| body | `remember` | list of object | no |
 
 ### `GET /api/admin/media/{id}`
 

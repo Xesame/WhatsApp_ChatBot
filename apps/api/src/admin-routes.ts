@@ -230,6 +230,10 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
         body: z.object({
           action: z.enum(['save', 'approve', 'reject']),
           changes: z.record(z.string(), z.unknown()).optional(),
+          // Spellings the reviewer ticked "remember" for (see Review page).
+          remember: z
+            .array(z.object({ kind: z.enum(['city', 'developer', 'project']), alias: name }))
+            .optional(),
         }),
       },
     },

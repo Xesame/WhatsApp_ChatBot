@@ -13,9 +13,11 @@ import {
   type Db,
 } from '@reb/db';
 import { PRICE_FIELDS, snapshotOf } from '@reb/dedup';
+import { normalizeName, type Suggestion, type WrittenNames } from '@reb/normalize';
 import { unitSchema } from '@reb/schema';
 import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
 import { z } from 'zod';
+import { addAlias, type EntityKind } from './entities.ts';
 
 type UnitRow = typeof units.$inferSelect;
 
@@ -86,6 +88,12 @@ export interface UnitView {
   names: { developer: string | null; project: string | null; city: string | null };
   sources: SourceView[];
   prices: (typeof unitPrices.$inferSelect)[];
+  /**
+   * What the pipeline wrote down about names it could not match: the names as
+   * written in the message, and the closest existing entity when one was
+   * close enough to suggest. Empty for units made before this was recorded.
+   */
+  learning: { written: WrittenNames; suggested: Record<string, Suggestion> };
 }
 
 async function nameOf(
@@ -96,6 +104,18 @@ async function nameOf(
   if (id === null) return null;
   const [row] = await db.select({ name: table.nameEn }).from(table).where(eq(table.id, id));
   return row?.name ?? null;
+}
+
+function learningOf(extras: unknown): UnitView['learning'] {
+  const e = (extras ?? {}) as { written?: Partial<WrittenNames>; suggested?: unknown };
+  return {
+    written: {
+      developer: e.written?.developer ?? [],
+      project: e.written?.project ?? [],
+      city: e.written?.city ?? [],
+    },
+    suggested: (e.suggested ?? {}) as Record<string, Suggestion>,
+  };
 }
 
 /** Everything the review page shows for one unit. Sender details are never included. */
@@ -138,6 +158,7 @@ export async function unitView(db: Db, unitId: number): Promise<UnitView | null>
     },
     sources: sourceRows.map((s) => ({ ...s, media: s.media?.id ? s.media : null })),
     prices,
+    learning: learningOf(unit.extras),
   };
 }
 
@@ -176,7 +197,12 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 export async function reviewUnit(
   database: Database,
   unitId: number,
-  input: { action: ReviewAction; changes?: unknown },
+  input: {
+    action: ReviewAction;
+    changes?: unknown;
+    /** Spellings the reviewer ticked "remember": added to the unit's entity after the changes. */
+    remember?: { kind: EntityKind; alias: string }[];
+  },
   reviewerId: string | null,
 ): Promise<UnitRow> {
   const changes = editableUnitSchema.parse(input.changes ?? {});
@@ -234,6 +260,20 @@ export async function reviewUnit(
       }
     }
     if (!saved) throw new NotFoundError(`Unit ${unitId} not found`);
+
+    // Spellings to remember go to the entity the unit has now (after the
+    // changes above). Same transaction: a failed save learns nothing. A
+    // kind the unit has no entity for is skipped; a known spelling is a no-op.
+    const ownerOf = {
+      developer: saved.developerId,
+      project: saved.projectId,
+      city: saved.cityId,
+    } as const;
+    for (const { kind, alias } of input.remember ?? []) {
+      const entityId = ownerOf[kind];
+      if (entityId === null || !normalizeName(alias)) continue;
+      await addAlias(tx, kind, entityId, alias, { source: 'review', reviewUnitId: unitId });
+    }
     return saved;
   });
 }

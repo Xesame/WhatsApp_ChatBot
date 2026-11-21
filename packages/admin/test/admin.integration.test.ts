@@ -14,6 +14,7 @@ import {
 } from '@reb/db';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
+import { matchEntities } from '@reb/pipeline';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -235,6 +236,105 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
     const { unit } = await listing();
     const view = await unitView(testDb.database.db, unit.id);
     expect(view?.prices.map((p) => p.minPrice)).toEqual([98_000_000]);
+  });
+
+  describe('remembering a spelling from review', () => {
+    // Entities are not truncated between tests, so remove the one these tests create.
+    beforeEach(async () => {
+      await testDb.database.pool.query(
+        "delete from entity_aliases where project_id in (select id from projects where name_en = 'Zomra East Residence')",
+      );
+      await testDb.database.pool.query(
+        "delete from projects where name_en = 'Zomra East Residence'",
+      );
+    });
+    const makeProject = async (nameEn: string, nameAr: string) =>
+      createEntity(testDb.database.db, 'project', {
+        nameEn,
+        nameAr,
+        developerId: mivida.developerId,
+        cityId: mivida.cityId,
+      });
+    const aliasesOf = (projectId: number) =>
+      testDb.database.db.select().from(entityAliases).where(eq(entityAliases.projectId, projectId));
+
+    it('remembers a spelling when asked', async () => {
+      const projectId = await makeProject('Zomra East Residence', 'زمرة ايست ريزيدنس');
+      const { unit } = await listing({
+        extras: { written: { developer: [], project: ['Zomra East'], city: [] } },
+      });
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        {
+          action: 'approve',
+          changes: { projectId },
+          remember: [{ kind: 'project', alias: 'Zomra East' }],
+        },
+        null,
+      );
+      const learned = (await aliasesOf(projectId)).find((a) => a.alias === 'Zomra East');
+      expect(learned).toMatchObject({ source: 'review', reviewUnitId: unit.id });
+      const view = await unitView(testDb.database.db, unit.id);
+      expect(view?.learning.written.project).toEqual(['Zomra East']);
+    });
+
+    it('does not duplicate a known spelling', async () => {
+      const projectId = await makeProject('Zomra East Residence', 'زمرة ايست ريزيدنس');
+      const { unit } = await listing();
+      const remember = [{ kind: 'project' as const, alias: 'Zomra East' }];
+      for (let i = 0; i < 2; i++) {
+        await reviewUnit(
+          testDb.database,
+          unit.id,
+          { action: 'save', changes: { projectId }, remember },
+          null,
+        );
+      }
+      // The project's own English name is already a spelling: remembering it adds nothing.
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        { action: 'save', remember: [{ kind: 'project', alias: 'Zomra East Residence' }] },
+        null,
+      );
+      const rows = await aliasesOf(projectId);
+      expect(rows.filter((a) => a.alias === 'Zomra East')).toHaveLength(1);
+      expect(rows.filter((a) => a.alias === 'Zomra East Residence')).toHaveLength(1);
+    });
+
+    it('matches Arabic spellings either way', async () => {
+      const projectId = await makeProject('Zomra East Residence', 'زمرة ايست ريزيدنس');
+      const { unit } = await listing();
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        {
+          action: 'approve',
+          changes: { projectId },
+          remember: [{ kind: 'project', alias: 'زمرة ايست' }],
+        },
+        null,
+      );
+      const found = await matchEntities(testDb.database.db, {
+        developer: null,
+        project: 'زمره ايست',
+        city: null,
+      });
+      expect(found.project).toMatchObject({ id: projectId, similarity: 1 });
+    });
+
+    it('learns nothing when the box is unticked', async () => {
+      const projectId = await makeProject('Zomra East Residence', 'زمرة ايست ريزيدنس');
+      const { unit } = await listing();
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        { action: 'approve', changes: { projectId } },
+        null,
+      );
+      expect((await aliasesOf(projectId)).filter((a) => a.source === 'review')).toEqual([]);
+    });
   });
 
   describe('entities', () => {

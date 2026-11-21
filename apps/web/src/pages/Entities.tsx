@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SyntheticEvent } from 'react';
+import { Link } from 'react-router';
 import { api, type Entity, type EntityKind } from '../api.ts';
 import {
   Badge,
@@ -142,6 +143,14 @@ function EntityCard({
             )}
           >
             <span dir="auto">{a.alias}</span>
+            {a.source === 'review' && a.reviewUnitId !== null && (
+              <Link
+                to={`/review?unit=${a.reviewUnitId}`}
+                className="text-slate-500 underline hover:text-sky-600"
+              >
+                from review of unit {a.reviewUnitId}
+              </Link>
+            )}
             {editing && (
               <button
                 type="button"
@@ -237,8 +246,24 @@ function EntityCard({
   );
 }
 
-function CreateEntity({ kind, onCreated }: { kind: EntityKind; onCreated: () => Promise<void> }) {
-  const [form, setForm] = useState({ nameEn: '', nameAr: '', developerId: '', cityId: '' });
+/**
+ * The "add a project / developer / area" form. Also used by the Review page
+ * ("+ New project named …"), which passes the written name as `initial` and
+ * gets the new id back in `onCreated`.
+ */
+export function CreateEntity({
+  kind,
+  onCreated,
+  initial,
+  title,
+}: {
+  kind: EntityKind;
+  onCreated: (id: number) => Promise<void> | void;
+  initial?: { nameEn?: string; nameAr?: string; developerId?: string; cityId?: string };
+  title?: string;
+}) {
+  const blank = { nameEn: '', nameAr: '', developerId: '', cityId: '', ...initial };
+  const [form, setForm] = useState(blank);
   const developers = useQuery({
     queryKey: ['entities', 'developer', ''],
     queryFn: () => api<Entity[]>('/api/admin/entities/developer'),
@@ -251,7 +276,7 @@ function CreateEntity({ kind, onCreated }: { kind: EntityKind; onCreated: () => 
   });
   const create = useMutation({
     mutationFn: () =>
-      api(`/api/admin/entities/${kind}`, {
+      api<{ id: number }>(`/api/admin/entities/${kind}`, {
         method: 'POST',
         body: {
           nameEn: form.nameEn,
@@ -261,15 +286,15 @@ function CreateEntity({ kind, onCreated }: { kind: EntityKind; onCreated: () => 
             : {}),
         },
       }),
-    onSuccess: async () => {
-      setForm({ nameEn: '', nameAr: '', developerId: '', cityId: '' });
-      await onCreated();
+    onSuccess: async ({ id }) => {
+      setForm(blank);
+      await onCreated(id);
     },
   });
   const label = KINDS.find((k) => k.kind === kind)?.label.toLowerCase() ?? kind;
 
   return (
-    <Card title={`Add to ${label}`} className="h-fit">
+    <Card title={title ?? `Add to ${label}`} className="h-fit">
       <form
         className="space-y-3"
         onSubmit={(e) => {

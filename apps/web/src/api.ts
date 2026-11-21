@@ -102,6 +102,11 @@ export interface UnitView {
   names: { developer: string | null; project: string | null; city: string | null };
   sources: Source[];
   prices: PriceRow[];
+  /** Names as written in the message, and the closest known entity when one was close. */
+  learning: {
+    written: { developer: string[]; project: string[]; city: string[] };
+    suggested: Partial<Record<EntityKind, { id: number; name: string; similarity: number }>>;
+  };
 }
 
 export interface Entity {
@@ -110,7 +115,7 @@ export interface Entity {
   nameAr: string;
   developerId?: number;
   cityId?: number;
-  aliases: { id: number; alias: string; source: string }[];
+  aliases: { id: number; alias: string; source: string; reviewUnitId: number | null }[];
   unitCount: number;
 }
 export type EntityKind = 'city' | 'developer' | 'project';
