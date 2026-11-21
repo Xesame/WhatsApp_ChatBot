@@ -57,9 +57,8 @@ export function LearnControls({
   onPickOther?: (kind: 'developer' | 'city', id: number) => void;
 }) {
   const queryClient = useQueryClient();
-  // The little "new ..." form: the name it starts with, and whether that name
-  // is Gemini's answer (then using it is noted, to measure how often it is right).
-  const [creating, setCreating] = useState<{ name: string; fromLookup: boolean } | null>(null);
+  // The little "new ..." form: the name it starts with.
+  const [creating, setCreating] = useState<{ name: string } | null>(null);
   const written = view.learning.written[kind];
   const suggestion = view.learning.suggested[kind];
   const chosen = entities?.find((e) => String(e.id) === value);
@@ -68,14 +67,6 @@ export function LearnControls({
   // Gemini's answer for an empty developer / area (the project is never looked up).
   const answer = kind === 'project' || value !== '' ? null : (view.learning.lookup?.[kind] ?? null);
   const offer = kind === 'project' ? null : lookupOffer(answer, entities);
-  /** Tells the server the person used Gemini's answer (never blocks the page). */
-  const noteUsed = (name: string) => {
-    if (kind === 'project') return;
-    void api(`/api/admin/units/${view.unit.id}/lookup-used`, {
-      method: 'POST',
-      body: { kind, name },
-    }).catch(() => undefined);
-  };
   // The New project form: a developer / area Gemini named that we do not have
   // is offered by its name when the message did not write one.
   const lookedUp = view.learning.lookup;
@@ -111,7 +102,6 @@ export function LearnControls({
               className="!px-2 !py-0.5 !text-xs"
               onClick={() => {
                 onPick(offer.id);
-                noteUsed(answer);
               }}
             >
               Use {offer.name}
@@ -120,7 +110,7 @@ export function LearnControls({
             <Button
               variant="ghost"
               className="!px-1 !py-0.5 !text-xs"
-              onClick={() => setCreating({ name: offer.name, fromLookup: true })}
+              onClick={() => setCreating({ name: offer.name })}
             >
               + New {WORD[kind]} named “{offer.name}”
             </Button>
@@ -132,7 +122,7 @@ export function LearnControls({
           <Button
             variant="ghost"
             className="!px-1 !py-0.5 !text-xs"
-            onClick={() => setCreating({ name: newName, fromLookup: false })}
+            onClick={() => setCreating({ name: newName })}
           >
             + New {WORD[kind]} named “{newName}”
           </Button>
@@ -163,7 +153,6 @@ export function LearnControls({
               // Refresh the lists first so the drop-down knows the new entry.
               await queryClient.invalidateQueries({ queryKey: ['entities'] });
               onPick(id);
-              if (creating.fromLookup) noteUsed(creating.name);
               setCreating(null);
             }}
           />

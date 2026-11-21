@@ -13,7 +13,6 @@ export { reviewCases, type ReviewCase } from './eval-cases.ts';
 export {
   editableUnitSchema,
   NotFoundError,
-  recordLookupUsed,
   reviewQueue,
   reviewUnit,
   unitView,

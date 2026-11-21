@@ -181,22 +181,6 @@ async function rememberedNames(db: Db, unit: UnitRow): Promise<UnitView['learnin
   return { developer: found.developer, city: found.city };
 }
 
-/** What the person did with a remembered answer, kept so its accuracy can be measured later. */
-export async function recordLookupUsed(
-  db: Db,
-  userId: string | null,
-  input: { unitId: number; kind: 'developer' | 'city'; name: string },
-  ipAddress?: string,
-): Promise<void> {
-  await audit(db, {
-    userId,
-    action: 'lookup.used',
-    target: input.name,
-    details: { unitId: input.unitId, kind: input.kind },
-    ipAddress,
-  });
-}
-
 /**
  * Whether a saved developer / area is the one Gemini named: any of its
  * names or spellings, compared the way names are everywhere (same letters
@@ -260,6 +244,7 @@ export async function reviewUnit(
     remember?: { kind: EntityKind; alias: string }[];
   },
   reviewerId: string | null,
+  ipAddress?: string,
 ): Promise<UnitRow> {
   const changes = editableUnitSchema.parse(input.changes ?? {});
   return database.transaction(async (tx) => {
@@ -317,8 +302,10 @@ export async function reviewUnit(
     }
     if (!saved) throw new NotFoundError(`Unit ${unitId} not found`);
 
-    // A developer / area picked where Gemini had named another one: kept as
-    // `lookup.ignored` (and `lookup.used` when the answer is clicked in Review).
+    // Counting how often Gemini's answer is right: once per field per save,
+    // only when the field was empty and an answer is saved for the name.
+    // `lookup.used` when the saved developer / area is the answer (by any
+    // spelling), `lookup.ignored` when it is a different one.
     const remembered = await rememberedNames(tx, unit);
     for (const [kind, field] of [
       ['developer', 'developerId'],
@@ -327,12 +314,12 @@ export async function reviewUnit(
       const answer = remembered?.[kind];
       const chosen = changes[field];
       if (!answer || unit[field] !== null || typeof chosen !== 'number') continue;
-      if (await isAnswer(tx, kind, chosen, answer)) continue;
       await audit(tx, {
         userId: reviewerId,
-        action: 'lookup.ignored',
+        action: (await isAnswer(tx, kind, chosen, answer)) ? 'lookup.used' : 'lookup.ignored',
         target: answer,
         details: { unitId, kind },
+        ipAddress,
       });
     }
 

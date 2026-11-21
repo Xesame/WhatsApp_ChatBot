@@ -10,7 +10,6 @@ import {
   removeAlias,
   renameEntity,
   retryJob,
-  recordLookupUsed,
   reviewQueue,
   reviewUnit,
   setSetting,
@@ -252,33 +251,13 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
         request.params.id,
         request.body,
         request.owner?.id ?? null,
+        request.ip,
       );
       await log(request, `unit.${request.body.action}`, `unit:${unit.id}`, {
         fields: Object.keys(request.body.changes ?? {}),
       });
       // A remembered spelling may also fix other waiting units.
       return request.body.remember?.length ? { ...unit, recheck: await recheck() } : unit;
-    },
-  );
-
-  api.post(
-    '/units/:id/lookup-used',
-    {
-      schema: {
-        tags: ['Review'],
-        summary: 'Note that the person used a developer or area Gemini remembered (for accuracy)',
-        params: z.object({ id }),
-        body: z.object({ kind: z.enum(['developer', 'city']), name }),
-      },
-    },
-    async (request) => {
-      await recordLookupUsed(
-        db,
-        request.owner?.id ?? null,
-        { unitId: request.params.id, ...request.body },
-        request.ip,
-      );
-      return { ok: true };
     },
   );
 

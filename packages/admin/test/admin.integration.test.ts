@@ -26,7 +26,6 @@ import {
   getSetting,
   listEntities,
   mergeEntities,
-  recordLookupUsed,
   renameEntity,
   reviewCases,
   reviewQueue,
@@ -381,38 +380,68 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
       expect((await unitView(testDb.database.db, unit.id))?.learning.lookup).toBeNull();
     });
 
-    it('records when a remembered answer is used or ignored', async () => {
+    const save = (unitId: number, changes: Record<string, unknown>, ip?: string) =>
+      reviewUnit(testDb.database, unitId, { action: 'save', changes }, null, ip);
+    const other = async (table: typeof developers | typeof cities, keep: number) => {
+      const [row] = await testDb.database.db
+        .select({ id: table.id })
+        .from(table)
+        .where(ne(table.id, keep))
+        .limit(1);
+      return row?.id;
+    };
+    const seen = async () => (await actions()).map((a) => [a.action, a.target, a.ipAddress]);
+
+    it('counts a remembered answer once, when the unit is saved', async () => {
+      await remember();
+      const first = await waiting();
+      // Same developer as the answer: used. A different area: ignored.
+      await save(
+        first.unit.id,
+        { developerId: mivida.developerId, cityId: await other(cities, mivida.cityId) },
+        '10.0.0.1',
+      );
+      expect(await seen()).toEqual([
+        ['lookup.used', 'Emaar Misr', '10.0.0.1'],
+        ['lookup.ignored', 'New Cairo', '10.0.0.1'],
+      ]);
+      // Saving again changes nothing: the fields are no longer empty.
+      await save(first.unit.id, { developerId: await other(developers, mivida.developerId) });
+      expect(await actions()).toHaveLength(2);
+    });
+
+    it('counts the area that matches, and a different developer', async () => {
       await remember();
       const { unit } = await waiting();
-      await recordLookupUsed(testDb.database.db, null, {
-        unitId: unit.id,
-        kind: 'developer',
-        name: 'Emaar Misr',
+      await save(unit.id, {
+        developerId: await other(developers, mivida.developerId),
+        cityId: mivida.cityId,
       });
-      // A developer other than the answer was chosen; the area was left alone.
-      const [other] = await testDb.database.db
-        .select({ id: developers.id })
-        .from(developers)
-        .where(ne(developers.id, mivida.developerId))
-        .limit(1);
-      await reviewUnit(
-        testDb.database,
-        unit.id,
-        { action: 'save', changes: { developerId: other?.id } },
-        null,
-      );
-      // Choosing the developer Gemini named is not "ignored".
-      const second = await waiting();
-      await reviewUnit(
-        testDb.database,
-        second.unit.id,
-        { action: 'save', changes: { developerId: mivida.developerId } },
-        null,
-      );
-      expect((await actions()).map((a) => [a.action, a.target])).toEqual([
-        ['lookup.used', 'Emaar Misr'],
+      expect((await seen()).map((r) => r.slice(0, 2))).toEqual([
         ['lookup.ignored', 'Emaar Misr'],
+        ['lookup.used', 'New Cairo'],
       ]);
+    });
+
+    it('matches the answer by any spelling of the saved entity', async () => {
+      await remember({ developer: 'Emaar', city: null });
+      const { unit } = await waiting();
+      // "Emaar" is a seeded spelling of Emaar Misr.
+      await save(unit.id, { developerId: mivida.developerId });
+      expect((await seen()).map((r) => r.slice(0, 2))).toEqual([['lookup.used', 'Emaar']]);
+    });
+
+    it('counts nothing without an answer, or when the field was already filled', async () => {
+      const bare = await waiting();
+      await save(bare.unit.id, { developerId: mivida.developerId });
+      await remember();
+      const filled = await listing({
+        projectId: null,
+        cityId: null,
+        extras: { written: { developer: [], project: ['Lumia Lagoons'], city: [] } },
+      });
+      await save(filled.unit.id, { developerId: await other(developers, mivida.developerId) });
+      expect(await actions()).toEqual([]);
     });
   });
 
