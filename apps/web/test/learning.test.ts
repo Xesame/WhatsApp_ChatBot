@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Entity } from '../src/api.ts';
 import {
+  afterReview,
   inlineKeyAction,
   newEntityOption,
   recheckMessage,
   rememberedSpellings,
   rememberKey,
+  unitStateLabel,
 } from '../src/pages/learning.ts';
 
 describe('remembering spellings from Review', () => {
@@ -85,5 +87,27 @@ describe('keys inside the inline new developer / area box', () => {
   it('Escape cancels and other keys are left alone', () => {
     expect(inlineKeyAction('Escape', 'x', 'y', false)).toBe('cancel');
     expect(inlineKeyAction('a', 'x', 'y', false)).toBeNull();
+  });
+});
+
+describe('Review feedback', () => {
+  it('confirms and returns to the queue after a decision on the single-listing page', () => {
+    expect(afterReview('approve', true)).toEqual({ message: 'Approved ✓', backToQueue: true });
+    expect(afterReview('reject', true)).toEqual({
+      message: 'Marked as not a listing ✓',
+      backToQueue: true,
+    });
+  });
+  it('confirms but stays put in the normal queue and after Save', () => {
+    expect(afterReview('approve', false).backToQueue).toBe(false);
+    expect(afterReview('save', true)).toEqual({ message: 'Saved ✓', backToQueue: false });
+  });
+  it('labels units that are not waiting', () => {
+    expect(unitStateLabel({ needsReview: false, status: 'active' })).toBe('Already checked');
+    expect(unitStateLabel({ needsReview: false, status: 'stale' })).toBe('Already checked');
+    expect(unitStateLabel({ needsReview: false, status: 'withdrawn' })).toBe(
+      'Withdrawn (not a listing)',
+    );
+    expect(unitStateLabel({ needsReview: true, status: 'active' })).toBeNull();
   });
 });

@@ -96,3 +96,27 @@ export function inlineKeyAction(
   if (key !== 'Enter') return null;
   return !saving && nameEn.trim() && nameAr.trim() ? 'save' : 'none';
 }
+
+/**
+ * What the Review page shows and does after a button succeeds. Approving or
+ * rejecting always confirms; on the single-listing page (opened from a link)
+ * it also goes back to the queue so the next waiting listing appears. Saving
+ * without a decision stays where it is.
+ */
+export function afterReview(
+  action: 'save' | 'approve' | 'reject',
+  singleListing: boolean,
+): { message: string; backToQueue: boolean } {
+  if (action === 'approve') return { message: 'Approved ✓', backToQueue: singleListing };
+  if (action === 'reject')
+    return { message: 'Marked as not a listing ✓', backToQueue: singleListing };
+  return { message: 'Saved ✓', backToQueue: false };
+}
+
+/** A short label for a unit that is not waiting for review (empty when it is). */
+export function unitStateLabel(unit: { needsReview: boolean; status: string }): string | null {
+  if (unit.status === 'withdrawn') return 'Withdrawn (not a listing)';
+  if (!unit.needsReview && (unit.status === 'active' || unit.status === 'stale'))
+    return 'Already checked';
+  return null;
+}

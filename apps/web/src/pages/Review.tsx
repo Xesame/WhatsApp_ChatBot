@@ -24,7 +24,7 @@ import {
   PageTitle,
   Select,
 } from '../ui.tsx';
-import { rememberedSpellings } from './learning.ts';
+import { afterReview, rememberedSpellings, unitStateLabel } from './learning.ts';
 import { LearnControls, useEntities } from './ReviewLearning.tsx';
 
 /**
@@ -139,6 +139,9 @@ export function Review() {
   const [afterId, setAfterId] = useState<number | undefined>(undefined);
   // `/review?unit=123` opens that one unit (linked from Places & names).
   const [params, setParams] = useSearchParams();
+  // The short "Approved ✓" message lives here, not in the unit, because the
+  // unit on screen changes as soon as a decision is saved.
+  const [notice, setNotice] = useState<string | null>(null);
   const wanted = Number(params.get('unit')) || undefined;
   const queue = useQuery({
     queryKey: ['review', afterId, wanted],
@@ -166,23 +169,49 @@ export function Review() {
         actions={
           <div className="flex gap-2">
             {wanted && (
-              <Button variant="secondary" onClick={() => setParams({})}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setNotice(null);
+                  setParams({});
+                }}
+              >
                 Back to the queue
               </Button>
             )}
             {!wanted && afterId !== undefined && (
-              <Button variant="secondary" onClick={() => setAfterId(undefined)}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setNotice(null);
+                  setAfterId(undefined);
+                }}
+              >
                 Back to first
               </Button>
             )}
             {item && !wanted && (
-              <Button variant="secondary" onClick={() => setAfterId(item.unit.id)}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setNotice(null);
+                  setAfterId(item.unit.id);
+                }}
+              >
                 Skip
               </Button>
             )}
           </div>
         }
       />
+      {notice && (
+        <p
+          role="status"
+          className="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+        >
+          {notice}
+        </p>
+      )}
       {queue.isPending && <Loading />}
       <ErrorNote error={queue.error} />
       {queue.data && !item && (
@@ -196,7 +225,10 @@ export function Review() {
         <ReviewItem
           key={item.unit.id}
           view={item}
-          onDone={() => {
+          onDone={(action) => {
+            const next = afterReview(action, Boolean(wanted));
+            setNotice(next.message);
+            if (next.backToQueue) setParams({});
             // The save may have re-checked other waiting units (fresh queue) and
             // learned a spelling (fresh name lists, so it isn't offered again).
             void queryClient.invalidateQueries({ queryKey: ['review'] });
@@ -209,7 +241,13 @@ export function Review() {
   );
 }
 
-function ReviewItem({ view, onDone }: { view: UnitView; onDone: () => void }) {
+function ReviewItem({
+  view,
+  onDone,
+}: {
+  view: UnitView;
+  onDone: (action: 'save' | 'approve' | 'reject') => void;
+}) {
   const { unit } = view;
   const initial = useMemo(
     () => Object.fromEntries(FIELDS.map((f) => [f.key, toInput(f.kind, unit[f.key])])),
@@ -249,7 +287,7 @@ function ReviewItem({ view, onDone }: { view: UnitView; onDone: () => void }) {
         body: { action, changes, ...(remember.length > 0 ? { remember } : {}) },
       });
     },
-    onSuccess: onDone,
+    onSuccess: (_data, action) => onDone(action),
     onError: (e) => setFormError(e instanceof Error ? e.message : String(e)),
   });
   const run = (action: 'save' | 'approve' | 'reject') => {
@@ -315,6 +353,7 @@ function ReviewItem({ view, onDone }: { view: UnitView; onDone: () => void }) {
               confidence {Math.round(unit.confidence * 100)}%
             </Badge>
             <Badge>{unit.status}</Badge>
+            {unitStateLabel(unit) && <Badge tone="amber">{unitStateLabel(unit)}</Badge>}
           </span>
         }
       >
