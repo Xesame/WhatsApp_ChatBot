@@ -19,18 +19,19 @@ Written 20 November 2026 so a new Claude Code session (on Hassan's Windows lapto
 
 ## Build status
 
-| Phase                                                                                                                    | Status                                                |
-| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| 0 Foundation (monorepo, config, Docker, database, seed)                                                                  | Done                                                  |
-| 1 Capture (Baileys, messages, media)                                                                                     | Done; live WhatsApp test waits for the scraper number |
-| 2 Text extraction + eval harness                                                                                         | Built; accuracy on real messages not yet measured     |
-| 3 Media (images, PDFs, Excel; voice notes dropped)                                                                       | Built                                                 |
-| 4 Dedup, price history, sold/stale                                                                                       | Done                                                  |
-| 5 Owner admin console (login, pairing QR, groups, review, names, stats, jobs, settings)                                  | Done                                                  |
-| 6 Firm dashboard (firms, invitations, search, listing page, notes, saved searches, exports, share cards, Arabic/English) | Done                                                  |
-| After 6: `import` command for sample messages; Flash-Lite extraction fallback; sold notices find their unit              | Done (8 Nov)                                          |
-| 7 Chat bots and alerts (WhatsApp query bot, Telegram, alerts)                                                            | Not started                                           |
-| 8 Hardening and deploy (server, HTTPS, backups, monitoring)                                                              | Not started                                           |
+| Phase                                                                                                                                                                   | Status                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| 0 Foundation (monorepo, config, Docker, database, seed)                                                                                                                 | Done                                                  |
+| 1 Capture (Baileys, messages, media)                                                                                                                                    | Done; live WhatsApp test waits for the scraper number |
+| 2 Text extraction + eval harness                                                                                                                                        | Built; accuracy on real messages not yet measured     |
+| 3 Media (images, PDFs, Excel; voice notes dropped)                                                                                                                      | Built                                                 |
+| 4 Dedup, price history, sold/stale                                                                                                                                      | Done                                                  |
+| 5 Owner admin console (login, pairing QR, groups, review, names, stats, jobs, settings)                                                                                 | Done                                                  |
+| 6 Firm dashboard (firms, invitations, search, listing page, notes, saved searches, exports, share cards, Arabic/English)                                                | Done                                                  |
+| After 6: `import` command for sample messages; Flash-Lite extraction fallback; sold notices find their unit                                                             | Done (8 Nov)                                          |
+| Learning from reviews, stage A (names as written, suggestions, remembered spellings, re-check, learned price check): checkpoints 1-2 done, on branch `learning-stage-a` | In progress                                           |
+| 7 Chat bots and alerts (WhatsApp query bot, Telegram, alerts)                                                                                                           | Not started                                           |
+| 8 Hardening and deploy (server, HTTPS, backups, monitoring)                                                                                                             | Not started                                           |
 
 432 tests pass (`pnpm check`). Everything runs with `docker compose up -d --build`.
 
@@ -89,6 +90,7 @@ Connecting his laptop folder to the cloud session didn't work (the folder `Whats
 
 ## What's next
 
-1. Hassan's local test with real samples, then tune spellings, tolerances and prompts from his findings.
-2. Phase 8 (server, HTTPS, nightly backups with a tested restore, monitoring) before any firm uses it.
-3. Phase 7 (WhatsApp query bot, Telegram fallback, alerts on saved searches) after that.
+1. Learning from reviews: the weekly progress table on the Overview page (checkpoint 3), then stage B once about 20 messages have been reviewed, then the admin panel redesign. Design: `docs/superpowers/specs/2026-11-21-learning-from-reviews-design.md`.
+2. Hassan's local test with real samples, then tune spellings, tolerances and prompts from his findings.
+3. Phase 8 (server, HTTPS, nightly backups with a tested restore, monitoring) before any firm uses it.
+4. Phase 7 (WhatsApp query bot, Telegram fallback, alerts on saved searches) after that.

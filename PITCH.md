@@ -93,6 +93,15 @@ The operator runs everything from a simple web console, without touching a serve
 
 Access is protected by a password login with attempt limits, and every sign-in and change is recorded in an audit log.
 
+### Learns from every review
+
+Every time the operator checks a flagged listing, the system gets smarter:
+
+- **It remembers spellings.** If a broker writes a project name in a way the system did not recognise, one tick teaches it. The same spelling is understood in every later post, and other listings that were waiting only because of that name clear on their own.
+- **It suggests instead of guessing.** A name that is only a rough match is not attached to the wrong project; the console shows "closest: X" and the operator confirms it once.
+- **It learns what normal prices look like.** Once a few units of a project have been approved, a new listing priced far above or below the project's usual price per m² is held for a check.
+- **It never overrides a person.** Listings the operator has already reviewed are left exactly as decided.
+
 ### 12. A dashboard firms can use from day one, in Arabic or English
 
 Each firm gets its own login and a dashboard built for brokers:
