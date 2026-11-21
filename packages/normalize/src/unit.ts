@@ -199,6 +199,15 @@ const NAME_REASON_PATTERNS = [
   /^Project ".*" is not in ".*"; used the project's city$/,
 ];
 
+/**
+ * True for the price reason built from a learned usual price ("... is far
+ * from the usual ..."), not the fixed-range one. A repost that merges into a
+ * unit Hassan approved must not re-flag it with this reason.
+ */
+export function isLearnedPriceReason(reason: string): boolean {
+  return /^Price per m² .* is far from the usual /.test(reason);
+}
+
 /** True for the review reasons that are about names (the ones a name correction can clear). */
 export function isNameReason(reason: string): boolean {
   return NAME_REASON_PATTERNS.some((pattern) => pattern.test(reason));

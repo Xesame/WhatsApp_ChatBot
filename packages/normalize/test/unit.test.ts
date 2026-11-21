@@ -2,6 +2,7 @@ import type { RawUnit } from '@reb/schema';
 import { describe, expect, it } from 'vitest';
 import {
   appearsIn,
+  isLearnedPriceReason,
   isNameReason,
   MILLIONS_ASSUMED_REASON,
   normalizeUnit,
@@ -334,5 +335,15 @@ describe('learned price range', () => {
     );
     expect(usd.reviewReasons).toContain('Priced in USD');
     expect(usd.reviewReasons.some((r) => r.startsWith('Price per m²'))).toBe(false);
+  });
+});
+
+describe('isLearnedPriceReason', () => {
+  it('matches only the learned text', () => {
+    expect(
+      isLearnedPriceReason('Price per m² 4,133 EGP is far from the usual 41,000 for X apartments'),
+    ).toBe(true);
+    expect(isLearnedPriceReason('Price per m² (2000 EGP) looks wrong')).toBe(false);
+    expect(isLearnedPriceReason('No area')).toBe(false);
   });
 });

@@ -10,12 +10,18 @@ describe.skipIf(!testDatabaseUrl)('usual price per m2 (real Postgres)', () => {
   let projectId: number;
 
   /** A 100 m2 unit at `perMetre` EGP per m2, optionally approved. */
-  const add = async (perMetre: number, approved: boolean, unitType = 'Apartment') => {
+  const add = async (
+    perMetre: number,
+    approved: boolean,
+    unitType = 'Apartment',
+    priceCurrency: 'EGP' | 'USD' = 'EGP',
+  ) => {
     const [row] = await testDb.database.db
       .insert(units)
       .values({
         projectId,
         unitType: unitType as 'Apartment',
+        priceCurrency,
         minArea: 100,
         maxArea: 100,
         minPrice: perMetre * 100 * 100,
@@ -72,5 +78,17 @@ describe.skipIf(!testDatabaseUrl)('usual price per m2 (real Postgres)', () => {
     await add(41_000, true, 'Villa');
     await add(45_000, true, 'Villa');
     expect(await usualPricePerM2(testDb.database.db, projectId, 'Apartment')).toBeNull();
+  });
+
+  it('ignores approved USD units', async () => {
+    await add(40_000, true);
+    await add(41_000, true);
+    await add(1_000_000, true, 'Apartment', 'USD');
+    expect(await usualPricePerM2(testDb.database.db, projectId, 'Apartment')).toBeNull();
+    await add(45_000, true);
+    expect(await usualPricePerM2(testDb.database.db, projectId, 'Apartment')).toEqual({
+      median: 41_000,
+      count: 3,
+    });
   });
 });

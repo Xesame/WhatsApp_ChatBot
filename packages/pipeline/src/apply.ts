@@ -8,7 +8,7 @@ import {
   type PriceSnapshot,
   type Tolerances,
 } from '@reb/dedup';
-import type { WrittenNames } from '@reb/normalize';
+import { isLearnedPriceReason, type WrittenNames } from '@reb/normalize';
 import type { MessageIntent, Unit } from '@reb/schema';
 import { and, desc, eq, inArray, max, min, ne, sql } from 'drizzle-orm';
 
@@ -317,7 +317,13 @@ async function merge(
       : {}),
   };
 
-  const reasons = [...new Set([...existing.reviewReasons, ...(incoming.reviewReasons ?? [])])];
+  // A learned price reason is never carried onto an existing unit by a repost:
+  // Hassan may have approved it already. Everything else is kept as before.
+  const incomingReasons = (incoming.reviewReasons ?? []).filter((r) => !isLearnedPriceReason(r));
+  const incomingFlags =
+    incoming.needsReview === true &&
+    (incomingReasons.length > 0 || (incoming.confidence ?? 1) < 0.7);
+  const reasons = [...new Set([...existing.reviewReasons, ...incomingReasons])];
   await tx
     .update(units)
     .set({
@@ -328,7 +334,7 @@ async function merge(
       firstSeenAt: sql`least(${units.firstSeenAt}, ${sentAt.toISOString()}::timestamptz)`,
       lastSeenAt: sql`greatest(${units.lastSeenAt}, ${sentAt.toISOString()}::timestamptz)`,
       extractionRunId: input.extractionRunId ?? existing.extractionRunId,
-      needsReview: existing.needsReview || incoming.needsReview === true,
+      needsReview: existing.needsReview || incomingFlags,
       reviewReasons: reasons,
       extras,
       confidence: Math.max(existing.confidence, incoming.confidence ?? 0),

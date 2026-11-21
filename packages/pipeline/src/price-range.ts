@@ -32,6 +32,7 @@ export async function usualPricePerM2(
         eq(units.projectId, projectId),
         sql`${units.unitType} = ${unitType}`,
         isNotNull(units.minPrice),
+        eq(units.priceCurrency, 'EGP'),
         sql`${units.minArea} > 0`,
         sql`exists (select 1 from ${reviewCorrections} where ${reviewCorrections.unitId} = ${units.id} and ${reviewCorrections.action} = 'approve')`,
       ),

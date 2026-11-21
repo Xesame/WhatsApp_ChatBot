@@ -163,6 +163,38 @@ describe.skipIf(!testDatabaseUrl)('dedup and price history (real Postgres)', () 
     expect(await pricesOf(only?.id ?? 0)).toEqual([[950_000_000, 950_000_000]]);
   });
 
+  it('a repost drops the learned price reason but keeps its other reasons', async () => {
+    const [g1, g2] = groups as [number, number];
+    const a = await post(g1, '2026-10-20T10:00:00Z');
+    const b = await post(g2, '2026-10-20T10:05:00Z');
+    await apply(a, 'listing', [unit()]);
+    const learned = 'Price per m² 6,667 EGP is far from the usual 41,000 for Mivida apartments';
+    const result = await apply(b, 'listing', [
+      unit({ needsReview: true, reviewReasons: [learned, 'No area'] }),
+    ]);
+    expect(result.merged).toHaveLength(1);
+    const [only] = await allUnits();
+    expect(only?.needsReview).toBe(true); // 'No area' still flags it, as before
+    expect(only?.reviewReasons).toEqual(['No area']);
+  });
+
+  it('a repost with only a learned price reason leaves a clean unit clean', async () => {
+    const [g1, g2] = groups as [number, number];
+    const a = await post(g1, '2026-10-20T10:00:00Z');
+    const b = await post(g2, '2026-10-20T10:05:00Z');
+    await apply(a, 'listing', [unit()]);
+    await apply(b, 'listing', [
+      unit({
+        needsReview: true,
+        reviewReasons: [
+          'Price per m² 6,667 EGP is far from the usual 41,000 for Mivida apartments',
+        ],
+      }),
+    ]);
+    const [only] = await allUnits();
+    expect(only).toMatchObject({ needsReview: false, reviewReasons: [] });
+  });
+
   it('keeps every spelling when a repost merges', async () => {
     const [g1, g2] = groups as [number, number];
     const written = (project: string) => ({
