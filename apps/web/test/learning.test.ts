@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Entity } from '../src/api.ts';
-import { recheckMessage, rememberedSpellings, rememberKey } from '../src/pages/learning.ts';
+import {
+  newEntityOption,
+  recheckMessage,
+  rememberedSpellings,
+  rememberKey,
+} from '../src/pages/learning.ts';
 
 describe('remembering spellings from Review', () => {
   const zomra: Entity = {
@@ -36,5 +41,31 @@ describe('remembering spellings from Review', () => {
     expect(recheckMessage({ checked: 12, cleared: 3 })).toBe(
       'Re-checked 12 waiting units, 3 cleared',
     );
+  });
+});
+
+describe('the "+ New developer / area" option in the New project form', () => {
+  const dubaiMisr: Entity = {
+    id: 3,
+    nameEn: 'Dubai Misr',
+    nameAr: 'دبي مصر',
+    aliases: [{ alias: 'DM Developments' }],
+    unitCount: 0,
+  } as Entity;
+
+  it('is offered with the written name when no developer matches', () => {
+    expect(newEntityOption('developer', 'Palm Hills', [dubaiMisr])).toEqual({
+      label: '+ New developer named “Palm Hills”',
+      name: 'Palm Hills',
+    });
+  });
+
+  it('is not offered when the written name is already a known developer or spelling', () => {
+    expect(newEntityOption('developer', '  dubai MISR ', [dubaiMisr])).toBeNull();
+    expect(newEntityOption('developer', 'dm developments', [dubaiMisr])).toBeNull();
+  });
+
+  it('reads "+ New area…" with an empty name when the unit has no written name', () => {
+    expect(newEntityOption('city', undefined, [])).toEqual({ label: '+ New area…', name: '' });
   });
 });

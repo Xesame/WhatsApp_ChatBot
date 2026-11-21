@@ -59,3 +59,23 @@ export interface Recheck {
 /** The note shown on Places & names after a change. */
 export const recheckMessage = (recheck: Recheck) =>
   `Re-checked ${recheck.checked} waiting units, ${recheck.cleared} cleared`;
+
+/**
+ * The "+ New developer / area" choice at the top of a list inside the New
+ * project form. Offered unless the unit's written name is already a known
+ * developer / area (by name or spelling); with no written name it is offered
+ * with an empty name. `name` is what the little form starts with.
+ */
+export function newEntityOption(
+  kind: 'developer' | 'city',
+  written: string | undefined,
+  known: Entity[] | undefined,
+): { label: string; name: string } | null {
+  const word = kind === 'developer' ? 'developer' : 'area';
+  const name = written?.trim() ?? '';
+  if (!name) return { label: `+ New ${word}…`, name: '' };
+  const isKnown = (known ?? []).some((e) =>
+    [e.nameEn, e.nameAr, ...e.aliases.map((a) => a.alias)].some((k) => same(k, name)),
+  );
+  return isKnown ? null : { label: `+ New ${word} named “${name}”`, name };
+}

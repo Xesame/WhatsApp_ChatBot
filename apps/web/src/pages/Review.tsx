@@ -350,6 +350,12 @@ function ReviewItem({ view, onDone }: { view: UnitView; onDone: () => void }) {
                           unticked={unticked}
                           onToggle={toggle}
                           onPick={(id) => setValues((old) => ({ ...old, [def.key]: String(id) }))}
+                          onPickOther={(kind, id) =>
+                            setValues((old) => ({
+                              ...old,
+                              [kind === 'developer' ? 'developerId' : 'cityId']: String(id),
+                            }))
+                          }
                           defaults={{
                             developerId: values.developerId ?? '',
                             cityId: values.cityId ?? '',

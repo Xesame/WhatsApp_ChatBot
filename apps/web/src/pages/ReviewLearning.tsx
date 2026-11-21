@@ -38,6 +38,7 @@ export function LearnControls({
   onToggle,
   onPick,
   defaults,
+  onPickOther,
 }: {
   kind: EntityKind;
   view: UnitView;
@@ -52,6 +53,8 @@ export function LearnControls({
   onPick: (id: number) => void;
   /** Pre-filled developer / city for a new project. */
   defaults?: { developerId: string; cityId: string };
+  /** A developer / area added inside the New project form: set it on the unit too. */
+  onPickOther?: (kind: 'developer' | 'city', id: number) => void;
 }) {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -101,6 +104,15 @@ export function LearnControls({
           <CreateEntity
             kind={kind}
             title={`New ${WORD[kind]}`}
+            offerNew={
+              kind === 'project'
+                ? {
+                    developer: view.learning.written.developer[0],
+                    city: view.learning.written.city[0],
+                  }
+                : undefined
+            }
+            onRelatedCreated={onPickOther}
             initial={{ nameEn: newName, nameAr: newName, ...defaults }}
             onCreated={async (id) => {
               // Refresh the lists first so the drop-down knows the new entry.

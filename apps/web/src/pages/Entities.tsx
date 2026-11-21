@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type SyntheticEvent } from 'react';
 import { Link } from 'react-router';
 import { api, type Entity, type EntityKind } from '../api.ts';
-import { recheckMessage, type Recheck } from './learning.ts';
+import { newEntityOption, recheckMessage, type Recheck } from './learning.ts';
 import {
   Badge,
   Button,
@@ -272,15 +272,27 @@ export function CreateEntity({
   onCreated,
   initial,
   title,
+  offerNew,
+  onRelatedCreated,
 }: {
   kind: EntityKind;
   /** Gets the new id, and the re-check counts the server sends back. */
   onCreated: (id: number, recheck?: Recheck) => Promise<void> | void;
   initial?: { nameEn?: string; nameAr?: string; developerId?: string; cityId?: string };
   title?: string;
+  /**
+   * Review page only: also offer "+ New developer / area" inside a project
+   * form. Holds the unit's written names (undefined when it has none).
+   * Places & names leaves this out, so its form is unchanged.
+   */
+  offerNew?: { developer?: string; city?: string };
+  /** Called after a developer / area was added from inside this form. */
+  onRelatedCreated?: (kind: 'developer' | 'city', id: number) => void;
 }) {
   const blank = { nameEn: '', nameAr: '', developerId: '', cityId: '', ...initial };
   const [form, setForm] = useState(blank);
+  // Which little "new developer / area" form is open inside this one.
+  const [adding, setAdding] = useState<'developer' | 'city' | null>(null);
   const developers = useQuery({
     queryKey: ['entities', 'developer', ''],
     queryFn: () => api<Entity[]>('/api/admin/entities/developer'),
@@ -308,6 +320,15 @@ export function CreateEntity({
       await onCreated(id, recheck);
     },
   });
+  const devOption = offerNew
+    ? newEntityOption('developer', offerNew.developer, developers.data)
+    : null;
+  const cityOption = offerNew ? newEntityOption('city', offerNew.city, cities.data) : null;
+  const related = (which: 'developer' | 'city') => (id: number) => {
+    setForm((f) => ({ ...f, [which === 'developer' ? 'developerId' : 'cityId']: String(id) }));
+    setAdding(null);
+    onRelatedCreated?.(which, id);
+  };
   const label = KINDS.find((k) => k.kind === kind)?.label.toLowerCase() ?? kind;
 
   return (
@@ -340,9 +361,13 @@ export function CreateEntity({
               <Select
                 required
                 value={form.developerId}
-                onChange={(e) => setForm({ ...form, developerId: e.target.value })}
+                onChange={(e) => {
+                  if (e.target.value === NEW) setAdding('developer');
+                  else setForm({ ...form, developerId: e.target.value });
+                }}
               >
                 <option value="">Choose</option>
+                {devOption && <option value={NEW}>{devOption.label}</option>}
                 {developers.data?.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.nameEn}
@@ -354,9 +379,13 @@ export function CreateEntity({
               <Select
                 required
                 value={form.cityId}
-                onChange={(e) => setForm({ ...form, cityId: e.target.value })}
+                onChange={(e) => {
+                  if (e.target.value === NEW) setAdding('city');
+                  else setForm({ ...form, cityId: e.target.value });
+                }}
               >
                 <option value="">Choose</option>
+                {cityOption && <option value={NEW}>{cityOption.label}</option>}
                 {cities.data?.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.nameEn}
@@ -364,6 +393,15 @@ export function CreateEntity({
                 ))}
               </Select>
             </Label>
+            {adding && (
+              <AddRelated
+                key={adding}
+                kind={adding}
+                name={(adding === 'developer' ? devOption : cityOption)?.name ?? ''}
+                onCreated={related(adding)}
+                onCancel={() => setAdding(null)}
+              />
+            )}
           </>
         )}
         <ErrorNote error={create.error} />
@@ -372,5 +410,66 @@ export function CreateEntity({
         </Button>
       </form>
     </Card>
+  );
+}
+
+/** Value of the "+ New …" choice in the lists (never a real id). */
+const NEW = 'new';
+
+/**
+ * The small form inside the New project form for a developer or area that
+ * does not exist yet. Not a <form> (it sits inside one): it saves with its
+ * own button, through the same create call as everywhere else.
+ */
+function AddRelated({
+  kind,
+  name,
+  onCreated,
+  onCancel,
+}: {
+  kind: 'developer' | 'city';
+  name: string;
+  onCreated: (id: number) => void;
+  onCancel: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [nameEn, setNameEn] = useState(name);
+  const [nameAr, setNameAr] = useState(name);
+  const create = useMutation({
+    mutationFn: () =>
+      api<{ id: number }>(`/api/admin/entities/${kind}`, {
+        method: 'POST',
+        body: { nameEn, nameAr },
+      }),
+    onSuccess: async ({ id }) => {
+      // Refresh the lists first so the drop-downs know the new entry.
+      await queryClient.invalidateQueries({ queryKey: ['entities'] });
+      onCreated(id);
+    },
+  });
+  const word = kind === 'developer' ? 'developer' : 'area';
+  return (
+    <div className="space-y-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
+      <p className="text-xs font-semibold">New {word}</p>
+      <Label text="English name">
+        <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
+      </Label>
+      <Label text="Arabic name">
+        <Input dir="rtl" value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+      </Label>
+      <ErrorNote error={create.error} />
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          disabled={create.isPending || !nameEn.trim() || !nameAr.trim()}
+          onClick={() => create.mutate()}
+        >
+          Save {word}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
