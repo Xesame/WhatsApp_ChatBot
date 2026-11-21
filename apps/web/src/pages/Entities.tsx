@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type SyntheticEvent } from 'react';
+import { useState, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Link } from 'react-router';
 import { api, type Entity, type EntityKind } from '../api.ts';
-import { newEntityOption, recheckMessage, type Recheck } from './learning.ts';
+import { inlineKeyAction, newEntityOption, recheckMessage, type Recheck } from './learning.ts';
 import {
   Badge,
   Button,
@@ -448,14 +448,27 @@ function AddRelated({
     },
   });
   const word = kind === 'developer' ? 'developer' : 'area';
+  // Enter here must never reach the New project form around this box.
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const action = inlineKeyAction(e.key, nameEn, nameAr, create.isPending);
+    if (e.key === 'Enter' || action === 'cancel') e.preventDefault();
+    if (e.key === 'Enter') e.stopPropagation();
+    if (action === 'save') create.mutate();
+    else if (action === 'cancel') onCancel();
+  };
   return (
     <div className="space-y-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
       <p className="text-xs font-semibold">New {word}</p>
       <Label text="English name">
-        <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} />
+        <Input value={nameEn} onKeyDown={onKeyDown} onChange={(e) => setNameEn(e.target.value)} />
       </Label>
       <Label text="Arabic name">
-        <Input dir="rtl" value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+        <Input
+          dir="rtl"
+          value={nameAr}
+          onKeyDown={onKeyDown}
+          onChange={(e) => setNameAr(e.target.value)}
+        />
       </Label>
       <ErrorNote error={create.error} />
       <div className="flex gap-2">

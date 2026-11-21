@@ -79,3 +79,20 @@ export function newEntityOption(
   );
   return isKnown ? null : { label: `+ New ${word} named “${name}”`, name };
 }
+
+/**
+ * What a key press means inside the small "new developer / area" box.
+ * Enter saves it (only with both names filled in, and not twice); Escape
+ * cancels. The page must stop Enter from reaching the project form around
+ * it, whatever this returns for Enter.
+ */
+export function inlineKeyAction(
+  key: string,
+  nameEn: string,
+  nameAr: string,
+  saving: boolean,
+): 'save' | 'cancel' | 'none' | null {
+  if (key === 'Escape') return 'cancel';
+  if (key !== 'Enter') return null;
+  return !saving && nameEn.trim() && nameAr.trim() ? 'save' : 'none';
+}

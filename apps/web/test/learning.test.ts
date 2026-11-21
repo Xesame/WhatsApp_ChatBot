@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Entity } from '../src/api.ts';
 import {
+  inlineKeyAction,
   newEntityOption,
   recheckMessage,
   rememberedSpellings,
@@ -67,5 +68,22 @@ describe('the "+ New developer / area" option in the New project form', () => {
 
   it('reads "+ New area…" with an empty name when the unit has no written name', () => {
     expect(newEntityOption('city', undefined, [])).toEqual({ label: '+ New area…', name: '' });
+  });
+});
+
+describe('keys inside the inline new developer / area box', () => {
+  it('Enter saves when both names are filled in', () => {
+    expect(inlineKeyAction('Enter', 'Dubai Misr', 'دبي مصر', false)).toBe('save');
+  });
+
+  it('Enter never saves an empty name, and never while saving', () => {
+    expect(inlineKeyAction('Enter', '  ', 'x', false)).toBe('none');
+    expect(inlineKeyAction('Enter', 'x', '', false)).toBe('none');
+    expect(inlineKeyAction('Enter', 'x', 'y', true)).toBe('none');
+  });
+
+  it('Escape cancels and other keys are left alone', () => {
+    expect(inlineKeyAction('Escape', 'x', 'y', false)).toBe('cancel');
+    expect(inlineKeyAction('a', 'x', 'y', false)).toBeNull();
   });
 });
