@@ -48,6 +48,7 @@ const blank: RawUnit = {
   down_payment: null,
   installments: null,
   cash_discount: null,
+  payment_plans: [],
   notes: null,
   evidence: { project: null, unit_type: null, area: null, price: null },
 };
@@ -462,7 +463,8 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
       const id = await addMessage({ text: MULTI_UNIT });
       await extract(deps(fakeModel({ extraction }).llm), id, 'listing');
       const [row] = await testDb.database.db.select().from(units);
-      expect(unitSchema.safeParse(row).success).toBe(true);
+      // Plans are stored in their own table (a later task), not as a units column.
+      expect(unitSchema.omit({ paymentPlans: true }).safeParse(row).success).toBe(true);
     });
   });
 

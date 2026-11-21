@@ -13,6 +13,7 @@ import {
   jsonSchemaFor,
   lookupResultSchema,
   MissingExchangeRateError,
+  rawPaymentPlanSchema,
   TEMPLATE_HEADERS,
   toTemplateRow,
   type ExportContext,
@@ -84,6 +85,7 @@ export const sampleUnit = (overrides: Partial<Unit> = {}): Unit => ({
   downPaymentAmount: null,
   installmentYears: 8,
   installmentFrequency: 'quarterly',
+  paymentPlans: [],
   readyToMove: false,
   confidence: 0.9,
   needsReview: false,
@@ -232,6 +234,21 @@ describe('LLM JSON schema', () => {
 
   it('describes the fields for the model', () => {
     expect(JSON.stringify(schema)).toContain('Price phrase as written');
+  });
+
+  it('asks for payment plans as a required list of plan phrases', () => {
+    const text = JSON.stringify(schema);
+    expect(text).toContain('payment_plans');
+    expect(text).toContain('Quarterly: 104,612 L.E');
+    expect(Object.keys(rawPaymentPlanSchema.shape).sort()).toEqual([
+      'cash_discount',
+      'down_payment',
+      'installment_amount',
+      'installments',
+      'label',
+      'notes',
+      'plan_price',
+    ]);
   });
 });
 

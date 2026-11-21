@@ -33,6 +33,7 @@ const blank: RawUnit = {
   down_payment: null,
   installments: null,
   cash_discount: null,
+  payment_plans: [],
   notes: null,
   evidence: { project: null, unit_type: null, area: null, price: null },
 };
@@ -345,5 +346,72 @@ describe('isLearnedPriceReason', () => {
     ).toBe(true);
     expect(isLearnedPriceReason('Price per m² (2000 EGP) looks wrong')).toBe(false);
     expect(isLearnedPriceReason('No area')).toBe(false);
+  });
+});
+
+describe('payment plans on a unit', () => {
+  const planBlank = {
+    label: null,
+    down_payment: null,
+    installment_amount: null,
+    installments: null,
+    plan_price: null,
+    cash_discount: null,
+    notes: null,
+  };
+  const text = `${MESSAGE} خطة 1: مقدم 20% على 5 سنين شهري. خطة 2: مقدم 5% كاش خصم 12%`;
+
+  it('fills the unit columns from the first plan and keeps every plan', () => {
+    const unit = normalizeUnit(
+      {
+        ...raw,
+        down_payment: null,
+        installments: null,
+        payment_plans: [
+          { ...planBlank, down_payment: 'مقدم 20%', installments: 'على 5 سنين شهري' },
+          { ...planBlank, down_payment: 'مقدم 5%', cash_discount: 'خصم 12%' },
+        ],
+      },
+      ctx({ sourceText: text }),
+    );
+    expect(unit.paymentPlans).toHaveLength(2);
+    expect(unit).toMatchObject({
+      downPayment: 20,
+      installmentYears: 5,
+      installmentFrequency: 'monthly',
+      installmentsCount: 60,
+      cashDiscount: null,
+    });
+  });
+
+  it('takes the cash discount from the first plan', () => {
+    const unit = normalizeUnit(
+      {
+        ...raw,
+        payment_plans: [{ ...planBlank, down_payment: 'مقدم 5%', cash_discount: 'خصم 12%' }],
+      },
+      ctx({ sourceText: text }),
+    );
+    expect(unit).toMatchObject({
+      downPayment: 5,
+      cashDiscount: 12,
+      cashDiscountType: 'Percentage',
+    });
+  });
+
+  it('keeps the old behaviour when there are no plans', () => {
+    const unit = normalizeUnit(raw, ctx());
+    expect(unit.paymentPlans).toEqual([]);
+    expect(unit).toMatchObject({ downPayment: 10, installmentYears: 8, installmentsCount: 32 });
+  });
+
+  it('reports a dropped plan phrase in the unit review reasons', () => {
+    const unit = normalizeUnit(
+      { ...raw, payment_plans: [{ ...planBlank, down_payment: 'مقدم 77%' }] },
+      ctx(),
+    );
+    expect(unit.reviewReasons).toContain(
+      'Dropped down_payment "مقدم 77%": not found in the message',
+    );
   });
 });

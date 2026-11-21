@@ -21,6 +21,28 @@ import {
 const money = z.number().int().nonnegative();
 const area = z.number().positive();
 
+/**
+ * One payment plan of a unit (a unit can offer several: 0% down, 10% down...).
+ * Money in minor units, with the currency alongside.
+ */
+export const paymentPlanSchema = z.object({
+  /** Order in the message; the first plan feeds the unit's own columns. */
+  position: z.number().int().min(0),
+  label: z.string().nullable(),
+  downPaymentPercent: z.number().min(0).max(100).nullable(),
+  downPaymentAmount: money.nullable(),
+  installmentAmount: money.nullable(),
+  installmentFrequency: z.enum(INSTALLMENT_FREQUENCIES).nullable(),
+  installmentsCount: z.number().int().positive().nullable(),
+  installmentYears: z.number().min(0).max(30).nullable(),
+  /** A total that applies only to this plan; null when it is the unit's price. */
+  planPrice: money.nullable(),
+  /** A pay-in-full option (no installments). */
+  cash: z.boolean(),
+  notes: z.string().max(300).nullable(),
+  currency: z.enum(['EGP', 'USD']),
+});
+
 export const unitSchema = z.object({
   // --- Template columns (in template order; see columns.ts) ---
   category: z.enum(CATEGORIES).nullable(),
@@ -57,6 +79,8 @@ export const unitSchema = z.object({
   downPaymentAmount: money.nullable(),
   installmentYears: z.number().positive().max(30).nullable(),
   installmentFrequency: z.enum(INSTALLMENT_FREQUENCIES).nullable(),
+  /** Every payment plan the message offered, in order. */
+  paymentPlans: z.array(paymentPlanSchema),
   readyToMove: z.boolean(),
   /** 0 to 1, computed in code. */
   confidence: z.number().min(0).max(1),
@@ -67,4 +91,5 @@ export const unitSchema = z.object({
   extras: z.record(z.string(), z.unknown()),
 });
 
+export type PaymentPlan = z.infer<typeof paymentPlanSchema>;
 export type Unit = z.infer<typeof unitSchema>;

@@ -17,6 +17,27 @@ import { CATEGORIES, FINISHING_SPECS, UNIT_TYPES } from './enums.ts';
 
 const raw = (description: string) => z.string().nullable().describe(description);
 
+/**
+ * One payment plan as the message wrote it. Plans differ by down payment and
+ * installment, so a unit may have several. Every field is a copied phrase;
+ * code in @reb/normalize turns them into numbers.
+ */
+export const rawPaymentPlanSchema = z.strictObject({
+  label: raw('Plan name as written, e.g. "Plan 2", "خطة 10%", "Cash"'),
+  down_payment: raw('Down payment phrase as written, e.g. "10%", "DP: 395,200 L.E"'),
+  installment_amount: raw(
+    'Installment amount phrase as written, with its frequency word, e.g. "Quarterly: 104,612 L.E", "القسط الربع سنوي 104,612 ج"',
+  ),
+  installments: raw(
+    'Installment duration phrase as written, e.g. "Rest over 10 Years", "على 8 سنين ربع سنوي"',
+  ),
+  plan_price: raw(
+    'A total that applies only to this plan, as written, e.g. "Total after discount: 6,968,250"',
+  ),
+  cash_discount: raw('Cash discount phrase of this plan as written, e.g. "خصم 15% كاش"'),
+  notes: raw('Short English note about this plan, e.g. "Equal installments"'),
+});
+
 export const rawUnitSchema = z.strictObject({
   category: z.enum(CATEGORIES).nullable().describe('Only if clear from the unit type or text'),
   developer: raw('Developer name exactly as written'),
@@ -38,6 +59,11 @@ export const rawUnitSchema = z.strictObject({
   down_payment: raw('Down payment phrase as written, e.g. "10%", "مقدم 500 ألف"'),
   installments: raw('Installment plan phrase as written, e.g. "على 8 سنين ربع سنوي"'),
   cash_discount: raw('Cash discount phrase as written, e.g. "خصم 15% كاش"'),
+  payment_plans: z
+    .array(rawPaymentPlanSchema)
+    .describe(
+      'Every payment plan the message offers for this unit, in the order written; empty when none',
+    ),
   notes: raw(
     'Short English note for useful facts with no field (view, club, phase, offer deadline). Never repeat other fields.',
   ),
@@ -74,6 +100,7 @@ export const lookupResultSchema = z.strictObject({
   city: z.string().nullable().describe('City or area it is in, or null if unsure'),
 });
 
+export type RawPaymentPlan = z.infer<typeof rawPaymentPlanSchema>;
 export type RawUnit = z.infer<typeof rawUnitSchema>;
 export type ExtractionResult = z.infer<typeof extractionResultSchema>;
 export type Classification = z.infer<typeof classificationSchema>;

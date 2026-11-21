@@ -1,6 +1,7 @@
-import type { Category, RawUnit, Unit, UnitType } from '@reb/schema';
+import type { Category, PaymentPlan, RawUnit, Unit, UnitType } from '@reb/schema';
 import { detectCurrency, parseDelivery, parseFloor, parseInstallments } from './fields.ts';
 import { parseCount, parsePercentOrAmount, parseRange } from './numbers.ts';
+import { normalizePlans } from './plans.ts';
 import { normalizeName } from './text.ts';
 
 /** Result of matching a name against the alias table (done by the pipeline). */
@@ -278,10 +279,30 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
   // 4. Delivery, installments, floor, rooms.
   const delivery = parseDelivery(raw.delivery, ctx.sentAt);
   if (delivery.ambiguous) reasons.push('More than one delivery year mentioned');
-  const installments = parseInstallments(raw.installments);
+  // Payment plans: the unit's own columns follow the first plan listed; the
+  // old top-level fields are used only when the model returned no plans.
+  const planned = normalizePlans(raw.payment_plans, {
+    sourceText: ctx.sourceText,
+    unitCurrency: priceCurrency,
+  });
+  reasons.push(...planned.reasons);
+  const paymentPlans: PaymentPlan[] = planned.plans;
+  const firstPlan = paymentPlans[0];
+  const installments = firstPlan
+    ? {
+        years: firstPlan.installmentYears,
+        frequency: firstPlan.installmentFrequency,
+        count: firstPlan.installmentsCount,
+      }
+    : parseInstallments(raw.installments);
 
   // 5. Down payment: percent for the template, amount kept when stated.
-  const down = parsePercentOrAmount(raw.down_payment);
+  const down = firstPlan
+    ? {
+        percent: firstPlan.downPaymentPercent,
+        amount: firstPlan.downPaymentAmount === null ? null : firstPlan.downPaymentAmount / 100,
+      }
+    : parsePercentOrAmount(raw.down_payment);
   let downPayment = down.percent;
   const downPaymentAmount = toMinor(down.amount);
   if (downPayment === null && down.amount !== null && minPrice) {
@@ -301,7 +322,8 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
       : maintenanceParsed.percent !== null
         ? '%'
         : detectCurrency(raw.maintenance);
-  const discount = parsePercentOrAmount(raw.cash_discount);
+  const discountText = firstPlan ? (planned.checked[0]?.cash_discount ?? null) : raw.cash_discount;
+  const discount = parsePercentOrAmount(discountText);
   const cashDiscount = discount.percent ?? discount.amount;
 
   // 7. Entities (see entityOutcome).
@@ -364,7 +386,7 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
     maintenance,
     maintenanceCurrency,
     cashDiscount,
-    cashDiscountCurrency: discount.amount !== null ? detectCurrency(raw.cash_discount) : null,
+    cashDiscountCurrency: discount.amount !== null ? detectCurrency(discountText) : null,
     cashDiscountType:
       discount.percent !== null ? 'Percentage' : discount.amount !== null ? 'Fixed amount' : null,
     downPayment,
@@ -376,6 +398,7 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
     downPaymentAmount,
     installmentYears: installments.years,
     installmentFrequency: installments.frequency,
+    paymentPlans,
     readyToMove: delivery.readyToMove,
     confidence,
     needsReview: reasons.length > 0 || confidence < 0.7,

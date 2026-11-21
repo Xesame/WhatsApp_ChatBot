@@ -49,6 +49,7 @@ describe.skipIf(!testDatabaseUrl)('dedup and price history (real Postgres)', () 
     downPaymentAmount: null,
     installmentYears: null,
     installmentFrequency: null,
+    paymentPlans: [],
     readyToMove: false,
     confidence: 1,
     needsReview: false,

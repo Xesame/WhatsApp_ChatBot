@@ -51,6 +51,7 @@ const blank: RawUnit = {
   down_payment: null,
   installments: null,
   cash_discount: null,
+  payment_plans: [],
   notes: null,
   evidence: { project: null, unit_type: null, area: null, price: null },
 };
