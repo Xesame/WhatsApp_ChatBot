@@ -45,7 +45,7 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 
 ## Review Focus
 
-1. **Arabic and mixed spellings:** remembering "زمرة ايست" or "Zomra  East," must match later messages written either way (normalized), and must not create a duplicate alias. Test in Task 4.
+1. **Arabic and mixed spellings:** remembering "زمرة ايست" or "Zomra East," must match later messages written either way (normalized), and must not create a duplicate alias. Test in Task 4.
 2. **A unit Hassan already touched:** any unit with a correction, approval or rejection must come out of every re-check byte-for-byte unchanged, even when its names now match. Test in Task 5.
 3. **Spelling already known:** ticking "remember" for a spelling the chosen entity already has must not error or duplicate. Test in Task 4.
 4. **Removing a learned spelling:** waiting untouched units that matched through it become unknown or a suggestion again; reviewed units keep their project. Test in Task 5.
@@ -58,10 +58,12 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 ### Task 1: Name rules in `@reb/normalize`
 
 **Files:**
+
 - Modify: `packages/normalize/src/unit.ts` (context types, step 7 "Entities", step 9 "Confidence", `extras`)
 - Test: `packages/normalize/test/unit.test.ts`
 
 **Interfaces:**
+
 - Produces (exported from `@reb/normalize`):
   - `interface Suggestion { id: number; name: string; similarity: number }`
   - `NormalizeContext` gains `suggestions: { developer: Suggestion | null; project: Suggestion | null; city: Suggestion | null }`
@@ -84,12 +86,14 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 ### Task 2: Matching returns suggestions, merges keep every spelling (`@reb/pipeline`)
 
 **Files:**
+
 - Modify: `packages/pipeline/src/entities.ts` (`findAlias`, `matchEntities`, new constant)
 - Modify: `packages/pipeline/src/steps.ts:156-158` (pass suggestions into `normalizeUnit`)
 - Modify: `packages/pipeline/src/apply.ts` (`merge`: union `extras.written`)
 - Test: `packages/pipeline/test/pipeline.integration.test.ts`, `packages/pipeline/test/dedup.integration.test.ts`
 
 **Interfaces:**
+
 - Consumes: `Suggestion`, `WrittenNames`, `NormalizeContext.suggestions` (Task 1).
 - Produces: `export const ATTACH_THRESHOLD = 0.7` (comment: measured wrong matches 0.43–0.52, right ones 0.77–0.80, typos ~0.44 so typos become suggestions confirmed once); `matchEntities(db, names)` returns `EntityMatches & { suggestions: { developer: Suggestion | null; project: Suggestion | null; city: Suggestion | null } }`. Hits with similarity 1 or ≥ `ATTACH_THRESHOLD` are matches; hits ≥ `FUZZY_THRESHOLD` and < `ATTACH_THRESHOLD` are suggestions.
 
@@ -111,6 +115,7 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 ### Task 3: Migration: alias source unit and `flagged_on_arrival`
 
 **Files:**
+
 - Modify: `packages/db/src/schema/entities.ts` (`entityAliases.reviewUnitId: integer('review_unit_id')`, nullable, no foreign key: units live in `listings.ts`, and a reference would make the two schema files import each other; comment says so)
 - Modify: `packages/db/src/schema/listings.ts` (`units.flaggedOnArrival: boolean('flagged_on_arrival').notNull().default(false)`)
 - Modify: `packages/db/src/schema/docs.ts` (describe both columns in plain English)
@@ -119,6 +124,7 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 - Test: `packages/db/test/migrate-seed.integration.test.ts`, `packages/pipeline/test/pipeline.integration.test.ts`
 
 **Interfaces:**
+
 - Produces: columns `entity_aliases.review_unit_id integer null`, `units.flagged_on_arrival boolean not null default false`.
 
 - [ ] **Step 1: Write the failing tests:**
@@ -132,6 +138,7 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 ### Task 4: Remember a spelling from Review
 
 **Files:**
+
 - Modify: `packages/admin/src/entities.ts` (`addAlias` options)
 - Modify: `packages/admin/src/review.ts` (`reviewUnit` input `remember`, `unitView` exposes written names and suggestions)
 - Modify: `apps/api/src/admin-routes.ts:223-245` (body schema `remember`), `:327-341` (unchanged call)
@@ -139,6 +146,7 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 - Test: `packages/admin/test/admin.integration.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - entity detail (`packages/admin/src/entities.ts`): each alias also returns `reviewUnitId: number | null`.
   - `addAlias(db, kind, entityId, alias, options?: { source?: 'manual' | 'review'; reviewUnitId?: number }): Promise<boolean>` (default `source: 'manual'`)
@@ -159,6 +167,7 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 ### Task 5: Re-check waiting units in place
 
 **Files:**
+
 - Create: `packages/pipeline/src/recheck.ts`
 - Modify: `packages/pipeline/src/index.ts` (export)
 - Modify: `apps/api/src/admin-routes.ts` (call after review with `remember`, alias add/remove, entity create/merge; include the counts in the response)
@@ -166,12 +175,13 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 - Test: `packages/pipeline/test/recheck.integration.test.ts`
 
 **Interfaces:**
+
 - Consumes: `matchEntities` (Task 2), `entityOutcome`, `isNameReason`, `scoreConfidence` (Task 1).
 - Produces: `recheckWaitingUnits(database: Database): Promise<{ checked: number; cleared: number }>`.
   - Selects units with `needs_review`, status active or stale, `extras.written` present, and no `review_corrections` row.
   - For each: tries every written name per field with `matchEntities` and keeps the best match (or best suggestion), then runs `entityOutcome` with the first written name of each field; new reasons = old reasons without `isNameReason` ones + the new name reasons; confidence = `scoreConfidence` with `hasUnitType = unitType !== null`, `hasArea = minArea !== null`, `priceFactor` = 0 without a price, 0.6 if the old reasons contain the million/thousand-assumed reason from `normalizeUnit` (find its exact text at `packages/normalize/src/unit.ts:96`), else 1; `needsReview = reasons.length > 0 || confidence < 0.7`. Updates ids, `extras.unmatched`, `extras.suggested`, reasons, confidence, `needs_review` in one transaction per unit with `SELECT … FOR UPDATE` and a re-check of "no review_corrections" inside it.
   - Running it twice in a row changes nothing the second time (idempotent).
-  - Synchronous in the API request, not a queue job, so Hassan sees the counts at once. *(Plan call: a spec deviation from "queues one re-check job"; there are at most a few hundred waiting units and no model calls, so it takes well under a second. Report it at the checkpoint.)*
+  - Synchronous in the API request, not a queue job, so Hassan sees the counts at once. _(Plan call: a spec deviation from "queues one re-check job"; there are at most a few hundred waiting units and no model calls, so it takes well under a second. Report it at the checkpoint.)_
 
 - [ ] **Step 1: Write the failing tests** (`recheck.integration.test.ts`):
   - `it('clears a unit once its project is learned')`: unit waiting only for `project "Jamila" is not in the known list`; add project Jamila; `recheckWaitingUnits` → `{ checked: 1, cleared: 1 }`, unit has the project and `needsReview` false, same unit id.
@@ -188,12 +198,14 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 ### Task 6: Prices learned from approvals
 
 **Files:**
+
 - Create: `packages/pipeline/src/price-range.ts`
 - Modify: `packages/normalize/src/unit.ts` (step 8 uses `ctx.usualPricePerM2`)
 - Modify: `packages/pipeline/src/steps.ts` (`runExtraction`: look up after matching), `packages/pipeline/src/recheck.ts` (when a unit gains a project)
 - Test: `packages/normalize/test/unit.test.ts`, `packages/pipeline/test/price-range.integration.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - normalize: `NormalizeContext.usualPricePerM2?: { median: number; projectName: string; unitType: string } | null`; `export const PRICE_RANGE_FACTOR = 2.5`; `function priceReason(perMetre: number, usual: NormalizeContext['usualPricePerM2']): string | null` (learned range when given, else the fixed 3,000–1,000,000 check, same reason text as today).
   - Learned reason text: `Price per m² 4,132 EGP is far from the usual 41,000 for Dejoya 2 R8 apartments` (numbers rounded, thousands separators, unit type plural lower-case).
@@ -216,11 +228,13 @@ Deploy after a checkpoint: `"$D" compose up -d --build` (migrations run in the `
 ### Task 7: Weekly learning numbers
 
 **Files:**
+
 - Modify: `packages/admin/src/stats.ts`
 - Modify: `apps/api/src/admin-routes.ts:378-386` (response includes `weeks`), `apps/web/src/api.ts`, `apps/web/src/pages/Overview.tsx`
 - Test: `packages/admin/test/admin.integration.test.ts`
 
 **Interfaces:**
+
 - Produces: `Stats.weeks: { week: string /* ISO week start, YYYY-MM-DD, Monday, Cairo time */; newUnits: number; flaggedOnArrival: number; reviewed: number; rightFirstTime: number; correctionsPerReviewed: number | null }[]`, last 12 weeks, oldest first, weeks with no data included as zeros.
   - `newUnits`/`flaggedOnArrival`: units by `created_at` week.
   - `reviewed`: units whose first `approve` row falls in the week; `rightFirstTime`: those with no `edit` row at all; `correctionsPerReviewed`: `edit` rows of those units ÷ `reviewed` (null when 0).

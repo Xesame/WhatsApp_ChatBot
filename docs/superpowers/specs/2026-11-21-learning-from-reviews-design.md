@@ -39,11 +39,11 @@ Hassan wants every correction to teach the bot, so that **the share of flagged u
 
 ## Approaches considered
 
-| | What | Trade-off |
-|---|---|---|
+|       | What                                                                                                                                                | Trade-off                                                                                                      |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **A** | Remember names (with Hassan's OK) + automatic re-check of waiting units + weak matches as suggestions + learned price ranges + progress on Overview | Small and safe; clears most flags; does not fix format mistakes (missing unit types, multi-plan payment terms) |
-| **B** | A + Hassan's corrected answers shown to Gemini as examples for similar new messages | Fixes recurring format mistakes; slightly longer prompts; needs the eval set to prove each change |
-| **C** | B + auto-trust: stop flagging reasons Hassan always approves | Fastest drop in flags; riskiest (mistakes pass unseen) |
+| **B** | A + Hassan's corrected answers shown to Gemini as examples for similar new messages                                                                 | Fixes recurring format mistakes; slightly longer prompts; needs the eval set to prove each change              |
+| **C** | B + auto-trust: stop flagging reasons Hassan always approves                                                                                        | Fastest drop in flags; riskiest (mistakes pass unseen)                                                         |
 
 **Chosen: A, then B.** C only later, per reason, when the Overview numbers justify it. Hassan approved this order on 21 November 2026.
 
@@ -53,7 +53,7 @@ Hassan wants every correction to teach the bot, so that **the share of flagged u
 
 Every unit records the developer, project and city names exactly as the message wrote them (`extras.written`, alongside the existing `extras.unmatched`), whether they matched or not. Re-checks and "remember this spelling" read from here.
 
-`extras` is not merged today (it is not in `DESCRIPTIVE_FIELDS`), so a unit seen in several messages would keep only the first message's names. `extras.written` is therefore a list per field (`{ project: ["Zomra East", "زمرة ايست"], ... }`), and a merge adds the incoming names to it without duplicates. *(Claude's call, from the builder check.)*
+`extras` is not merged today (it is not in `DESCRIPTIVE_FIELDS`), so a unit seen in several messages would keep only the first message's names. `extras.written` is therefore a list per field (`{ project: ["Zomra East", "زمرة ايست"], ... }`), and a merge adds the incoming names to it without duplicates. _(Claude's call, from the builder check.)_
 
 ### A2. Weak matches become suggestions
 
@@ -73,9 +73,9 @@ When Hassan sets or changes the project, developer or city of a unit, and the na
 
 ticked by default. On save or approve with the box ticked, the spelling is added to `entity_aliases` with `source: 'review'` and the unit id, in the same transaction as the correction. The suggested entity (A2) is offered as a one-click choice in the field.
 
-`entity_aliases` has no unit column today and `addAlias` always writes `source: 'manual'`: a Drizzle migration adds a nullable `review_unit_id` (references `units`, `ON DELETE SET NULL`), and `addAlias` takes the source and unit id as parameters. *(Claude's call.)*
+`entity_aliases` has no unit column today and `addAlias` always writes `source: 'manual'`: a Drizzle migration adds a nullable `review_unit_id` (references `units`, `ON DELETE SET NULL`), and `addAlias` takes the source and unit id as parameters. _(Claude's call.)_
 
-Review also gets **"+ New project / developer / area named '…'"** next to an unknown name, which creates the entity (asking for the developer and city of a new project) with the written name as its first spelling. Fifteen of the first chat's names were new projects; without this, Hassan would switch to Places & names fifteen times. *(Proposal: Claude's call, Hassan may drop it.)*
+Review also gets **"+ New project / developer / area named '…'"** next to an unknown name, which creates the entity (asking for the developer and city of a new project) with the written name as its first spelling. Fifteen of the first chat's names were new projects; without this, Hassan would switch to Places & names fifteen times. _(Proposal: Claude's call, Hassan may drop it.)_
 
 Places & names shows each learned spelling's source ("from review of unit 123"), so a wrong one can be found and removed.
 
@@ -89,7 +89,7 @@ Adding, removing or merging a spelling or entity queues one re-check job. The jo
 
 Why not re-apply the message (builder check): `applyExtraction` deletes and re-inserts single-source units (new ids, breaking Review links, the alias's unit id and `flagged_on_arrival`), keeps old reasons on merged units, and, once a unit gains a project, can merge it into a unit Hassan already reviewed. Updating in place avoids all three. The price check (A5) is re-run for the unit when it gains a project, since its project and unit type now give it a learned range.
 
-A re-checked unit that gains a project is **not** merged into other units of that project, even if it duplicates one; later messages about it dedup normally. Possible duplicates show twice and are handled like today's missed duplicates. *(Claude's call: a wrong automatic merge loses a real unit; a missed one only shows twice.)*
+A re-checked unit that gains a project is **not** merged into other units of that project, even if it duplicates one; later messages about it dedup normally. Possible duplicates show twice and are handled like today's missed duplicates. _(Claude's call: a wrong automatic merge loses a real unit; a missed one only shows twice.)_
 
 Removing a learned spelling re-checks waiting, untouched units the same way (the name becomes unknown or a suggestion again); units Hassan reviewed keep what he decided.
 
@@ -99,7 +99,7 @@ The job is idempotent and safe to retry (rule 6). Places & names shows "Re-check
 
 For each project + unit type, the normal price per m² is the median of units Hassan approved (at least 3). A new unit more than 2.5× above or below that median is flagged: `Price per m² 4,132 EGP is far from the usual 41,000 for Dejoya 2 R8 apartments`. With fewer than 3 approvals the current fixed range (3,000 to 1,000,000 EGP/m²) applies. Arithmetic is in code (rule 4). Thresholds are named constants.
 
-What counts *(Claude's calls)*: only units with an `approve` decision in `review_corrections` (never-flagged units are not proof); EGP only (USD units keep the fixed check); price per m² = `min_price ÷ min_area` for both the approved units and the new one. The check runs when a unit is created and when the re-check (A4) gives it a project; it does not run when a new message merges into an existing unit, so a unit Hassan approved is not flagged again by it.
+What counts _(Claude's calls)_: only units with an `approve` decision in `review_corrections` (never-flagged units are not proof); EGP only (USD units keep the fixed check); price per m² = `min_price ÷ min_area` for both the approved units and the new one. The check runs when a unit is created and when the re-check (A4) gives it a project; it does not run when a new message merges into an existing unit, so a unit Hassan approved is not flagged again by it.
 
 ### A6. Progress on Overview
 
@@ -108,11 +108,11 @@ A weekly table/chart for the last 12 weeks:
 - **flagged on arrival**: share of new units that needed review when created;
 - **right first time**: share of reviewed units approved with no field changed;
 - **corrections per reviewed unit**;
-"Right first time" means approved with no field changed; accepting a suggestion (A2) is a change and does not count. *(Claude's call.)*
+  "Right first time" means approved with no field changed; accepting a suggestion (A2) is a change and does not count. _(Claude's call.)_
 
 "Flagged on arrival" needs a new column on `units` set at creation and never changed afterwards (`flagged_on_arrival boolean`), added by Drizzle migration (rule 7); existing units are back-filled as flagged if they have any review correction or are still waiting. Because A4 updates units in place, re-checks never reset it.
 
-The eval accuracy score is **not** on Overview: `pnpm eval` runs on Hassan's laptop and writes its report there, while the console will move to a server in Phase 8. It is reported at each checkpoint instead; putting it on Overview can come with Phase 8. *(Claude's call: no new data path for now.)*
+The eval accuracy score is **not** on Overview: `pnpm eval` runs on Hassan's laptop and writes its report there, while the console will move to a server in Phase 8. It is reported at each checkpoint instead; putting it on Overview can come with Phase 8. _(Claude's call: no new data path for now.)_
 
 ## Stage B: design
 
@@ -128,11 +128,11 @@ ANSWER: { ...units as the owner left them, in the extraction output format... }
 
 - **Similar** = same group and trigram similarity of the message text ≥ 0.3, or the same project named; best two by similarity. pg_trgm, no new service. The text compared and shown is the composed text the model reads (`composeMessageText`: message text plus the text found in its flyer or PDF).
 - The example messages are scrubbed of contact details exactly like the message itself (`scrubPersonalData`); sender names never appear (rule 3).
-- **The answer** *(Claude's call, from the builder check)*: the model writes text as it appears in the message, but units store normalized numbers and ids, so the answer is the run's stored raw model answer (`extraction_runs.parsed`) with Hassan's corrections laid over it, and only where that can be done without arithmetic or reformatting:
+- **The answer** _(Claude's call, from the builder check)_: the model writes text as it appears in the message, but units store normalized numbers and ids, so the answer is the run's stored raw model answer (`extraction_runs.parsed`) with Hassan's corrections laid over it, and only where that can be done without arithmetic or reformatting:
   - approved with no change: the raw answer as is;
   - corrected fields that are names or fixed choices (project, developer, city, unit type, bedrooms, finishing, category): the corrected value written in, using the name as written in the message when it is a learned spelling, else the canonical English name;
   - a corrected number or payment term (price, area, down payment, installments, delivery): the example is used only if the corrected value appears in the message text (same check as "no invention"), copied as written there; otherwise this message is not used as an example.
-  This covers the recurring mistakes seen so far (missing unit types, wrong projects) and skips the rare cases it cannot show faithfully.
+    This covers the recurring mistakes seen so far (missing unit types, wrong projects) and skips the rare cases it cannot show faithfully.
 - **Never its own example**: the message being extracted, any message whose composed text is ≥ 0.9 similar to it (the same flyer reposted in another group), and, in eval, the source message of every eval case are excluded, so the eval never scores a case against itself.
 - Size cap: examples are skipped if they would make the prompt longer than a set character budget (named constant), so the free tier is not slowed.
 - The prompt `VERSION` is bumped; `pnpm eval` must show no drop in accuracy on the real cases before it is turned on (rule 8, CLAUDE.md prompt rule).
