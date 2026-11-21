@@ -162,6 +162,19 @@ describe('normalizePlans', () => {
     expect(noPercent.plans[0]?.downPaymentAmount).toBeNull();
   });
 
+  it('keeps an installment amount written before "monthly" or a count word', () => {
+    const cases: [string, number][] = [
+      ['قسط 12,000 شهريا', 1_200_000],
+      ['15,000 monthly', 1_500_000],
+      ['100,000 yearly', 10_000_000],
+      ['15,000 قسط شهري', 1_500_000],
+    ];
+    for (const [phrase, minor] of cases) {
+      const { plans } = normalizePlans([plan({ installment_amount: phrase })], ctx(phrase));
+      expect(plans[0]?.installmentAmount, phrase).toBe(minor);
+    }
+  });
+
   it('reads a small amount only when it names a currency', () => {
     const text = 'Monthly 850 L.E or Monthly 850';
     const named = normalizePlans([plan({ installment_amount: 'Monthly 850 L.E' })], ctx(text));

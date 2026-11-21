@@ -34,9 +34,12 @@ const PERCENT_TOKEN = /\d+(?:[.,]\d+)?\s*(%|٪|في\s*الم[يئ]ة|في\s*ال
  * Numbers that are a length or a count, not money: "على 8 سنين", "12 قسط",
  * "over 10 years", "36 months". They are removed before an amount is read,
  * so "مقدم 10% على 8 سنين" has no down payment amount (not 8 EGP).
+ * Lengths and counts are small, so only numbers under 1,000 (not part of a
+ * longer number like "12,000") are removed, and the word must end there:
+ * "15,000 monthly" and "قسط 12,000 شهريا" keep their amounts.
  */
 const DURATION_TOKEN =
-  /\d+(?:[.,]\d+)?\s*(years?|yrs?|سنين|سنوات|سنة|سنه|سنتين|عام|أعوام|اعوام|months?|شهور|شهر|أشهر|اشهر|installments?|أقساط|اقساط|قسط)/gi;
+  /(?<![\d.,])\d{1,3}(?:\.\d+)?\s*(years?|yrs?|سنين|سنوات|سنة|سنه|سنتين|عام|أعوام|اعوام|months?|شهور|شهر|أشهر|اشهر|installments?|أقساط|اقساط|قسط)(?!\p{L})/giu;
 
 /**
  * First amount in a phrase, ignoring any percent and any length or count in
