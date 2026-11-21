@@ -4,7 +4,13 @@ export {
   nearbyTexts,
   type MessageContext,
 } from './context.ts';
-export { FUZZY_THRESHOLD, matchEntities, type EntityMatches } from './entities.ts';
+export {
+  ATTACH_THRESHOLD,
+  FUZZY_THRESHOLD,
+  matchEntities,
+  type EntityMatches,
+  type EntitySuggestions,
+} from './entities.ts';
 export { mightBeListing } from './prefilter.ts';
 export {
   classify,

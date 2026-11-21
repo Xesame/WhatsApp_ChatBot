@@ -247,6 +247,7 @@ describe('names', () => {
   it('recognises name reasons', () => {
     for (const reason of [
       'project "X" is not in the known list',
+      'project "Zomra East" is not in the known list (closest: ZED East, 0.43)',
       'project "X" matched "Y" by similarity (0.77)',
       'Developer "A" does not build "B"; used the project\'s developer',
       'Project "B" is not in "C"; used the project\'s city',

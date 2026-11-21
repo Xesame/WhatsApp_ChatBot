@@ -8,6 +8,7 @@ import {
   type PriceSnapshot,
   type Tolerances,
 } from '@reb/dedup';
+import type { WrittenNames } from '@reb/normalize';
 import type { MessageIntent, Unit } from '@reb/schema';
 import { and, desc, eq, inArray, max, min, ne, sql } from 'drizzle-orm';
 
@@ -295,6 +296,26 @@ async function merge(
     result.priceChanged.push(existing.id);
   }
 
+  // Every spelling seen for a name is kept (order kept, exact duplicates
+  // removed) so a reviewer's answer can teach the bot all of them. Other
+  // extras keys keep the existing unit's values.
+  const union = (a: string[] = [], b: string[] = []) => [...new Set([...a, ...b])];
+  const oldExtras = existing.extras as Record<string, unknown>;
+  const oldWritten = (oldExtras as { written?: Partial<WrittenNames> }).written;
+  const newWritten = (incoming.extras as { written?: Partial<WrittenNames> } | undefined)?.written;
+  const extras = {
+    ...oldExtras,
+    ...(oldWritten || newWritten
+      ? {
+          written: {
+            developer: union(oldWritten?.developer, newWritten?.developer),
+            project: union(oldWritten?.project, newWritten?.project),
+            city: union(oldWritten?.city, newWritten?.city),
+          },
+        }
+      : {}),
+  };
+
   const reasons = [...new Set([...existing.reviewReasons, ...(incoming.reviewReasons ?? [])])];
   await tx
     .update(units)
@@ -308,6 +329,7 @@ async function merge(
       extractionRunId: input.extractionRunId ?? existing.extractionRunId,
       needsReview: existing.needsReview || incoming.needsReview === true,
       reviewReasons: reasons,
+      extras,
       confidence: Math.max(existing.confidence, incoming.confidence ?? 0),
     })
     .where(eq(units.id, existing.id));

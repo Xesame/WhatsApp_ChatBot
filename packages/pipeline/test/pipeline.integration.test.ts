@@ -1,4 +1,4 @@
-import { extractionRuns, messages, units, unitSources, waGroups } from '@reb/db';
+import { extractionRuns, messages, projects, units, unitSources, waGroups } from '@reb/db';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
 import { DEFAULT_TOLERANCES } from '@reb/dedup';
@@ -367,6 +367,56 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
       expect(await testDb.database.db.select().from(unitSources)).toHaveLength(6);
     });
 
+    it('turns a weak project match into a suggestion', async () => {
+      const text = 'شقة في Zomra East 150 متر 9 مليون';
+      const id = await addMessage({ text });
+      const extraction = {
+        units: [
+          {
+            ...blank,
+            category: 'Residential',
+            unit_type: 'Apartment',
+            project: 'Zomra East',
+            area: '150 متر',
+            price: '9 مليون',
+            evidence: { project: 'Zomra East', unit_type: null, area: '150 متر', price: '9 مليون' },
+          },
+        ],
+      };
+      await extract(deps(fakeModel({ extraction }).llm), id, 'listing');
+      const [row] = await testDb.database.db.select().from(units);
+      expect(row?.projectId).toBeNull();
+      expect(row?.needsReview).toBe(true);
+      const suggested = (row?.extras as { suggested?: { project?: { name: string } } }).suggested;
+      expect(suggested?.project?.name).toBe('ZED East');
+    });
+
+    it('still attaches a close match', async () => {
+      const text = 'شقة في Hyde Park 150 متر 9 مليون';
+      const id = await addMessage({ text });
+      const extraction = {
+        units: [
+          {
+            ...blank,
+            category: 'Residential',
+            unit_type: 'Apartment',
+            project: 'Hyde Park',
+            area: '150 متر',
+            price: '9 مليون',
+            evidence: { project: 'Hyde Park', unit_type: null, area: '150 متر', price: '9 مليون' },
+          },
+        ],
+      };
+      await extract(deps(fakeModel({ extraction }).llm), id, 'listing');
+      const [row] = await testDb.database.db.select().from(units);
+      const [project] = await testDb.database.db
+        .select({ name: projects.nameEn })
+        .from(projects)
+        .where(eq(projects.id, row?.projectId ?? 0));
+      expect(project?.name).toBe('Mountain View Hyde Park');
+      expect(row?.reviewReasons.some((r) => r.includes('by similarity'))).toBe(true);
+    });
+
     it('stores rows whose columns match the shared unit schema', async () => {
       const id = await addMessage({ text: MULTI_UNIT });
       await extract(deps(fakeModel({ extraction }).llm), id, 'listing');
@@ -381,7 +431,7 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
       ['MIVIDA', 'Mivida', 'exact'],
       ['ميفيدا التجمع', 'Mivida', 'contained'],
       ['كمبوند ميفيدا', 'Mivida', 'contained'],
-      ['mivda', 'Mivida', 'fuzzy'],
+      ['mivda', null, null], // a typo scores ~0.44: a suggestion, not a match
       ['مشروع غير معروف', null, null],
     ])('project %s → %s', async (input, expected, how) => {
       const { project } = await matchEntities(testDb.database.db, {
@@ -390,8 +440,19 @@ describe.skipIf(!testDatabaseUrl)('pipeline (real Postgres and pg-boss, fake mod
         city: null,
       });
       expect(project?.name ?? null).toBe(expected);
-      if (how === 'fuzzy') expect(project?.similarity).toBeLessThan(1);
       if (how === 'exact' || how === 'contained') expect(project?.similarity).toBe(1);
+    });
+
+    it('offers a typo as a suggestion instead of attaching it', async () => {
+      const { project, suggestions } = await matchEntities(testDb.database.db, {
+        developer: null,
+        project: 'mivda',
+        city: null,
+      });
+      expect(project).toBeNull();
+      expect(suggestions.project?.name).toBe('Mivida');
+      expect(suggestions.project?.similarity).toBeGreaterThanOrEqual(0.4);
+      expect(suggestions.project?.similarity).toBeLessThan(0.7);
     });
 
     it('matches cities and developers through their aliases', async () => {

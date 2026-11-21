@@ -1,5 +1,10 @@
 import { entityAliases, projects, type Db } from '@reb/db';
-import { normalizeName, type EntityMatch, type ProjectMatch } from '@reb/normalize';
+import {
+  normalizeName,
+  type EntityMatch,
+  type ProjectMatch,
+  type Suggestion,
+} from '@reb/normalize';
 import { cities, developers } from '@reb/db';
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 
@@ -17,6 +22,15 @@ import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
  * catches those. Tune it on real data with the eval set.
  */
 export const FUZZY_THRESHOLD = 0.4;
+
+/**
+ * A fuzzy hit at or above this attaches to the entity (and is flagged for
+ * review); a hit between FUZZY_THRESHOLD and this is only a suggestion the
+ * reviewer confirms. Measured on real data: wrong matches scored 0.43 to
+ * 0.52, right ones 0.77 to 0.80. Typos score about 0.44, so they become
+ * suggestions that are confirmed once (and then remembered as aliases).
+ */
+export const ATTACH_THRESHOLD = 0.7;
 
 type Kind = 'city' | 'developer' | 'project';
 
@@ -77,10 +91,16 @@ export interface EntityMatches {
   city: EntityMatch | null;
 }
 
+export interface EntitySuggestions {
+  developer: Suggestion | null;
+  project: Suggestion | null;
+  city: Suggestion | null;
+}
+
 export async function matchEntities(
   db: Db,
   names: { developer: string | null; project: string | null; city: string | null },
-): Promise<EntityMatches> {
+): Promise<EntityMatches & { suggestions: EntitySuggestions }> {
   const [developerHit, projectHit, cityHit] = await Promise.all([
     names.developer ? findAlias(db, 'developer', names.developer) : null,
     names.project ? findAlias(db, 'project', names.project) : null,
@@ -119,21 +139,40 @@ export async function matchEntities(
       (await db.select({ name: cities.nameEn }).from(cities).where(eq(cities.id, id)))[0],
   );
 
+  // A hit is a match when exact/contained (similarity 1) or close enough to
+  // attach; anything weaker is only offered as a suggestion.
+  const attaches = (similarity: number) => similarity === 1 || similarity >= ATTACH_THRESHOLD;
+  const suggest = (
+    found: { hit: { id: number; similarity: number }; row?: { name: string } } | null,
+  ): Suggestion | null =>
+    found?.row && !attaches(found.hit.similarity)
+      ? { id: found.hit.id, name: found.row.name, similarity: found.hit.similarity }
+      : null;
+  const suggestions = {
+    developer: suggest(developer),
+    project: suggest(project),
+    city: suggest(city),
+  };
+
   return {
-    developer: developer?.row
-      ? { id: developer.hit.id, similarity: developer.hit.similarity, name: developer.row.name }
-      : null,
-    project: project?.row
-      ? {
-          id: project.hit.id,
-          similarity: project.hit.similarity,
-          name: project.row.name,
-          developerId: project.row.developerId,
-          cityId: project.row.cityId,
-        }
-      : null,
-    city: city?.row
-      ? { id: city.hit.id, similarity: city.hit.similarity, name: city.row.name }
-      : null,
+    suggestions,
+    developer:
+      developer?.row && attaches(developer.hit.similarity)
+        ? { id: developer.hit.id, similarity: developer.hit.similarity, name: developer.row.name }
+        : null,
+    project:
+      project?.row && attaches(project.hit.similarity)
+        ? {
+            id: project.hit.id,
+            similarity: project.hit.similarity,
+            name: project.row.name,
+            developerId: project.row.developerId,
+            cityId: project.row.cityId,
+          }
+        : null,
+    city:
+      city?.row && attaches(city.hit.similarity)
+        ? { id: city.hit.id, similarity: city.hit.similarity, name: city.row.name }
+        : null,
   };
 }

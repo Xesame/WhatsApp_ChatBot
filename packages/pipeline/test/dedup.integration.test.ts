@@ -163,6 +163,33 @@ describe.skipIf(!testDatabaseUrl)('dedup and price history (real Postgres)', () 
     expect(await pricesOf(only?.id ?? 0)).toEqual([[950_000_000, 950_000_000]]);
   });
 
+  it('keeps every spelling when a repost merges', async () => {
+    const [g1, g2] = groups as [number, number];
+    const written = (project: string) => ({
+      written: { developer: [], project: [project], city: [] },
+      unmatched: ['kept'],
+    });
+    const a = await post(g1, '2026-10-20T10:00:00Z');
+    const b = await post(g2, '2026-10-20T10:05:00Z');
+    await apply(a, 'listing', [unit({ extras: written('Mivida') })]);
+    expect((await apply(b, 'listing', [unit({ extras: written('ميفيدا') })])).merged).toHaveLength(
+      1,
+    );
+    const [only, ...rest] = await allUnits();
+    expect(rest).toEqual([]);
+    const extras = only?.extras as { written: { project: string[] }; unmatched: string[] };
+    expect(extras.written.project).toEqual(['Mivida', 'ميفيدا']);
+    expect(extras.unmatched).toEqual(['kept']); // other keys keep the existing unit's values
+
+    // reprocessing the second message must not add duplicates
+    await apply(b, 'listing', [unit({ extras: written('ميفيدا') })]);
+    const [again] = await allUnits();
+    expect((again?.extras as { written: { project: string[] } }).written.project).toEqual([
+      'Mivida',
+      'ميفيدا',
+    ]);
+  });
+
   it('keeps different units apart (other bedrooms, other type, far area, named unit)', async () => {
     const [g1] = groups as [number];
     await apply(await post(g1, '2026-10-20T10:00:00Z'), 'listing', [unit()]);
