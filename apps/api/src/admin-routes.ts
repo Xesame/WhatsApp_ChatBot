@@ -238,6 +238,8 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
         body: z.object({
           action: z.enum(['save', 'approve', 'reject']),
           changes: z.record(z.string(), z.unknown()).optional(),
+          // The unit's payment plans as left in Review; checked in reviewUnit.
+          paymentPlans: z.array(z.unknown()).optional(),
           // Spellings the reviewer ticked "remember" for (see Review page).
           remember: z
             .array(z.object({ kind: z.enum(['city', 'developer', 'project']), alias: name }))
@@ -254,7 +256,10 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
         request.ip,
       );
       await log(request, `unit.${request.body.action}`, `unit:${unit.id}`, {
-        fields: Object.keys(request.body.changes ?? {}),
+        fields: [
+          ...Object.keys(request.body.changes ?? {}),
+          ...(request.body.paymentPlans ? ['paymentPlans'] : []),
+        ],
       });
       // A remembered spelling may also fix other waiting units.
       return request.body.remember?.length ? { ...unit, recheck: await recheck() } : unit;

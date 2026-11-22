@@ -84,6 +84,8 @@ async function expectedPlans(db: Db, unitId: number, messageId: number): Promise
       )
       .orderBy(asc(unitPaymentPlans.position), asc(unitPaymentPlans.id));
   }
+  // A "no plans" marker (Review cleared the plans) is not a plan: expect none.
+  rows = rows.filter((r) => !r.cleared);
   // The details eval/compare.ts scores (PLAN_FIELDS), in whole currency units.
   return rows.map((r) => ({
     downPaymentPercent: r.downPaymentPercent,

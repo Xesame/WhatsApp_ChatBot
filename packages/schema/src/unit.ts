@@ -43,6 +43,9 @@ export const paymentPlanSchema = z.object({
   currency: z.enum(['EGP', 'USD']),
 });
 
+/** What Review may send for a unit's plans: at most 12, each a valid plan. */
+export const editablePlansSchema = z.array(paymentPlanSchema).max(12);
+
 export const unitSchema = z.object({
   // --- Template columns (in template order; see columns.ts) ---
   category: z.enum(CATEGORIES).nullable(),

@@ -17,7 +17,7 @@ import {
 } from '@reb/db';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
-import { matchEntities } from '@reb/pipeline';
+import { currentPlans, matchEntities, retract } from '@reb/pipeline';
 import { asc, eq, ne } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -198,6 +198,156 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
     });
   });
 
+  describe('payment plans in review', () => {
+    const plan = (over: Record<string, unknown> = {}) => ({
+      position: 0,
+      label: '10% down',
+      downPaymentPercent: 10,
+      downPaymentAmount: null,
+      installmentAmount: null,
+      installmentFrequency: null,
+      installmentsCount: null,
+      installmentYears: 8,
+      planPrice: null,
+      cash: false,
+      notes: null,
+      currency: 'EGP',
+      ...over,
+    });
+    const storedPlans = (unitId: number) =>
+      testDb.database.db
+        .select()
+        .from(unitPaymentPlans)
+        .where(eq(unitPaymentPlans.unitId, unitId))
+        .orderBy(asc(unitPaymentPlans.id));
+    const messagePlan = (unitId: number, messageId: number, sentAt: Date, over = {}) =>
+      testDb.database.db.insert(unitPaymentPlans).values({
+        ...plan(over),
+        unitId,
+        sourceMessageId: messageId,
+        source: 'message',
+        observedAt: sentAt,
+      } as typeof unitPaymentPlans.$inferInsert);
+
+    it("corrects a unit's plans", async () => {
+      const { unit, message } = await listing();
+      await messagePlan(unit.id, message.id, message.sentAt, {
+        label: 'misread',
+        downPaymentPercent: 5,
+      });
+      expect((await unitView(testDb.database.db, unit.id))?.plans).toHaveLength(1);
+
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        {
+          action: 'save',
+          paymentPlans: [plan(), plan({ position: 5, label: 'cash', cash: true })],
+        },
+        null,
+      );
+
+      const rows = await storedPlans(unit.id);
+      expect(rows.map((r) => r.source)).toEqual(['message', 'review', 'review']); // message row kept
+      expect(rows.slice(1).map((r) => [r.sourceMessageId, r.position])).toEqual([
+        [null, 0],
+        [null, 1],
+      ]);
+      const view = await unitView(testDb.database.db, unit.id);
+      expect(view?.plans.map((p) => p.label)).toEqual(['10% down', 'cash']);
+      const [c] = await testDb.database.db
+        .select()
+        .from(reviewCorrections)
+        .where(eq(reviewCorrections.field, 'paymentPlans'));
+      expect(c).toMatchObject({ unitId: unit.id, action: 'edit', messageId: message.id });
+      expect((c?.before as { label: string }[]).map((p) => p.label)).toEqual(['misread']);
+      expect((c?.after as { label: string }[]).map((p) => p.label)).toEqual(['10% down', 'cash']);
+
+      // Sending the same plans again changes nothing and records nothing.
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        { action: 'save', paymentPlans: view?.plans },
+        null,
+      );
+      expect(await storedPlans(unit.id)).toHaveLength(3);
+    });
+
+    it('refuses an impossible plan', async () => {
+      const { unit } = await listing();
+      await expect(
+        reviewUnit(
+          testDb.database,
+          unit.id,
+          { action: 'save', paymentPlans: [plan({ downPaymentPercent: 150 })] },
+          null,
+        ),
+      ).rejects.toThrow();
+      const tooMany = Array.from({ length: 13 }, (_, i) => plan({ position: i }));
+      await expect(
+        reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: tooMany }, null),
+      ).rejects.toThrow();
+      expect(await storedPlans(unit.id)).toHaveLength(0);
+      expect(await testDb.database.db.select().from(reviewCorrections)).toHaveLength(0);
+    });
+
+    it('leaves plans alone when not sent', async () => {
+      const { unit, message } = await listing();
+      await messagePlan(unit.id, message.id, message.sentAt);
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        { action: 'approve', changes: { bedrooms: 4 } },
+        null,
+      );
+      expect(await storedPlans(unit.id)).toHaveLength(1);
+      expect(
+        await testDb.database.db
+          .select()
+          .from(reviewCorrections)
+          .where(eq(reviewCorrections.field, 'paymentPlans')),
+      ).toHaveLength(0);
+    });
+
+    it("clears a unit's plans; a newer message wins again; retracting it clears again", async () => {
+      const { unit, message } = await listing();
+      await messagePlan(unit.id, message.id, message.sentAt);
+      await reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: [] }, null);
+      const db = testDb.database.db;
+      expect((await unitView(db, unit.id))?.plans).toEqual([]);
+      expect(await currentPlans(db, unit.id)).toEqual([]);
+      const corrections = await db
+        .select()
+        .from(reviewCorrections)
+        .where(eq(reviewCorrections.field, 'paymentPlans'));
+      expect(corrections).toHaveLength(1);
+      expect(corrections[0]?.after).toEqual([]);
+      // Clearing again changes nothing.
+      await reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: [] }, null);
+      expect(await storedPlans(unit.id)).toHaveLength(2);
+
+      // A newer message with plans wins.
+      const [laterRow] = await db
+        .insert(messages)
+        .values({
+          groupId: message.groupId,
+          waMessageId: `W${Math.random()}`,
+          senderHash: 's'.repeat(64),
+          sentAt: new Date(Date.now() + 60_000),
+          text: 'plans again',
+          status: 'processed',
+        })
+        .returning();
+      if (!laterRow) throw new Error('message not stored');
+      const later = laterRow;
+      await messagePlan(unit.id, later.id, later.sentAt, { label: 'back' });
+      expect((await currentPlans(db, unit.id)).map((p) => p.label)).toEqual(['back']);
+      // Retracting it leaves the cleared marker as the newest source.
+      await testDb.database.transaction((tx) => retract(tx, later.id));
+      expect(await currentPlans(db, unit.id)).toEqual([]);
+    });
+  });
+
   it('acceptance: review corrections become eval cases', async () => {
     const { unit, message } = await listing();
     await reviewUnit(
@@ -325,6 +475,25 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
         installmentYears: 8,
       },
     ]);
+  });
+
+  it('accuracy cases expect no plans once Review cleared them', async () => {
+    const { unit, message } = await listing();
+    const db = testDb.database.db;
+    await db.insert(unitPaymentPlans).values({
+      unitId: unit.id,
+      position: 0,
+      downPaymentPercent: 10,
+      installmentFrequency: 'quarterly',
+      installmentYears: 8,
+      currency: 'EGP',
+      source: 'message',
+      sourceMessageId: message.id,
+      observedAt: message.sentAt,
+    });
+    await reviewUnit(testDb.database, unit.id, { action: 'approve', paymentPlans: [] }, null);
+    const found = (await reviewCases(db)).find((c) => c.id === `review-message-${message.id}`);
+    expect(found?.expected.units[0]?.paymentPlans ?? []).toEqual([]);
   });
 
   it('unit view shows the price history in order', async () => {

@@ -6,6 +6,7 @@ import {
   messages,
   projects,
   reviewCorrections,
+  unitPaymentPlans,
   unitPrices,
   units,
   unitSources,
@@ -15,8 +16,8 @@ import {
 } from '@reb/db';
 import { PRICE_FIELDS, snapshotOf } from '@reb/dedup';
 import { normalizeName, type Suggestion, type WrittenNames } from '@reb/normalize';
-import { lookupFor } from '@reb/pipeline';
-import { unitSchema } from '@reb/schema';
+import { currentPlans, lookupFor } from '@reb/pipeline';
+import { editablePlansSchema, unitSchema, type PaymentPlan } from '@reb/schema';
 import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { audit } from './audit.ts';
@@ -91,6 +92,8 @@ export interface UnitView {
   names: { developer: string | null; project: string | null; city: string | null };
   sources: SourceView[];
   prices: (typeof unitPrices.$inferSelect)[];
+  /** The unit's current payment plans, in the order written. */
+  plans: PaymentPlan[];
   /**
    * What the pipeline wrote down about names it could not match: the names as
    * written in the message, and the closest existing entity when one was
@@ -170,6 +173,7 @@ export async function unitView(db: Db, unitId: number): Promise<UnitView | null>
     },
     sources: sourceRows.map((s) => ({ ...s, media: s.media?.id ? s.media : null })),
     prices,
+    plans: await currentPlans(db, unitId),
     learning: { ...learningOf(unit.extras), lookup: await rememberedNames(db, unit) },
   };
 }
@@ -240,6 +244,11 @@ export async function reviewUnit(
   input: {
     action: ReviewAction;
     changes?: unknown;
+    /**
+     * The unit's payment plans as the reviewer left them. Left out = untouched.
+     * Sent and different = stored as the newest source (see `currentPlans`).
+     */
+    paymentPlans?: unknown;
     /** Spellings the reviewer ticked "remember": added to the unit's entity after the changes. */
     remember?: { kind: EntityKind; alias: string }[];
   },
@@ -247,6 +256,13 @@ export async function reviewUnit(
   ipAddress?: string,
 ): Promise<UnitRow> {
   const changes = editableUnitSchema.parse(input.changes ?? {});
+  // Order is the order sent; positions are renumbered so they can't clash.
+  const newPlans =
+    input.paymentPlans === undefined
+      ? undefined
+      : editablePlansSchema
+          .parse(input.paymentPlans)
+          .map((plan, position): PaymentPlan => ({ ...plan, position }));
   return database.transaction(async (tx) => {
     const [unit] = await tx.select().from(units).where(eq(units.id, unitId)).for('update');
     if (!unit) throw new NotFoundError(`Unit ${unitId} not found`);
@@ -269,6 +285,56 @@ export async function reviewUnit(
       after: changes[field] ?? null,
       reviewerId,
     }));
+    // Plans: the reviewer's list becomes the newest source (rows tagged
+    // 'review', stamped now). Message rows are kept, so retracting a message
+    // can still bring back the plans it replaced.
+    if (newPlans) {
+      const before = await currentPlans(tx, unitId);
+      if (!same(before, newPlans)) {
+        corrections.push({
+          unitId,
+          messageId: source?.messageId ?? null,
+          action: 'edit',
+          field: 'paymentPlans',
+          before,
+          after: newPlans,
+          reviewerId,
+        });
+        // A JavaScript time (milliseconds), not the database's now(): rows of one
+        // source are found by comparing times, and the database keeps microseconds.
+        const stamp = new Date();
+        // An empty list is stored as one "no plans" marker row.
+        const rows =
+          newPlans.length > 0
+            ? newPlans.map((plan) => ({ ...plan, cleared: false }))
+            : [
+                {
+                  position: 0,
+                  label: null,
+                  downPaymentPercent: null,
+                  downPaymentAmount: null,
+                  installmentAmount: null,
+                  installmentFrequency: null,
+                  installmentsCount: null,
+                  installmentYears: null,
+                  planPrice: null,
+                  cash: false,
+                  notes: null,
+                  currency: before[0]?.currency ?? ('EGP' as const),
+                  cleared: true,
+                },
+              ];
+        await tx.insert(unitPaymentPlans).values(
+          rows.map((plan) => ({
+            ...plan,
+            unitId,
+            sourceMessageId: null,
+            source: 'review' as const,
+            observedAt: stamp,
+          })),
+        );
+      }
+    }
     if (input.action !== 'save') {
       corrections.push({
         unitId,

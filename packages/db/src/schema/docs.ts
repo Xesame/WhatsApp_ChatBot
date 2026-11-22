@@ -290,6 +290,8 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       cash: 'True for a pay-in-full option (no installments).',
       notes: 'Other notes on the plan, as written ("Equal installments").',
       currency: '`EGP` or `USD`: the currency of the amounts in the plan.',
+      cleared:
+        'True for a "no plans" marker: Review saved an empty list, so the unit has no plans until a newer message states some. Other fields are empty.',
       observed_at:
         'When the message stating the plan was posted (for Review rows: when Hassan saved it).',
       created_at: 'When the row was created.',
