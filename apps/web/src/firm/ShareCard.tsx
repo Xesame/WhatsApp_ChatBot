@@ -20,7 +20,7 @@ function shareLines(detail: ListingDetail, i18n: I18n): { title: string; lines: 
     title,
     lines: [
       names.city ? `📍 ${i18n.name(names.city)}` : null,
-      `🏠 ${kind.join(' · ')}`,
+      `🏠 ${kind.join(' – ')}`,
       `📐 ${areaLine(u, i18n)}`,
       `💰 ${priceLine(detail, i18n)}`,
       `💳 ${paymentLine(u, i18n)}`,

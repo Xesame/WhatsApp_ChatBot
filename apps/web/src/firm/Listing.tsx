@@ -56,7 +56,7 @@ export function paymentLine(u: U, i18n: I18n): string {
   if (years !== null) parts.push(i18n.t('unit.overYears', { n: i18n.number(years, 1) }));
   const freq = s(u, 'installmentFrequency');
   if (freq) parts.push(i18n.value(freq));
-  return parts.join(' · ') || i18n.t('common.unknown');
+  return parts.join(' – ') || i18n.t('common.unknown');
 }
 
 export function deliveryLine(u: U, i18n: I18n): string {
@@ -64,6 +64,23 @@ export function deliveryLine(u: U, i18n: I18n): string {
   const year = n(u, 'deliveryYear');
   return year ? String(year) : i18n.t('common.unknown');
 }
+
+/** Separate lines: the first normal, the rest muted. */
+function Lines({ parts }: { parts: (string | null | false)[] }) {
+  const shown = parts.filter((x): x is string => typeof x === 'string' && x !== '');
+  if (shown.length === 0) return null;
+  return (
+    <>
+      {shown.map((x, i) => (
+        <span key={i} className={i === 0 ? 'block' : 'block text-xs font-normal text-muted'}>
+          {x}
+        </span>
+      ))}
+    </>
+  );
+}
+
+const lines = (parts: (string | null)[]) => (parts.some(Boolean) ? <Lines parts={parts} /> : null);
 
 export function Listing() {
   const { id } = useParams();
@@ -128,27 +145,23 @@ export function Listing() {
   const payment: [string, ReactNode][] = [
     [
       t('field.downPayment'),
-      [
+      lines([
         n(u, 'downPayment') === null ? null : `${i18n.number(n(u, 'downPayment') ?? 0, 1)}%`,
         money('downPaymentAmount')
           ? t('listing.amount', { amount: money('downPaymentAmount') ?? '' })
           : null,
-      ]
-        .filter(Boolean)
-        .join(' · ') || null,
+      ]),
     ],
     [
       t('field.installments'),
-      [
+      lines([
         n(u, 'installmentYears') === null
           ? null
           : t('common.years', { n: i18n.number(n(u, 'installmentYears') ?? 0, 1) }),
         n(u, 'installmentsCount') === null
           ? null
           : t('listing.count', { n: n(u, 'installmentsCount') ?? 0 }),
-      ]
-        .filter(Boolean)
-        .join(' · ') || null,
+      ]),
     ],
     [
       t('field.frequency'),
@@ -182,15 +195,13 @@ export function Listing() {
               {i18n.name(names.project)}
             </h1>
             <p className="text-sm text-muted">
-              {[names.developer, names.city]
-                .filter(Boolean)
-                .map((x) => i18n.name(x))
-                .join(' · ')}
+              {names.developer && <span className="me-3">{i18n.name(names.developer)}</span>}
+              {names.city && <span>{i18n.name(names.city)}</span>}
             </p>
-            <p className="mt-2 text-sm font-medium">
-              {i18n.value(s(u, 'unitType'))}
-              {n(u, 'bedrooms') !== null && ` · ${i18n.rooms(n(u, 'bedrooms') ?? 0)}`} ·{' '}
-              {areaLine(u, i18n)}
+            <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium">
+              <span>{i18n.value(s(u, 'unitType'))}</span>
+              {n(u, 'bedrooms') !== null && <span>{i18n.rooms(n(u, 'bedrooms') ?? 0)}</span>}
+              <span>{areaLine(u, i18n)}</span>
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {u.status !== 'active' && (
@@ -214,7 +225,7 @@ export function Listing() {
             )}
             {u.priceCurrency === 'USD' && detail.usdEgpRate && (
               <p className="text-xs text-muted">
-                {money('minPrice')} ·{' '}
+                {money('minPrice')}{' '}
                 {t('listing.usdNote', { rate: i18n.number(detail.usdEgpRate, 2) })}
               </p>
             )}
@@ -252,7 +263,7 @@ export function Listing() {
                           ? t('listing.postedBroker')
                           : t('listing.postedGroup')}
                     </span>
-                    <span>· {i18n.date(src.sentAt)}</span>
+                    <span>{i18n.date(src.sentAt)}</span>
                   </div>
                   {src.media && src.media.kind === 'image' && (
                     <a href={`/api/app/media/${src.media.id}`} target="_blank" rel="noreferrer">
@@ -330,9 +341,7 @@ function PaymentPlans({ detail }: { detail: ListingDetail }) {
           const down = [
             plan.downPaymentPercent === null ? null : `${i18n.number(plan.downPaymentPercent, 1)}%`,
             plan.downPaymentAmount === null ? null : amount(plan.downPaymentAmount, plan.currency),
-          ]
-            .filter(Boolean)
-            .join(' · ');
+          ];
           const installments = [
             plan.installmentAmount !== null && plan.installmentFrequency !== null
               ? t('plan.every', {
@@ -346,9 +355,7 @@ function PaymentPlans({ detail }: { detail: ListingDetail }) {
             plan.installmentsCount === null
               ? null
               : t('listing.count', { n: plan.installmentsCount }),
-          ]
-            .filter(Boolean)
-            .join(' · ');
+          ];
           return (
             <tr key={i}>
               <td className={td}>
@@ -356,8 +363,12 @@ function PaymentPlans({ detail }: { detail: ListingDetail }) {
                 {plan.label && plan.cash && <Badge tone="lime">{t('plan.cash')}</Badge>}
                 {plan.notes && <p className="mt-1 text-xs text-muted">{plan.notes}</p>}
               </td>
-              <td className={`${td} tabular-nums`}>{down || dash}</td>
-              <td className={`${td} tabular-nums`}>{installments || dash}</td>
+              <td className={`${td} tabular-nums`}>
+                {down.some(Boolean) ? <Lines parts={down} /> : dash}
+              </td>
+              <td className={`${td} tabular-nums`}>
+                {installments.some(Boolean) ? <Lines parts={installments} /> : dash}
+              </td>
               <td className={`${td} font-bold tabular-nums`}>
                 {plan.monthlyEquivalent !== null
                   ? t('plan.perMonth', { amount: amount(plan.monthlyEquivalent, plan.currency) })
@@ -452,7 +463,7 @@ function Notes({ detail }: { detail: ListingDetail }) {
             </p>
             <div className="mt-1 flex items-center justify-between gap-2 text-xs text-warn-ink">
               <span>
-                {note.authorName ?? '—'} · {i18n.date(note.createdAt)}
+                {note.authorName ?? '—'} {i18n.date(note.createdAt)}
               </span>
               <Button variant="dangerQuiet" size="sm" onClick={() => remove.mutate(note.id)}>
                 {t('common.delete')}
