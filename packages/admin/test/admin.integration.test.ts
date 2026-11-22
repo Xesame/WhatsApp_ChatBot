@@ -781,9 +781,9 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
       const b = await listing({ flaggedOnArrival: true });
       await listing();
       await approve(a.unit.id);
-      await approve(b.unit.id);
       await edit(b.unit.id, 'minPrice');
       await edit(b.unit.id, 'maxPrice');
+      await approve(b.unit.id);
       const weeks = await weeksNow();
       expect(weeks).toHaveLength(12);
       expect(weeks.slice(0, 11).every((w) => w.newUnits === 0 && w.reviewed === 0)).toBe(true);
@@ -796,6 +796,20 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
         correctionsPerReviewed: 1,
       });
       expect(weeks[11]?.week).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('ignores fixes made after the first approval', async () => {
+      const a = await listing();
+      const approvedAt = new Date(Date.now() - 60_000);
+      await testDb.database.db
+        .insert(reviewCorrections)
+        .values({ unitId: a.unit.id, action: 'approve', createdAt: approvedAt });
+      await edit(a.unit.id, 'bedrooms'); // a later fix: the bot was right when approved
+      expect((await weeksNow())[11]).toMatchObject({
+        reviewed: 1,
+        rightFirstTime: 1,
+        correctionsPerReviewed: 0,
+      });
     });
 
     it('does not count a unit as right first time when its name was learned during review', async () => {

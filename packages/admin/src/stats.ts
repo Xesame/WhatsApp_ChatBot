@@ -44,7 +44,10 @@ export interface LearningWeek {
  * only if it was approved with no `edit` row AND no spelling was learned from
  * it (`entity_aliases.review_unit_id`): choosing a project, developer or area
  * during review means the bot had left that field empty, even though no
- * `edit` row exists. We cannot tell from stored data whether a re-check
+ * `edit` row exists. Only fixes made up to the first approval count (the
+ * fixes saved with an approval share its time): a fix made weeks later, say
+ * after the price changed, says nothing about how the bot read the message.
+ * We cannot tell from stored data whether a re-check
  * cleared a flag before approval, so that case is not separated out.
  */
 async function learningWeeks(database: Database): Promise<LearningWeek[]> {
@@ -77,7 +80,8 @@ async function learningWeeks(database: Database): Promise<LearningWeek[]> {
     reviewed as (
       select date_trunc('week', fa.at at time zone 'Africa/Cairo')::date as week,
              (select count(*) from review_corrections e
-               where e.unit_id = fa.unit_id and e.action = 'edit')::int as edits,
+               where e.unit_id = fa.unit_id and e.action = 'edit'
+                 and e.created_at <= fa.at)::int as edits,
              exists (select 1 from entity_aliases a where a.review_unit_id = fa.unit_id) as learned
       from first_approval fa
     ),
