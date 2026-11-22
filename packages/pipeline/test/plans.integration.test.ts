@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   applyExtraction,
   currentPlans,
+  currentPlansFor,
   exportUnits,
   PLANS_CHECK_REASON,
   retract,
@@ -295,6 +296,39 @@ describe.skipIf(!testDatabaseUrl)('payment plans (real Postgres)', () => {
       unit({ paymentPlans: [plan({ downPaymentPercent: 30 })] }),
     ]);
     expect(await plansOf(unitId)).toEqual([30]);
+  });
+
+  it('reads the current plans of many units at once, by the same rule', async () => {
+    await apply(await post('2026-11-01T10:00:00Z'), 'listing', [
+      unit({ paymentPlans: veloria }),
+      unit({ minArea: 90, maxArea: 90, bedrooms: 1, paymentPlans: veloria }),
+      unit({ minArea: 300, maxArea: 300, bedrooms: 5 }),
+    ]);
+    const [a, b, c] = (await allUnits()).map((u) => u.id);
+    if (a === undefined || b === undefined || c === undefined) throw new Error('units missing');
+    const db = testDb.database.db;
+    const review = (unitId: number, cleared: boolean, percent: number | null) =>
+      db.insert(unitPaymentPlans).values({
+        ...plan({ downPaymentPercent: percent }),
+        unitId,
+        source: 'review',
+        sourceMessageId: null,
+        observedAt: new Date('2026-11-03T10:00:00Z'),
+        cleared,
+      });
+    await review(a, false, 5); // a: corrected in Review (newest source wins)
+    await review(b, true, null); // b: cleared in Review ("no plans")
+    // A newer post for a only, with plans.
+    await apply(await post('2026-11-04T10:00:00Z'), 'listing', [
+      unit({ paymentPlans: [plan({ downPaymentPercent: 30 })] }),
+    ]);
+
+    const found = await currentPlansFor(db, [a, b, c]);
+    for (const id of [a, b, c]) expect(found.get(id) ?? []).toEqual(await currentPlans(db, id));
+    expect(found.get(a)?.map((p) => p.downPaymentPercent)).toEqual([30]);
+    expect(found.has(b)).toBe(false);
+    expect(found.has(c)).toBe(false);
+    expect(await currentPlansFor(db, [])).toEqual(new Map());
   });
 
   it('exports a Payment plans sheet pointing at the unit row', async () => {

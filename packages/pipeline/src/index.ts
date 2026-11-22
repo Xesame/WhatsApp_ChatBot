@@ -38,4 +38,10 @@ export {
 } from './lookup.ts';
 export { recheckWaitingUnits } from './recheck.ts';
 export { MIN_APPROVED_FOR_RANGE, usualPricePerM2 } from './price-range.ts';
-export { currentPlans, PLANS_CHECK_REASON, plansHaveAmounts, writePlans } from './plans.ts';
+export {
+  currentPlans,
+  currentPlansFor,
+  PLANS_CHECK_REASON,
+  plansHaveAmounts,
+  writePlans,
+} from './plans.ts';

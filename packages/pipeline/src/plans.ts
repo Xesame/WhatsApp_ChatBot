@@ -1,6 +1,6 @@
 import { unitPaymentPlans, type Db } from '@reb/db';
 import type { PaymentPlan } from '@reb/schema';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 
 /**
  * Payment plans of a unit. Every message that states plans keeps its own rows
@@ -34,31 +34,69 @@ const toPlan = (row: PlanRow): PaymentPlan => ({
 
 /** The unit's current plans (its newest source's rows), in the order written. */
 export async function currentPlans(db: Db, unitId: number): Promise<PaymentPlan[]> {
-  const [newest] = await db
-    .select({
-      sourceMessageId: unitPaymentPlans.sourceMessageId,
-      observedAt: unitPaymentPlans.observedAt,
-    })
-    .from(unitPaymentPlans)
-    .where(eq(unitPaymentPlans.unitId, unitId))
-    .orderBy(desc(unitPaymentPlans.observedAt), desc(unitPaymentPlans.id))
-    .limit(1);
-  if (!newest) return [];
-  // Rows of one source share both its message (empty for Review) and its time.
-  const rows = await db
-    .select()
-    .from(unitPaymentPlans)
-    .where(
-      and(
-        eq(unitPaymentPlans.unitId, unitId),
-        eq(unitPaymentPlans.observedAt, newest.observedAt),
-        sql`${unitPaymentPlans.sourceMessageId} is not distinct from ${newest.sourceMessageId}`,
-      ),
-    )
-    .orderBy(asc(unitPaymentPlans.position), asc(unitPaymentPlans.id));
-  // A "no plans" marker from Review: the unit has none until a newer message states some.
-  if (rows.some((row) => row.cleared)) return [];
-  return rows.map(toPlan);
+  return (await currentPlansFor(db, [unitId])).get(unitId) ?? [];
+}
+
+/**
+ * The current plans of many units at once (the Excel export reads thousands):
+ * one query per 5,000 units instead of two per unit. Same rule as
+ * `currentPlans`: per unit, the rows of its newest source, and none when that
+ * source is a Review "no plans" marker. Units with no current plans are left
+ * out of the map.
+ */
+export async function currentPlansFor(
+  db: Db,
+  unitIds: readonly number[],
+): Promise<Map<number, PaymentPlan[]>> {
+  const found = new Map<number, PaymentPlan[]>();
+  // Postgres takes at most 65,535 values per query, so long lists go in parts.
+  for (let start = 0; start < unitIds.length; start += 5000) {
+    const part = unitIds.slice(start, start + 5000);
+    // Each unit's newest row (newest time, then newest id) names its newest source.
+    const newest = db
+      .selectDistinctOn([unitPaymentPlans.unitId], {
+        unitId: sql<number>`${unitPaymentPlans.unitId}`.as('newest_unit_id'),
+        observedAt: sql<Date>`${unitPaymentPlans.observedAt}`.as('newest_observed_at'),
+        messageId: sql<number | null>`${unitPaymentPlans.sourceMessageId}`.as('newest_message_id'),
+      })
+      .from(unitPaymentPlans)
+      .where(inArray(unitPaymentPlans.unitId, part))
+      .orderBy(
+        unitPaymentPlans.unitId,
+        desc(unitPaymentPlans.observedAt),
+        desc(unitPaymentPlans.id),
+      )
+      .as('newest');
+    // Rows of one source share both its message (empty for Review) and its time.
+    const rows = await db
+      .select({ row: unitPaymentPlans })
+      .from(unitPaymentPlans)
+      .innerJoin(
+        newest,
+        and(
+          eq(unitPaymentPlans.unitId, newest.unitId),
+          eq(unitPaymentPlans.observedAt, newest.observedAt),
+          sql`${unitPaymentPlans.sourceMessageId} is not distinct from ${newest.messageId}`,
+        ),
+      )
+      .orderBy(
+        asc(unitPaymentPlans.unitId),
+        asc(unitPaymentPlans.position),
+        asc(unitPaymentPlans.id),
+      );
+    const byUnit = new Map<number, PlanRow[]>();
+    for (const { row } of rows) {
+      const list = byUnit.get(row.unitId) ?? [];
+      list.push(row);
+      byUnit.set(row.unitId, list);
+    }
+    for (const [unitId, unitRows] of byUnit) {
+      // A "no plans" marker from Review: the unit has none until a newer message states some.
+      if (unitRows.some((row) => row.cleared)) continue;
+      found.set(unitId, unitRows.map(toPlan));
+    }
+  }
+  return found;
 }
 
 /**
