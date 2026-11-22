@@ -58,11 +58,7 @@ const HIDDEN = new Set([
   'needsReview',
 ]);
 
-/**
- * The unit's current plans: the rows of its newest source (same rule as
- * `currentPlans` in packages/pipeline/src/plans.ts; search sits below the
- * pipeline, so it is written again here).
- */
+/** A plan with its cost per month worked out in code (see `monthlyEquivalent`). */
 const withMonthly = (plan: PaymentPlan) => ({
   ...plan,
   monthlyEquivalent: monthlyEquivalent(plan),
