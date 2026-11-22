@@ -3,7 +3,7 @@ import { filtersToQuery, type SearchFilters } from '@reb/search/filters';
 import { Link } from 'react-router';
 import { api, type FilterOptions, type SavedSearch } from '../api.ts';
 import { useI18n, type I18n } from '../i18n.tsx';
-import { Badge, Button, Card, ErrorNote, Loading, Select } from '../ui.tsx';
+import { Badge, Button, Card, ErrorNote, Loading, PageTitle, Select, buttonClass } from '../ui.tsx';
 
 /** Readable chips for a saved filter set ("Mivida", "3+ rooms", "up to 8M"). */
 export function describeFilters(
@@ -75,8 +75,7 @@ export function Saved() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('saved.title')}</h1>
-      <p className="text-sm text-slate-600 dark:text-slate-400">{t('saved.alertsSoon')}</p>
+      <PageTitle title={t('saved.title')} subtitle={t('saved.alertsSoon')} />
       {saved.isPending && <Loading />}
       <ErrorNote error={saved.error ?? update.error ?? remove.error} />
       {saved.data?.length === 0 && (
@@ -90,13 +89,13 @@ export function Saved() {
             key={s.id}
             title={<span dir="auto">{s.name}</span>}
             actions={
-              <Badge tone={s.active ? 'green' : 'gray'}>
+              <Badge tone={s.active ? 'lime' : 'neutral'}>
                 {s.active ? t('saved.active') : t('saved.paused')}
               </Badge>
             }
           >
             {!s.mine && s.ownerName && (
-              <p className="mb-2 text-xs text-slate-500">{t('saved.by', { name: s.ownerName })}</p>
+              <p className="mb-2 text-xs text-muted">{t('saved.by', { name: s.ownerName })}</p>
             )}
             <div className="mb-3 flex flex-wrap gap-1">
               {describeFilters(s.filters as SearchFilters, options.data, i18n).map((chip) => (
@@ -104,10 +103,7 @@ export function Saved() {
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Link
-                to={`/app?${filtersToQuery(s.filters)}`}
-                className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white dark:bg-slate-100 dark:text-slate-900"
-              >
+              <Link to={`/app?${filtersToQuery(s.filters)}`} className={buttonClass()}>
                 {t('saved.open')}
               </Link>
               <Select
@@ -128,11 +124,7 @@ export function Saved() {
               >
                 {s.active ? t('saved.paused') : t('saved.active')}
               </Button>
-              <Button
-                variant="ghost"
-                className="ms-auto text-red-600"
-                onClick={() => remove.mutate(s.id)}
-              >
+              <Button variant="dangerQuiet" className="ms-auto" onClick={() => remove.mutate(s.id)}>
                 {t('common.delete')}
               </Button>
             </div>

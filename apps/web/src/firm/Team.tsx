@@ -10,6 +10,8 @@ import {
   Input,
   Label,
   Loading,
+  Note,
+  PageTitle,
   Select,
   Table,
   td,
@@ -29,9 +31,11 @@ export function LinkBox({
   const { t } = i18n;
   const [copied, setCopied] = useState(false);
   return (
-    <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/40">
-      <p>{t('team.linkReady', { name, date: i18n.date(link.expiresAt) })}</p>
-      <div className="flex gap-2">
+    <Note tone="success" className="space-y-2">
+      <p className="font-medium">
+        {t('team.linkReady', { name, date: i18n.date(link.expiresAt) })}
+      </p>
+      <div className="flex flex-wrap gap-2 sm:flex-nowrap">
         <Input readOnly dir="ltr" value={link.link} onFocus={(e) => e.currentTarget.select()} />
         <Button
           variant="secondary"
@@ -44,11 +48,11 @@ export function LinkBox({
         >
           {copied ? t('common.copied') : t('common.copy')}
         </Button>
-        <Button variant="ghost" onClick={onDone}>
+        <Button variant="quiet" onClick={onDone}>
           {t('common.close')}
         </Button>
       </div>
-    </div>
+    </Note>
   );
 }
 
@@ -92,7 +96,7 @@ export function Team() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('team.title')}</h1>
+      <PageTitle title={t('team.title')} />
       {shown && <LinkBox name={shown.name} link={shown.link} onDone={() => setShown(null)} />}
       <ErrorNote error={team.error ?? invite.error ?? newLink.error ?? setRemoved.error} />
       <div className="grid gap-4 lg:grid-cols-3">
@@ -104,10 +108,10 @@ export function Team() {
           )}
           <Table head={[t('team.name'), t('team.email'), '', '', '']}>
             {team.data?.map((m) => (
-              <tr key={m.id} className={m.status === 'removed' ? 'text-slate-400' : ''}>
+              <tr key={m.id} className={m.status === 'removed' ? 'text-muted' : ''}>
                 <td className={td}>
                   {m.name}
-                  <div className="text-xs text-slate-500">{t(`role.${m.role as 'agent'}`)}</div>
+                  <div className="text-xs text-muted">{t(`role.${m.role as 'agent'}`)}</div>
                 </td>
                 <td className={td} dir="ltr">
                   {m.email}
@@ -115,7 +119,7 @@ export function Team() {
                 <td className={td}>
                   <Badge
                     tone={
-                      m.status === 'active' ? 'green' : m.status === 'invited' ? 'amber' : 'gray'
+                      m.status === 'active' ? 'lime' : m.status === 'invited' ? 'warn' : 'neutral'
                     }
                   >
                     {t(`memberStatus.${m.status}`)}
@@ -123,7 +127,7 @@ export function Team() {
                 </td>
                 <td className={td}>
                   {m.status !== 'removed' && (
-                    <Button variant="ghost" onClick={() => newLink.mutate(m)}>
+                    <Button variant="quiet" onClick={() => newLink.mutate(m)}>
                       {t('team.newLink')}
                     </Button>
                   )}
@@ -132,7 +136,7 @@ export function Team() {
                   {m.role === 'agent' &&
                     (m.status === 'removed' ? (
                       <Button
-                        variant="ghost"
+                        variant="quiet"
                         onClick={() => setRemoved.mutate({ id: m.id, removed: false })}
                       >
                         {t('team.restore')}
@@ -148,14 +152,13 @@ export function Team() {
                         >
                           {t('team.remove')}
                         </Button>
-                        <Button variant="ghost" onClick={() => setConfirming(null)}>
+                        <Button variant="quiet" onClick={() => setConfirming(null)}>
                           {t('common.cancel')}
                         </Button>
                       </span>
                     ) : (
                       <Button
-                        variant="ghost"
-                        className="text-red-600"
+                        variant="dangerQuiet"
                         title={t('team.confirmRemove', { name: m.name })}
                         onClick={() => setConfirming(m.id)}
                       >
@@ -212,8 +215,8 @@ export function Team() {
             <dl className="space-y-1.5 text-sm">
               {(['search', 'export', 'listing_view'] as const).map((kind) => (
                 <div key={kind} className="flex justify-between">
-                  <dt className="text-slate-500">{t(`usage.${kind}`)}</dt>
-                  <dd className="font-medium tabular-nums">{i18n.number(totals[kind] ?? 0)}</dd>
+                  <dt className="text-muted">{t(`usage.${kind}`)}</dt>
+                  <dd className="figure tabular-nums">{i18n.number(totals[kind] ?? 0)}</dd>
                 </div>
               ))}
             </dl>

@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router';
 import { api, type ListingDetail, type Me } from '../api.ts';
 import { useI18n, type I18n } from '../i18n.tsx';
-import { Badge, Button, Card, ErrorNote, Loading } from '../ui.tsx';
+import { Badge, Button, Card, ErrorNote, Loading, Table, td } from '../ui.tsx';
 import { pounds } from './format.ts';
 import { ShareCard } from './ShareCard.tsx';
 
@@ -171,56 +171,54 @@ export function Listing() {
 
   return (
     <div className="space-y-4">
-      <button
-        type="button"
-        className="text-sm text-slate-600 hover:underline dark:text-slate-400"
-        onClick={() => void navigate(-1)}
-      >
+      <Button variant="quiet" size="sm" onClick={() => void navigate(-1)}>
         {i18n.dir === 'rtl' ? '→' : '←'} {t('listing.back')}
-      </button>
+      </Button>
 
       <Card>
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold text-balance">{i18n.name(names.project)}</h1>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
+            <h1 className="text-xl font-extrabold text-balance md:text-2xl">
+              {i18n.name(names.project)}
+            </h1>
+            <p className="text-sm text-muted">
               {[names.developer, names.city]
                 .filter(Boolean)
                 .map((x) => i18n.name(x))
                 .join(' · ')}
             </p>
-            <p className="mt-2 text-sm">
+            <p className="mt-2 text-sm font-medium">
               {i18n.value(s(u, 'unitType'))}
               {n(u, 'bedrooms') !== null && ` · ${i18n.rooms(n(u, 'bedrooms') ?? 0)}`} ·{' '}
               {areaLine(u, i18n)}
             </p>
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className="mt-3 flex flex-wrap gap-1.5">
               {u.status !== 'active' && (
-                <Badge tone={u.status === 'sold' ? 'red' : 'amber'}>
+                <Badge tone={u.status === 'sold' ? 'danger' : 'warn'}>
                   {t(`status.${u.status as 'sold'}`)}
                 </Badge>
               )}
-              {u.readyToMove === true && <Badge tone="green">{t('unit.readyToMove')}</Badge>}
-              {u.priceCurrency === 'USD' && <Badge tone="blue">{t('unit.usd')}</Badge>}
+              {u.readyToMove === true && <Badge tone="lime">{t('unit.readyToMove')}</Badge>}
+              {u.priceCurrency === 'USD' && <Badge tone="outline">{t('unit.usd')}</Badge>}
               {detail.sources.length > 1 && (
                 <Badge>{t('unit.reposted', { n: detail.sources.length })}</Badge>
               )}
             </div>
           </div>
-          <div className="text-end">
-            <p className="text-2xl font-semibold tabular-nums">{priceLine(detail, i18n)}</p>
+          <div className="text-start sm:text-end">
+            <p className="figure text-2xl text-graphite md:text-3xl">{priceLine(detail, i18n)}</p>
             {ppsqm !== null && (
-              <p className="text-sm text-slate-500 tabular-nums">
+              <p className="text-sm text-muted tabular-nums">
                 {i18n.number(ppsqm)} {t('common.egp')} / {t('common.m2')}
               </p>
             )}
             {u.priceCurrency === 'USD' && detail.usdEgpRate && (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted">
                 {money('minPrice')} ·{' '}
                 {t('listing.usdNote', { rate: i18n.number(detail.usdEgpRate, 2) })}
               </p>
             )}
-            <Button className="mt-3" onClick={() => setSharing(true)}>
+            <Button className="mt-3" size="lg" onClick={() => setSharing(true)}>
               {t('listing.share')}
             </Button>
           </div>
@@ -241,10 +239,10 @@ export function Listing() {
               {detail.sources.map((src, i) => (
                 <article
                   key={i}
-                  className="space-y-2 border-b border-slate-100 pb-4 last:border-0 last:pb-0 dark:border-slate-800"
+                  className="space-y-2 border-b border-line pb-4 last:border-0 last:pb-0"
                 >
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    <Badge tone={src.role === 'listing' ? 'blue' : 'amber'}>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <Badge tone={src.role === 'listing' ? 'outline' : 'warn'}>
                       {t(`source.${src.role as 'listing'}`)}
                     </Badge>
                     <span>
@@ -261,13 +259,13 @@ export function Listing() {
                       <img
                         src={`/api/app/media/${src.media.id}`}
                         alt=""
-                        className="max-h-96 rounded border border-slate-200 object-contain dark:border-slate-800"
+                        className="max-h-96 rounded-control border border-line object-contain"
                       />
                     </a>
                   )}
                   {src.media && src.media.kind !== 'image' && (
                     <a
-                      className="text-sm underline"
+                      className="text-sm font-bold underline"
                       href={`/api/app/media/${src.media.id}`}
                       target="_blank"
                       rel="noreferrer"
@@ -282,12 +280,12 @@ export function Listing() {
                   )}
                   {src.media?.text && (
                     <details className="text-sm">
-                      <summary className="cursor-pointer text-slate-500">
+                      <summary className="cursor-pointer text-muted">
                         {t('listing.fileText')}
                       </summary>
                       <pre
                         dir="auto"
-                        className="mt-2 max-h-72 overflow-auto rounded bg-slate-50 p-2 text-xs whitespace-pre-wrap dark:bg-slate-950"
+                        className="mt-2 max-h-72 overflow-auto rounded-control bg-bone p-2 text-xs whitespace-pre-wrap"
                       >
                         {src.media.text}
                       </pre>
@@ -316,24 +314,26 @@ function PaymentPlans({ detail }: { detail: ListingDetail }) {
   if (plans.length === 0) return null;
   const amount = (minor: number, currency: string) =>
     currency === 'USD' ? `USD ${i18n.number(minor / 100)}` : i18n.moneyFull(pounds(minor));
+  const dash = <span className="text-muted">—</span>;
   return (
     <Card title={t('listing.plans')}>
-      <div className="space-y-3">
+      <Table
+        head={[
+          t('plan.colPlan'),
+          t('field.downPayment'),
+          t('field.installments'),
+          t('plan.colMonthly'),
+          t('plan.planPrice'),
+        ]}
+      >
         {plans.map((plan, i) => {
-          const lines = [
-            plan.cash ? t('plan.cash') : null,
-            plan.downPaymentPercent === null && plan.downPaymentAmount === null
-              ? null
-              : [
-                  plan.downPaymentPercent === null
-                    ? null
-                    : t('unit.down', { p: i18n.number(plan.downPaymentPercent, 1) }),
-                  plan.downPaymentAmount === null
-                    ? null
-                    : amount(plan.downPaymentAmount, plan.currency),
-                ]
-                  .filter(Boolean)
-                  .join(' · '),
+          const down = [
+            plan.downPaymentPercent === null ? null : `${i18n.number(plan.downPaymentPercent, 1)}%`,
+            plan.downPaymentAmount === null ? null : amount(plan.downPaymentAmount, plan.currency),
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          const installments = [
             plan.installmentAmount !== null && plan.installmentFrequency !== null
               ? t('plan.every', {
                   amount: amount(plan.installmentAmount, plan.currency),
@@ -346,25 +346,30 @@ function PaymentPlans({ detail }: { detail: ListingDetail }) {
             plan.installmentsCount === null
               ? null
               : t('listing.count', { n: plan.installmentsCount }),
-            plan.monthlyEquivalent !== null && plan.installmentFrequency !== 'monthly'
-              ? t('plan.perMonth', { amount: amount(plan.monthlyEquivalent, plan.currency) })
-              : null,
-            plan.planPrice === null
-              ? null
-              : `${t('plan.planPrice')}: ${amount(plan.planPrice, plan.currency)}`,
-            plan.notes,
-          ].filter(Boolean);
+          ]
+            .filter(Boolean)
+            .join(' · ');
           return (
-            <div
-              key={i}
-              className="border-b border-slate-100 pb-3 text-sm last:border-0 last:pb-0 dark:border-slate-800"
-            >
-              {plan.label && <p className="font-medium">{plan.label}</p>}
-              <p className="tabular-nums">{lines.join(' · ')}</p>
-            </div>
+            <tr key={i}>
+              <td className={td}>
+                <p className="font-bold">{plan.label ?? (plan.cash ? t('plan.cash') : '')}</p>
+                {plan.label && plan.cash && <Badge tone="lime">{t('plan.cash')}</Badge>}
+                {plan.notes && <p className="mt-1 text-xs text-muted">{plan.notes}</p>}
+              </td>
+              <td className={`${td} tabular-nums`}>{down || dash}</td>
+              <td className={`${td} tabular-nums`}>{installments || dash}</td>
+              <td className={`${td} font-bold tabular-nums`}>
+                {plan.monthlyEquivalent !== null
+                  ? t('plan.perMonth', { amount: amount(plan.monthlyEquivalent, plan.currency) })
+                  : dash}
+              </td>
+              <td className={`${td} tabular-nums`}>
+                {plan.planPrice === null ? dash : amount(plan.planPrice, plan.currency)}
+              </td>
+            </tr>
           );
         })}
-      </div>
+      </Table>
     </Card>
   );
 }
@@ -373,11 +378,11 @@ function FactList({ title, rows }: { title: string; rows: [string, ReactNode][] 
   const shown = rows.filter(([, v]) => v !== null && v !== '');
   return (
     <Card title={title}>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         {shown.map(([label, value]) => (
           <div key={label} className="contents">
-            <dt className="text-slate-500">{label}</dt>
-            <dd className="tabular-nums">{value}</dd>
+            <dt className="text-muted">{label}</dt>
+            <dd className="font-medium tabular-nums">{value}</dd>
           </div>
         ))}
       </dl>
@@ -403,10 +408,10 @@ function PriceHistory({ detail }: { detail: ListingDetail }) {
               : i18n.moneyFull(pounds(p.minPrice));
           return (
             <li key={i} className="flex justify-between gap-2">
-              <span className="text-slate-500">{i18n.date(p.observedAt)}</span>
-              <span className="tabular-nums">
-                {change < 0 && <span className="text-emerald-600">↓ </span>}
-                {change > 0 && <span className="text-red-600">↑ </span>}
+              <span className="text-muted">{i18n.date(p.observedAt)}</span>
+              <span className="font-bold tabular-nums">
+                {change < 0 && <span className="font-bold text-lime-ink">↓ </span>}
+                {change > 0 && <span className="font-bold text-danger-ink">↑ </span>}
                 {shown}
               </span>
             </li>
@@ -438,24 +443,20 @@ function Notes({ detail }: { detail: ListingDetail }) {
   });
   return (
     <Card title={t('listing.notes')}>
-      <p className="mb-3 text-xs text-slate-500">{t('listing.notesHint')}</p>
+      <p className="mb-3 text-xs text-muted">{t('listing.notesHint')}</p>
       <ul className="mb-3 space-y-2">
         {detail.notes.map((note) => (
-          <li key={note.id} className="rounded-md bg-amber-50 p-2 text-sm dark:bg-amber-950/40">
+          <li key={note.id} className="rounded-control bg-warn p-2 text-sm text-ink">
             <p dir="auto" className="whitespace-pre-wrap">
               {note.body}
             </p>
-            <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+            <div className="mt-1 flex items-center justify-between gap-2 text-xs text-warn-ink">
               <span>
                 {note.authorName ?? '—'} · {i18n.date(note.createdAt)}
               </span>
-              <button
-                type="button"
-                className="hover:text-red-600"
-                onClick={() => remove.mutate(note.id)}
-              >
+              <Button variant="dangerQuiet" size="sm" onClick={() => remove.mutate(note.id)}>
                 {t('common.delete')}
-              </button>
+              </Button>
             </div>
           </li>
         ))}
@@ -474,7 +475,7 @@ function Notes({ detail }: { detail: ListingDetail }) {
           placeholder={t('listing.notePlaceholder')}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+          className="w-full rounded-control border border-line bg-paper px-3 py-2 text-sm hover:border-muted/50 focus:border-graphite"
         />
         <Button type="submit" variant="secondary" disabled={add.isPending || !body.trim()}>
           {t('listing.addNote')}
