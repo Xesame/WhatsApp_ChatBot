@@ -137,9 +137,9 @@ function EntityCard({
     <Card
       title={
         <span>
-          {entity.nameEn}{' '}
-          <span dir="rtl" className="font-normal text-muted">
-            · {entity.nameAr}
+          {entity.nameEn}
+          <span dir="rtl" className="ms-3 font-normal text-muted">
+            {entity.nameAr}
           </span>
         </span>
       }
@@ -233,7 +233,7 @@ function EntityCard({
                   ?.filter((o) => o.id !== entity.id)
                   .map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.nameEn} · {o.nameAr}
+                      {o.nameEn} ({o.nameAr})
                     </option>
                   ))}
               </Select>
