@@ -4,10 +4,12 @@ import { seed } from '@reb/db/seed-runner';
 import { DEFAULT_TOLERANCES } from '@reb/dedup';
 import type { PaymentPlan, Unit } from '@reb/schema';
 import { asc, eq } from 'drizzle-orm';
+import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   applyExtraction,
   currentPlans,
+  exportUnits,
   PLANS_CHECK_REASON,
   retract,
   type ApplyInput,
@@ -293,5 +295,22 @@ describe.skipIf(!testDatabaseUrl)('payment plans (real Postgres)', () => {
       unit({ paymentPlans: [plan({ downPaymentPercent: 30 })] }),
     ]);
     expect(await plansOf(unitId)).toEqual([30]);
+  });
+
+  it('exports a Payment plans sheet pointing at the unit row', async () => {
+    await apply(await post('2026-11-01T10:00:00Z'), 'listing', [
+      unit({ paymentPlans: [plan(), plan({ position: 1, downPaymentPercent: 20 })] }),
+    ]);
+    const { file } = await exportUnits(testDb.database, { usdToEgp: undefined });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file as unknown as ArrayBuffer);
+    expect(workbook.worksheets.map((s) => s.name)).toEqual([
+      'Primary Units Template',
+      'Payment plans',
+    ]);
+    const sheet = workbook.worksheets[1];
+    expect(sheet?.rowCount).toBe(3);
+    expect(sheet?.getRow(2).getCell(1).value).toBe(2);
+    expect(sheet?.getRow(3).getCell(6).value).toBe(20);
   });
 });

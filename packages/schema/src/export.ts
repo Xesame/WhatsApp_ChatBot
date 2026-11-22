@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { TEMPLATE_HEADERS, toTemplateRow, type ExportContext } from './columns.ts';
-import type { Unit } from './unit.ts';
+import type { PaymentPlan, Unit } from './unit.ts';
 
 /**
  * Writes units as an Excel workbook in the exact Primary Units template
@@ -9,15 +9,69 @@ import type { Unit } from './unit.ts';
 /** Sheet name used by the original template file. */
 export const TEMPLATE_SHEET_NAME = 'Primary Units Template';
 
+/** Name of the optional second sheet (only present when a unit has plans). */
+export const PLANS_SHEET_NAME = 'Payment plans';
+
+export const PLANS_SHEET_HEADERS = [
+  'Row',
+  'Unit code',
+  'Project',
+  'Unit type',
+  'Plan',
+  'Down payment %',
+  'Down payment amount',
+  'Installment',
+  'How often',
+  'Years',
+  'Plan price',
+  'Cash',
+  'Notes',
+  'Currency',
+] as const;
+
+/** Minor units → whole pounds/dollars, like the prices on the first sheet. */
+const whole = (minor: number | null) => (minor === null ? null : Math.round(minor / 100));
+
+/**
+ * `plans` is keyed by the unit's index in `units`. The first sheet is never
+ * changed; the "Payment plans" sheet is added only when some unit has plans.
+ * Its "Row" column is the unit's row number on the first sheet.
+ */
 export async function writePrimaryUnitsWorkbook(
   units: Unit[],
   ctx: ExportContext,
+  plans?: Map<number, PaymentPlan[]>,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(TEMPLATE_SHEET_NAME);
   sheet.addRow(TEMPLATE_HEADERS);
   sheet.getRow(1).font = { bold: true };
   for (const unit of units) sheet.addRow(toTemplateRow(unit, ctx));
+  if (plans && [...plans.values()].some((list) => list.length > 0)) {
+    const planSheet = workbook.addWorksheet(PLANS_SHEET_NAME);
+    planSheet.addRow([...PLANS_SHEET_HEADERS]);
+    planSheet.getRow(1).font = { bold: true };
+    units.forEach((unit, index) => {
+      for (const plan of plans.get(index) ?? []) {
+        planSheet.addRow([
+          index + 2,
+          unit.unitCode,
+          unit.projectId === null ? null : (ctx.projectName(unit.projectId) ?? null),
+          unit.unitType,
+          plan.label,
+          plan.downPaymentPercent,
+          whole(plan.downPaymentAmount),
+          whole(plan.installmentAmount),
+          plan.installmentFrequency,
+          plan.installmentYears,
+          whole(plan.planPrice),
+          plan.cash ? 'Yes' : null,
+          plan.notes,
+          plan.currency,
+        ]);
+      }
+    });
+  }
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
