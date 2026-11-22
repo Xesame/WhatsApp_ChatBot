@@ -1,10 +1,5 @@
 @import 'tailwindcss';
 
-/* Dark mode is dropped for now (design spec, non-goals). Pages not yet
-   restyled still carry `dark:` classes; tying them to a `.dark` class that is
-   never set keeps them from turning on when the computer is in dark mode. */
-@custom-variant dark (&:where(.dark, .dark *));
-
 /*
  * The look of the whole web app, defined once (design spec:
  * docs/superpowers/specs/2026-11-22-console-redesign-design.md).
@@ -18,9 +13,8 @@
  * `border-line`, `bg-lime`, `text-warn-ink`, `rounded-card`, and so on.
  */
 @theme {
-  /* Tailwind's default palette (slate, gray, ...) still exists while pages
-     are restyled one by one; once no page uses it, it can be switched off
-     here with `--color-*: initial;`. */
+  /* Tailwind's own palette is switched off: only the colours below exist. */
+  --color-*: initial;
   --color-bone: #f4f5f0; /* page background (60%) */
   --color-paper: #ffffff; /* panels and cards */
   --color-graphite: #23271f; /* sidebar, top bar, banners, headings (30%) */
@@ -114,4 +108,17 @@
 @utility figure {
   font-variant-numeric: tabular-nums;
   font-weight: 800;
+}
+
+/* The dropdown arrow, drawn by us so it sits on the right in English and on
+   the left in Arabic, with room reserved by `pe-8` on the select itself. */
+.select-chevron {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23686e60' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 1rem;
+  background-position: right 0.6rem center;
+}
+[dir='rtl'] .select-chevron {
+  background-position: left 0.6rem center;
 }

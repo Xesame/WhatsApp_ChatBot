@@ -71,7 +71,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
 }
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={cx(field, 'pe-8', className)} />;
+  return <select {...props} className={cx(field, 'select-chevron pe-8', className)} />;
 }
 
 /** A form field with its label above (sentence case, medium weight) and an optional hint below. */
