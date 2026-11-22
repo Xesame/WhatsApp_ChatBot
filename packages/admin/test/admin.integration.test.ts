@@ -477,6 +477,25 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
     ]);
   });
 
+  it('accuracy cases expect no plans once Review cleared them', async () => {
+    const { unit, message } = await listing();
+    const db = testDb.database.db;
+    await db.insert(unitPaymentPlans).values({
+      unitId: unit.id,
+      position: 0,
+      downPaymentPercent: 10,
+      installmentFrequency: 'quarterly',
+      installmentYears: 8,
+      currency: 'EGP',
+      source: 'message',
+      sourceMessageId: message.id,
+      observedAt: message.sentAt,
+    });
+    await reviewUnit(testDb.database, unit.id, { action: 'approve', paymentPlans: [] }, null);
+    const found = (await reviewCases(db)).find((c) => c.id === `review-message-${message.id}`);
+    expect(found?.expected.units[0]?.paymentPlans ?? []).toEqual([]);
+  });
+
   it('unit view shows the price history in order', async () => {
     const { unit } = await listing();
     const view = await unitView(testDb.database.db, unit.id);
