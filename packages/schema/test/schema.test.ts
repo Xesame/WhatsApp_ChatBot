@@ -17,6 +17,7 @@ import {
   TEMPLATE_HEADERS,
   toTemplateRow,
   type ExportContext,
+  type PaymentPlan,
   type Unit,
 } from '../src/index.ts';
 
@@ -190,6 +191,67 @@ describe('Excel export', () => {
     expect(sheet?.rowCount).toBe(3);
     expect(sheet?.columnCount).toBe(26);
     expect(sheet?.getRow(3).getCell(5).value).toBe('Villa');
+  });
+});
+
+describe('Payment plans sheet', () => {
+  const plan = (position: number, over: Partial<PaymentPlan> = {}): PaymentPlan => ({
+    position,
+    label: `Plan ${String(position + 1)}`,
+    downPaymentPercent: 10,
+    downPaymentAmount: 500_000_00,
+    installmentAmount: 100_000_00,
+    installmentFrequency: 'monthly',
+    installmentsCount: null,
+    installmentYears: 8,
+    planPrice: null,
+    cash: false,
+    notes: null,
+    currency: 'EGP',
+    ...over,
+  });
+  const load = async (file: Buffer) => {
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file as unknown as ArrayBuffer);
+    return workbook;
+  };
+
+  it('adds a Payment plans sheet', async () => {
+    const units = [sampleUnit(), sampleUnit({ unitType: 'Villa' })];
+    const plans = new Map([[1, [plan(0), plan(1, { cash: true, planPrice: 9_000_000_00 })]]]);
+    const workbook = await load(await writePrimaryUnitsWorkbook(units, ctx, plans));
+    expect(workbook.worksheets.map((s) => s.name)).toEqual([TEMPLATE_SHEET_NAME, 'Payment plans']);
+    const sheet = workbook.worksheets[1];
+    expect((sheet?.getRow(1).values as unknown[]).slice(1)).toEqual([
+      'Row',
+      'Unit code',
+      'Project',
+      'Unit type',
+      'Plan',
+      'Down payment %',
+      'Down payment amount',
+      'Installment',
+      'How often',
+      'Years',
+      'Plan price',
+      'Cash',
+      'Notes',
+      'Currency',
+    ]);
+    expect(sheet?.rowCount).toBe(3);
+    expect(sheet?.getRow(2).getCell(1).value).toBe(3);
+    expect(sheet?.getRow(2).getCell(4).value).toBe('Villa');
+    expect(sheet?.getRow(2).getCell(7).value).toBe(500_000);
+    expect(sheet?.getRow(3).getCell(11).value).toBe(9_000_000);
+    expect(sheet?.getRow(3).getCell(12).value).toBe('Yes');
+  });
+
+  it('adds no second sheet without plans', async () => {
+    const a = await load(await writePrimaryUnitsWorkbook([sampleUnit()], ctx));
+    const b = await load(await writePrimaryUnitsWorkbook([sampleUnit()], ctx, new Map([[0, []]])));
+    expect(a.worksheets).toHaveLength(1);
+    expect(b.worksheets).toHaveLength(1);
   });
 });
 

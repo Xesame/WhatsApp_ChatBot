@@ -1,8 +1,22 @@
 import { cities, developers, messages, projects, units, unitSources, type Database } from '@reb/db';
 import { enqueueInTransaction, type PgBoss } from '@reb/queue';
-import { type ExportContext, type Unit } from '@reb/schema';
+import { type ExportContext, type PaymentPlan, type Unit } from '@reb/schema';
 import { writePrimaryUnitsCsv, writePrimaryUnitsWorkbook } from '@reb/schema/export';
+import { currentPlans } from './plans.ts';
 import { and, asc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
+
+/** Each unit's current plans, keyed by its index in the list (for the plans sheet). */
+async function plansByIndex(
+  database: Database,
+  unitIds: number[],
+): Promise<Map<number, PaymentPlan[]>> {
+  const map = new Map<number, PaymentPlan[]>();
+  for (const [index, unitId] of unitIds.entries()) {
+    const plans = await currentPlans(database.db, unitId);
+    if (plans.length) map.set(index, plans);
+  }
+  return map;
+}
 
 export interface ReprocessFilter {
   from?: Date;
@@ -99,9 +113,13 @@ export async function exportUnits(
     rows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
   }
   const list = rows as unknown as Unit[];
-  const file =
-    options.format === 'csv'
-      ? writePrimaryUnitsCsv(list, ctx)
-      : await writePrimaryUnitsWorkbook(list, ctx);
+  if (options.format === 'csv') {
+    return { file: writePrimaryUnitsCsv(list, ctx), count: rows.length };
+  }
+  const plans = await plansByIndex(
+    database,
+    rows.map((row) => row.id),
+  );
+  const file = await writePrimaryUnitsWorkbook(list, ctx, plans);
   return { file, count: rows.length };
 }
