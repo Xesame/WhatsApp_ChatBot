@@ -136,9 +136,9 @@ function EntityCard({
   return (
     <Card
       title={
-        <span>
-          {entity.nameEn}
-          <span dir="rtl" className="ms-3 font-normal text-muted">
+        <span className="flex flex-wrap items-baseline gap-x-3">
+          <span>{entity.nameEn}</span>
+          <span dir="rtl" className="font-normal text-muted">
             {entity.nameAr}
           </span>
         </span>
