@@ -44,12 +44,12 @@ function drawCard(canvas: HTMLCanvasElement, title: string, lines: string[], rtl
   c.direction = rtl ? 'rtl' : 'ltr';
   c.textAlign = rtl ? 'right' : 'left';
   const x = rtl ? W - 90 : 90;
-  const font = (size: number, weight = 600) =>
+  const font = (size: number, weight = 700) =>
     `${weight} ${size}px "Manrope Variable", "Noto Kufi Arabic", system-ui, "Segoe UI", Tahoma, sans-serif`;
 
   // title, wrapped
   c.fillStyle = '#f4f5f0'; // bone
-  c.font = font(76, 800);
+  c.font = font(76, 700);
   let y = 210;
   const words = title.split(' ');
   let line = '';
@@ -69,7 +69,7 @@ function drawCard(canvas: HTMLCanvasElement, title: string, lines: string[], rtl
 
   for (const text of lines) {
     c.fillStyle = text.startsWith('💰') ? '#b8e04a' : '#f4f5f0';
-    c.font = font(text.startsWith('💰') ? 60 : 48, text.startsWith('💰') ? 800 : 500);
+    c.font = font(text.startsWith('💰') ? 60 : 48, text.startsWith('💰') ? 700 : 400);
     c.fillText(text, x, y, W - 180);
     y += text.startsWith('💰') ? 104 : 86;
   }
@@ -84,8 +84,17 @@ export function ShareCard({ detail, onClose }: { detail: ListingDetail; onClose:
   const [copied, setCopied] = useState(false);
   // `text` changes whenever the title or lines do
   useEffect(() => {
-    if (canvas.current)
-      drawCard(canvas.current, title, text.split('\n').slice(1), i18n.dir === 'rtl');
+    const draw = () => {
+      if (canvas.current)
+        drawCard(canvas.current, title, text.split('\n').slice(1), i18n.dir === 'rtl');
+    };
+    draw();
+    // Draw again once the web fonts have loaded, or the first draw uses a fallback.
+    let live = true;
+    void document.fonts.ready.then(() => live && draw());
+    return () => {
+      live = false;
+    };
   }, [title, text, i18n.dir]);
 
   const copy = async () => {
