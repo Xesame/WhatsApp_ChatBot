@@ -18,6 +18,7 @@ import {
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
 import { currentPlans, matchEntities, retract } from '@reb/pipeline';
+import { searchListings } from '@reb/search';
 import { asc, eq, ne } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -271,6 +272,134 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
         null,
       );
       expect(await storedPlans(unit.id)).toHaveLength(3);
+    });
+
+    const edits = (unitId: number) =>
+      testDb.database.db
+        .select()
+        .from(reviewCorrections)
+        .where(eq(reviewCorrections.unitId, unitId))
+        .orderBy(asc(reviewCorrections.id));
+
+    it("moves the unit's own columns to the first plan, like a price correction", async () => {
+      const { unit, message } = await listing({
+        downPayment: 10,
+        installmentYears: 8,
+        cashDiscount: 15,
+        cashDiscountType: 'Percentage',
+      });
+      await messagePlan(unit.id, message.id, message.sentAt);
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        {
+          action: 'save',
+          paymentPlans: [
+            plan({
+              downPaymentPercent: 20,
+              installmentFrequency: 'quarterly',
+              installmentYears: 5,
+            }),
+            plan({ position: 1, downPaymentPercent: 0 }),
+          ],
+        },
+        null,
+      );
+      const db = testDb.database.db;
+      const [saved] = await db.select().from(units).where(eq(units.id, unit.id));
+      expect(saved).toMatchObject({
+        downPayment: 20,
+        installmentYears: 5,
+        installmentFrequency: 'quarterly',
+        // Plans do not carry a cash discount, so a plan edit leaves it as it was.
+        cashDiscount: 15,
+        cashDiscountType: 'Percentage',
+      });
+      const fixes = (await edits(unit.id)).filter((c) => c.field !== 'paymentPlans');
+      expect(fixes.map((c) => [c.field, c.before, c.after])).toEqual([
+        ['downPayment', 10, 20],
+        ['installmentYears', 8, 5],
+        ['installmentFrequency', null, 'quarterly'],
+      ]);
+      // The latest price-history row follows (a misread, not a market change).
+      const [price] = await db.select().from(unitPrices).where(eq(unitPrices.unitId, unit.id));
+      expect(price).toMatchObject({ downPayment: 20, installmentYears: 5 });
+    });
+
+    it('works a percent out from a down payment amount and the price', async () => {
+      const { unit } = await listing({ minPrice: 980_000_000, maxPrice: 980_000_000 });
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        {
+          action: 'save',
+          paymentPlans: [plan({ downPaymentPercent: null, downPaymentAmount: 98_000_000 })],
+        },
+        null,
+      );
+      const [saved] = await testDb.database.db.select().from(units).where(eq(units.id, unit.id));
+      expect(saved).toMatchObject({ downPayment: 10, downPaymentAmount: 98_000_000 });
+    });
+
+    it('clears the columns when the plans are cleared, so search stops matching them', async () => {
+      const { unit, message } = await listing({
+        downPayment: 10,
+        installmentYears: 8,
+        cashDiscount: 15,
+        cashDiscountType: 'Percentage',
+        cashDiscountCurrency: null,
+      });
+      await messagePlan(unit.id, message.id, message.sentAt);
+      const db = testDb.database.db;
+      const found = async () =>
+        (await searchListings(db, { downPaymentMax: 10 }, { usdEgpRate: undefined })).items.map(
+          (i) => i.id,
+        );
+      expect(await found()).toEqual([unit.id]);
+
+      await reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: [] }, null);
+      const [saved] = await db.select().from(units).where(eq(units.id, unit.id));
+      expect(saved).toMatchObject({
+        downPayment: null,
+        downPaymentAmount: null,
+        installmentYears: null,
+        installmentsCount: null,
+        installmentFrequency: null,
+        cashDiscount: null,
+        cashDiscountType: null,
+        cashDiscountCurrency: null,
+      });
+      expect(await found()).toEqual([]);
+    });
+
+    it("keeps the reviewer's own value for a column edited in the same save", async () => {
+      const { unit, message } = await listing({ downPayment: 10 });
+      await messagePlan(unit.id, message.id, message.sentAt);
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        {
+          action: 'save',
+          changes: { downPayment: 25 },
+          paymentPlans: [plan({ downPaymentPercent: 20 })],
+        },
+        null,
+      );
+      const [saved] = await testDb.database.db.select().from(units).where(eq(units.id, unit.id));
+      expect(saved?.downPayment).toBe(25);
+    });
+
+    it('does not save a plan row left empty', async () => {
+      const { unit } = await listing();
+      const blank = plan({ label: null, downPaymentPercent: null, installmentYears: null });
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        { action: 'save', paymentPlans: [blank, plan({ position: 1 }), { ...blank, label: '' }] },
+        null,
+      );
+      const rows = await storedPlans(unit.id);
+      expect(rows.map((r) => [r.position, r.label])).toEqual([[0, '10% down']]);
     });
 
     it('refuses an impossible plan', async () => {

@@ -15,9 +15,9 @@ import {
   type Db,
 } from '@reb/db';
 import { PRICE_FIELDS, snapshotOf } from '@reb/dedup';
-import { normalizeName, type Suggestion, type WrittenNames } from '@reb/normalize';
+import { columnsFromPlan, normalizeName, type Suggestion, type WrittenNames } from '@reb/normalize';
 import { currentPlans, lookupFor } from '@reb/pipeline';
-import { editablePlansSchema, unitSchema, type PaymentPlan } from '@reb/schema';
+import { editablePlansSchema, isEmptyPlan, unitSchema, type PaymentPlan } from '@reb/schema';
 import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { audit } from './audit.ts';
@@ -236,7 +236,9 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
  * - `reject`: not a real listing → `withdrawn`, out of exports and search.
  *
  * Price corrections also fix the latest price-history row: a misread price
- * is an extraction error, not a market price change.
+ * is an extraction error, not a market price change. A plans edit counts as
+ * one too, since the unit's down payment and installment columns follow the
+ * first plan.
  */
 export async function reviewUnit(
   database: Database,
@@ -255,13 +257,15 @@ export async function reviewUnit(
   reviewerId: string | null,
   ipAddress?: string,
 ): Promise<UnitRow> {
-  const changes = editableUnitSchema.parse(input.changes ?? {});
+  const asked = editableUnitSchema.parse(input.changes ?? {});
   // Order is the order sent; positions are renumbered so they can't clash.
+  // A row left completely empty ("+ Add plan" with nothing typed) is not a plan.
   const newPlans =
     input.paymentPlans === undefined
       ? undefined
       : editablePlansSchema
           .parse(input.paymentPlans)
+          .filter((plan) => !isEmptyPlan(plan))
           .map((plan, position): PaymentPlan => ({ ...plan, position }));
   return database.transaction(async (tx) => {
     const [unit] = await tx.select().from(units).where(eq(units.id, unitId)).for('update');
@@ -272,6 +276,28 @@ export async function reviewUnit(
       .where(and(eq(unitSources.unitId, unitId), eq(unitSources.role, 'listing')))
       .orderBy(asc(unitSources.createdAt))
       .limit(1);
+
+    // Plans: compared with the current ones, so resending the same list is a no-op.
+    const before = newPlans ? await currentPlans(tx, unitId) : [];
+    const plansEdited = newPlans !== undefined && !same(before, newPlans);
+    // The unit's own payment columns keep coming from the first plan listed
+    // (spec, "What code stores"), so a plans edit moves them too, as ordinary
+    // corrections. Plans carry no cash discount: it is left alone, except that
+    // clearing every plan clears it with the rest. A column the reviewer edited
+    // in the same save keeps the reviewer's value.
+    const fromPlans: UnitChanges = {};
+    if (plansEdited) {
+      const minPrice = asked.minPrice !== undefined ? asked.minPrice : unit.minPrice;
+      Object.assign(fromPlans, columnsFromPlan(newPlans[0], minPrice));
+      if (newPlans.length === 0) {
+        Object.assign(fromPlans, {
+          cashDiscount: null,
+          cashDiscountCurrency: null,
+          cashDiscountType: null,
+        });
+      }
+    }
+    const changes: UnitChanges = { ...fromPlans, ...asked };
 
     const changed = (Object.keys(changes) as (keyof UnitChanges)[]).filter(
       (f) => !same(unit[f], changes[f]),
@@ -289,8 +315,7 @@ export async function reviewUnit(
     // 'review', stamped now). Message rows are kept, so retracting a message
     // can still bring back the plans it replaced.
     if (newPlans) {
-      const before = await currentPlans(tx, unitId);
-      if (!same(before, newPlans)) {
+      if (plansEdited) {
         corrections.push({
           unitId,
           messageId: source?.messageId ?? null,
