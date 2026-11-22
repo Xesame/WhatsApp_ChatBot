@@ -1,0 +1,54 @@
+{
+  "source": "example",
+  "kind": "text",
+  "sentAt": "2026-10-26T09:00:00Z",
+  "intent": "listing",
+  "units": [
+    {
+      "category": "Residential",
+      "project": null,
+      "unitType": "Apartment",
+      "minArea": 95,
+      "maxArea": 95,
+      "minPrice": 3952000,
+      "maxPrice": 3952000,
+      "priceCurrency": "EGP",
+      "deliveryYear": 2030,
+      "readyToMove": false,
+      "downPayment": 0,
+      "bedrooms": 2,
+      "paymentPlans": [
+        {
+          "downPaymentPercent": 0,
+          "installmentAmount": 152000,
+          "installmentFrequency": "quarterly",
+          "installmentYears": null
+        },
+        {
+          "downPaymentPercent": 10,
+          "installmentAmount": 104612,
+          "installmentFrequency": "quarterly",
+          "installmentYears": null
+        },
+        {
+          "downPaymentPercent": 15,
+          "installmentAmount": 88400,
+          "installmentFrequency": "quarterly",
+          "installmentYears": null
+        },
+        {
+          "downPaymentPercent": 20,
+          "installmentAmount": 75276,
+          "installmentFrequency": "quarterly",
+          "installmentYears": null
+        },
+        {
+          "downPaymentPercent": 30,
+          "installmentAmount": 55328,
+          "installmentFrequency": "quarterly",
+          "installmentYears": null
+        }
+      ]
+    }
+  ]
+}

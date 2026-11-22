@@ -49,7 +49,12 @@ const DURATION_TOKEN =
  */
 function firstAmount(text: string | null): number | null {
   if (!text) return null;
-  const ascii = text.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  // Arabic digits and separators become ASCII first ("١٢٬٠٠٠" → "12,000"), so
+  // the length-or-count check below sees one number, not "12" and "000".
+  const ascii = text
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/٬/g, ',')
+    .replace(/٫/g, '.');
   const cleaned = ascii.replace(PERCENT_TOKEN, ' ').replace(DURATION_TOKEN, ' ');
   const namesCurrency = EGP_WORDS.test(cleaned) || detectCurrency(cleaned) === 'USD';
   const amount = parseAmounts(cleaned).find((a) => a.value >= 1000 || namesCurrency);

@@ -21,7 +21,15 @@
       "maintenanceCurrency": "%",
       "downPayment": 5,
       "installmentsCount": 36,
-      "bedrooms": 3
+      "bedrooms": 3,
+      "paymentPlans": [
+        {
+          "downPaymentPercent": 5,
+          "installmentAmount": null,
+          "installmentFrequency": "quarterly",
+          "installmentYears": 9
+        }
+      ]
     },
     {
       "category": "Residential",
@@ -39,7 +47,15 @@
       "maintenance": 8,
       "maintenanceCurrency": "%",
       "downPayment": 5,
-      "installmentsCount": 36
+      "installmentsCount": 36,
+      "paymentPlans": [
+        {
+          "downPaymentPercent": 5,
+          "installmentAmount": null,
+          "installmentFrequency": "quarterly",
+          "installmentYears": 9
+        }
+      ]
     },
     {
       "category": "Residential",
@@ -57,7 +73,15 @@
       "maintenance": 8,
       "maintenanceCurrency": "%",
       "downPayment": 5,
-      "installmentsCount": 36
+      "installmentsCount": 36,
+      "paymentPlans": [
+        {
+          "downPaymentPercent": 5,
+          "installmentAmount": null,
+          "installmentFrequency": "quarterly",
+          "installmentYears": 9
+        }
+      ]
     }
   ]
 }

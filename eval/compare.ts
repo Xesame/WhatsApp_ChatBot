@@ -4,10 +4,19 @@
  *
  * Values are compared in their export form (names, whole EGP), so
  * expected.json is easy to write and read by hand.
+ *
+ * Payment plans are scored on their own (see PLAN_FIELDS): they are new, so
+ * their accuracy is reported but does not block a prompt or model change.
  */
 
 export type FieldValue = string | number | boolean | null;
-export type ComparableUnit = Record<string, FieldValue>;
+/** One payment plan in export form (whole currency units). */
+export type ComparablePlan = Record<string, FieldValue>;
+/** A unit in export form; `paymentPlans` lists its plans in the order written. */
+export interface ComparableUnit {
+  [field: string]: FieldValue | ComparablePlan[] | undefined;
+  paymentPlans?: ComparablePlan[];
+}
 
 /** Fields whose accuracy may not drop by more than 2 points without approval. */
 export const KEY_FIELDS = [
@@ -50,6 +59,19 @@ export const COMPARED_FIELDS = [
   'bathrooms',
 ];
 
+/**
+ * Plan details compared for each plan, paired by position (first plan with
+ * first plan). Kept out of KEY_FIELDS: plans don't count toward the
+ * "may not drop by more than 2 points" rule until there are at least 20 real
+ * reviewed cases with plans (spec, Part 1 "Review").
+ */
+export const PLAN_FIELDS = [
+  'downPaymentPercent',
+  'installmentAmount',
+  'installmentFrequency',
+  'installmentYears',
+];
+
 /** Equal, allowing tiny rounding differences in numbers. */
 export function sameValue(a: FieldValue | undefined, b: FieldValue | undefined): boolean {
   const x = a ?? null;
@@ -61,8 +83,14 @@ export function sameValue(a: FieldValue | undefined, b: FieldValue | undefined):
   return x === y;
 }
 
+/** A unit's value for a plain field (never its plans list). */
+function valueOf(unit: ComparableUnit, field: string): FieldValue {
+  const value = unit[field];
+  return Array.isArray(value) ? null : (value ?? null);
+}
+
 function similarity(expected: ComparableUnit, actual: ComparableUnit): number {
-  return COMPARED_FIELDS.filter((f) => sameValue(actual[f], expected[f])).length;
+  return COMPARED_FIELDS.filter((f) => sameValue(valueOf(actual, f), valueOf(expected, f))).length;
 }
 
 /**
@@ -102,6 +130,10 @@ export interface FieldTally {
 
 export interface CaseScore {
   fields: Record<string, FieldTally>;
+  /** Plan details (PLAN_FIELDS), over every expected plan. */
+  plans: Record<string, FieldTally>;
+  /** Expected units whose number of plans was right. */
+  planCount: FieldTally;
   unitCountCorrect: boolean;
   intentCorrect: boolean;
   /** "field: expected X, got Y" lines, for the report. */
@@ -119,38 +151,69 @@ export function scoreCase(
   actual: { intent: string; units: ComparableUnit[] },
 ): CaseScore {
   const fields: Record<string, FieldTally> = {};
+  const plans: Record<string, FieldTally> = {};
+  const planCount: FieldTally = { correct: 0, total: 0 };
   const mistakes: string[] = [];
   const withDefaults = expected.units.map((u) => ({ ...EXPECTED_DEFAULTS, ...u }));
   for (const [e, a] of pairUnits(withDefaults, actual.units)) {
     for (const field of COMPARED_FIELDS) {
       const tally = (fields[field] ??= { correct: 0, total: 0 });
       tally.total += 1;
-      if (a && sameValue(a[field], e[field])) tally.correct += 1;
+      const want = valueOf(e, field);
+      if (a && sameValue(valueOf(a, field), want)) tally.correct += 1;
       else {
         mistakes.push(
           a
-            ? `${field}: expected ${JSON.stringify(e[field] ?? null)}, got ${JSON.stringify(a[field] ?? null)}`
-            : `${field}: unit missing (expected ${JSON.stringify(e[field] ?? null)})`,
+            ? `${field}: expected ${JSON.stringify(want)}, got ${JSON.stringify(valueOf(a, field))}`
+            : `${field}: unit missing (expected ${JSON.stringify(want)})`,
         );
       }
     }
+
+    // Plans: left out of expected.json means "no plans".
+    const wanted = e.paymentPlans ?? [];
+    const got = a?.paymentPlans ?? [];
+    const unitName = typeof e.unitType === 'string' ? e.unitType : 'unit';
+    planCount.total += 1;
+    if (a && wanted.length === got.length) planCount.correct += 1;
+    wanted.forEach((plan, i) => {
+      const produced = a ? got[i] : undefined;
+      if (a && !produced) mistakes.push(`${unitName} plan ${i + 1}: missing`);
+      for (const field of PLAN_FIELDS) {
+        const tally = (plans[field] ??= { correct: 0, total: 0 });
+        tally.total += 1;
+        if (produced && sameValue(produced[field], plan[field])) tally.correct += 1;
+        else if (produced) {
+          mistakes.push(
+            `${unitName} plan ${i + 1} ${field}: expected ${JSON.stringify(plan[field] ?? null)}, got ${JSON.stringify(produced[field] ?? null)}`,
+          );
+        }
+      }
+    });
+    if (a && got.length > wanted.length)
+      mistakes.push(`${unitName}: ${got.length - wanted.length} extra plan(s)`);
   }
   if (actual.units.length > expected.units.length) {
     mistakes.push(`${actual.units.length - expected.units.length} extra unit(s) produced`);
   }
   return {
     fields,
+    plans,
+    planCount,
     unitCountCorrect: expected.units.length === actual.units.length,
     intentCorrect: expected.intent === actual.intent,
     mistakes,
   };
 }
 
-/** Adds case scores together. */
-export function sumScores(scores: CaseScore[]): Record<string, FieldTally> {
+/** Adds case scores together: the unit fields, or the plan details. */
+export function sumScores(
+  scores: CaseScore[],
+  part: 'fields' | 'plans' = 'fields',
+): Record<string, FieldTally> {
   const total: Record<string, FieldTally> = {};
   for (const score of scores) {
-    for (const [field, tally] of Object.entries(score.fields)) {
+    for (const [field, tally] of Object.entries(score[part])) {
       const t = (total[field] ??= { correct: 0, total: 0 });
       t.correct += tally.correct;
       t.total += tally.total;

@@ -168,6 +168,8 @@ describe('normalizePlans', () => {
       ['15,000 monthly', 1_500_000],
       ['100,000 yearly', 10_000_000],
       ['15,000 قسط شهري', 1_500_000],
+      ['قسط ١٢٬٠٠٠ شهر', 1_200_000],
+      ['قسط ١٢٬٥٠٠٫٥ شهر', 1_250_050],
     ];
     for (const [phrase, minor] of cases) {
       const { plans } = normalizePlans([plan({ installment_amount: phrase })], ctx(phrase));

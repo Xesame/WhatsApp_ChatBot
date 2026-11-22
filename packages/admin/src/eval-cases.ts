@@ -5,13 +5,16 @@ import {
   messages,
   projects,
   reviewCorrections,
+  unitPaymentPlans,
   units,
   unitSources,
   type Db,
 } from '@reb/db';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 
-type Comparable = Record<string, string | number | boolean | null>;
+type Value = string | number | boolean | null;
+type ComparablePlan = Record<string, Value>;
+type Comparable = Record<string, Value | ComparablePlan[]>;
 
 export interface ReviewCase {
   /** Folder name under eval/cases. */
@@ -29,6 +32,66 @@ export interface ReviewCase {
 }
 
 const major = (minor: number | null) => (minor === null ? null : minor / 100);
+
+/**
+ * The plans a case expects for one unit: what this message said, never a
+ * later repost ("newest post wins" makes today's plans possibly another
+ * message's). Plans the owner typed while reviewing this unit win, because
+ * they are his correction of this message; Review records those corrections
+ * against the unit's first message, so they belong to that message's case.
+ */
+async function expectedPlans(db: Db, unitId: number, messageId: number): Promise<ComparablePlan[]> {
+  const [corrected] = await db
+    .select({ id: reviewCorrections.id })
+    .from(reviewCorrections)
+    .where(
+      and(
+        eq(reviewCorrections.unitId, unitId),
+        eq(reviewCorrections.messageId, messageId),
+        eq(reviewCorrections.field, 'paymentPlans'),
+      ),
+    )
+    .limit(1);
+  let rows: (typeof unitPaymentPlans.$inferSelect)[];
+  if (corrected) {
+    // No review rows left means the owner removed every plan: expect none.
+    // The newest set the owner saved (rows of one save share their time).
+    const [newest] = await db
+      .select({ observedAt: unitPaymentPlans.observedAt })
+      .from(unitPaymentPlans)
+      .where(and(eq(unitPaymentPlans.unitId, unitId), eq(unitPaymentPlans.source, 'review')))
+      .orderBy(desc(unitPaymentPlans.observedAt))
+      .limit(1);
+    rows = !newest
+      ? []
+      : await db
+          .select()
+          .from(unitPaymentPlans)
+          .where(
+            and(
+              eq(unitPaymentPlans.unitId, unitId),
+              eq(unitPaymentPlans.source, 'review'),
+              eq(unitPaymentPlans.observedAt, newest.observedAt),
+            ),
+          )
+          .orderBy(asc(unitPaymentPlans.position), asc(unitPaymentPlans.id));
+  } else {
+    rows = await db
+      .select()
+      .from(unitPaymentPlans)
+      .where(
+        and(eq(unitPaymentPlans.unitId, unitId), eq(unitPaymentPlans.sourceMessageId, messageId)),
+      )
+      .orderBy(asc(unitPaymentPlans.position), asc(unitPaymentPlans.id));
+  }
+  // The details eval/compare.ts scores (PLAN_FIELDS), in whole currency units.
+  return rows.map((r) => ({
+    downPaymentPercent: r.downPaymentPercent,
+    installmentAmount: major(r.installmentAmount),
+    installmentFrequency: r.installmentFrequency,
+    installmentYears: r.installmentYears,
+  }));
+}
 
 /**
  * Turns reviewed messages into eval cases (build plan: review corrections
@@ -126,34 +189,37 @@ export async function reviewCases(db: Db): Promise<ReviewCase[]> {
         kind,
         sentAt: message.sentAt.toISOString(),
         intent: kept.length > 0 ? 'listing' : 'not_relevant',
-        units: kept.map((u) => ({
-          category: u.category,
-          developer: name(names.developer, u.developerId),
-          project: name(names.project, u.projectId),
-          city: name(names.city, u.cityId),
-          unitType: u.unitType,
-          unitCode: u.unitCode,
-          floor: u.floor,
-          finishingSpecs: u.finishingSpecs,
-          minArea: u.minArea,
-          maxArea: u.maxArea,
-          landArea: u.landArea,
-          gardenArea: u.gardenArea,
-          outdoorArea: u.outdoorArea,
-          minPrice: major(u.minPrice),
-          maxPrice: major(u.maxPrice),
-          priceCurrency: u.priceCurrency,
-          deliveryYear: u.deliveryYear,
-          readyToMove: u.readyToMove,
-          maintenance: u.maintenance,
-          maintenanceCurrency: u.maintenanceCurrency,
-          cashDiscount: u.cashDiscount,
-          cashDiscountType: u.cashDiscountType,
-          downPayment: u.downPayment,
-          installmentsCount: u.installmentsCount,
-          bedrooms: u.bedrooms,
-          bathrooms: u.bathrooms,
-        })),
+        units: await Promise.all(
+          kept.map(async (u) => ({
+            category: u.category,
+            developer: name(names.developer, u.developerId),
+            project: name(names.project, u.projectId),
+            city: name(names.city, u.cityId),
+            unitType: u.unitType,
+            unitCode: u.unitCode,
+            floor: u.floor,
+            finishingSpecs: u.finishingSpecs,
+            minArea: u.minArea,
+            maxArea: u.maxArea,
+            landArea: u.landArea,
+            gardenArea: u.gardenArea,
+            outdoorArea: u.outdoorArea,
+            minPrice: major(u.minPrice),
+            maxPrice: major(u.maxPrice),
+            priceCurrency: u.priceCurrency,
+            deliveryYear: u.deliveryYear,
+            readyToMove: u.readyToMove,
+            maintenance: u.maintenance,
+            maintenanceCurrency: u.maintenanceCurrency,
+            cashDiscount: u.cashDiscount,
+            cashDiscountType: u.cashDiscountType,
+            downPayment: u.downPayment,
+            installmentsCount: u.installmentsCount,
+            bedrooms: u.bedrooms,
+            bathrooms: u.bathrooms,
+            paymentPlans: await expectedPlans(db, u.id, messageId),
+          })),
+        ),
       },
     });
   }
