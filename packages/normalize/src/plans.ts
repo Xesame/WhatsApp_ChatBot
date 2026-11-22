@@ -97,6 +97,14 @@ export function normalizePlans(
     if (Object.values(raw).every((v) => v === null)) continue;
 
     const down = parsePercentOrAmount(raw.down_payment);
+    // Gemini sometimes writes the percent only in the label ("10% DP") and the
+    // amount in down_payment. Use the label's percent when it names exactly one.
+    if (down.percent === null) {
+      const labelPercents = [...(raw.label ?? '').matchAll(PERCENT_TOKEN)];
+      const [only] = labelPercents.length === 1 ? labelPercents : [];
+      const labelPercent = only ? parsePercentOrAmount(only[0]).percent : null;
+      if (labelPercent !== null) down.percent = labelPercent;
+    }
     // Read the same way with or without a percent, so a length ("على 8 سنين")
     // never becomes the amount.
     const downAmount = firstAmount(raw.down_payment);

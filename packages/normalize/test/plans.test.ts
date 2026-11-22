@@ -118,6 +118,35 @@ describe('normalizePlans', () => {
     expect(plans[0]).toMatchObject({ downPaymentPercent: 10, downPaymentAmount: 50_000_000 });
   });
 
+  it('takes the percent from the label when down_payment holds only the amount', () => {
+    const pairs: [string, string][] = [
+      ['0% DP', '0% DP'],
+      ['10% DP', 'DP: 395,200 L.E'],
+      ['15% DP', 'DP: 592,800 L.E'],
+      ['20% DP', 'DP: 790,400 L.E'],
+      ['30% DP', 'DP: 1,185,600 L.E'],
+    ];
+    const { plans } = normalizePlans(
+      pairs.map(([label, down_payment]) => plan({ label, down_payment })),
+      ctx(VELORIA),
+    );
+    expect(plans.map((p) => [p.downPaymentPercent, p.downPaymentAmount])).toEqual([
+      [0, null],
+      [10, 39_520_000],
+      [15, 59_280_000],
+      [20, 79_040_000],
+      [30, 118_560_000],
+    ]);
+  });
+
+  it('does not guess a percent from a label that names two', () => {
+    const { plans } = normalizePlans(
+      [plan({ label: '10% DP or 20% DP', down_payment: 'DP: 395,200 L.E' })],
+      ctx('10% DP or 20% DP DP: 395,200 L.E'),
+    );
+    expect(plans[0]).toMatchObject({ downPaymentPercent: null, downPaymentAmount: 39_520_000 });
+  });
+
   it('reads Arabic words and Arabic digits', () => {
     const text = 'مقدم ١٠٪ والباقي على ٨ سنين ربع سنوي القسط الربع سنوي ١٠٤٬٦١٢ ج';
     const { plans, reasons } = normalizePlans(
