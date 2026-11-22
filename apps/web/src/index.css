@@ -1,11 +1,117 @@
 @import 'tailwindcss';
 
+/* Dark mode is dropped for now (design spec, non-goals). Pages not yet
+   restyled still carry `dark:` classes; tying them to a `.dark` class that is
+   never set keeps them from turning on when the computer is in dark mode. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * The look of the whole web app, defined once (design spec:
+ * docs/superpowers/specs/2026-11-22-console-redesign-design.md).
+ *
+ * Bone, Graphite & Lime, used 60-30-10: bone is the page, graphite is the
+ * structure (sidebar, top bar, banners, headings), lime only marks what needs
+ * action. Lime is a fill with ink text, or text on graphite; never lime text
+ * on bone or white (it fails contrast).
+ *
+ * Every value below becomes a Tailwind class: `bg-bone`, `text-ink`,
+ * `border-line`, `bg-lime`, `text-warn-ink`, `rounded-card`, and so on.
+ */
 @theme {
-  --font-sans: system-ui, -apple-system, 'Segoe UI', 'Noto Sans Arabic', Roboto, sans-serif;
+  /* Tailwind's default palette (slate, gray, ...) still exists while pages
+     are restyled one by one; once no page uses it, it can be switched off
+     here with `--color-*: initial;`. */
+  --color-bone: #f4f5f0; /* page background (60%) */
+  --color-paper: #ffffff; /* panels and cards */
+  --color-graphite: #23271f; /* sidebar, top bar, banners, headings (30%) */
+  --color-graphite-2: #353a2f; /* active nav row, hover on graphite */
+  --color-ink: #1b1f15; /* body text */
+  --color-muted: #686e60; /* secondary text */
+  --color-line: #e1e4d8; /* borders, table rules */
+  --color-lime: #b8e04a; /* primary buttons, current page, counts that need Hassan (10%) */
+  --color-lime-soft: #eef7d4; /* plan tags, success notes (background) */
+  --color-lime-ink: #4b630a; /* text on lime-soft */
+  --color-warn: #fff4de; /* review reasons, "check" notes (background) */
+  --color-warn-ink: #8a5a00; /* text on warn */
+  --color-danger: #fde7e4; /* errors, "Not a listing" (background) */
+  --color-danger-ink: #a5281b; /* text on danger */
+
+  /* Manrope for English, Noto Kufi Arabic for Arabic (both self-hosted, see
+     main.tsx). Arabic letters fall through to Noto Kufi automatically. */
+  --font-sans: 'Manrope Variable', 'Noto Kufi Arabic', system-ui, sans-serif;
+  --font-arabic: 'Noto Kufi Arabic', 'Manrope Variable', system-ui, sans-serif;
+
+  /* Type scale (px): 12, 14 body, 16, 20, 24, 32, 40. Body 1.5, headings 1.15. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.3;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.15;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 1.15;
+  --text-3xl: 2.5rem;
+  --text-3xl--line-height: 1.15;
+
+  /* Three radii only: 8 (inputs, buttons, tags), 12 (panels, cards),
+     20 (search banner, big KPI tiles). */
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-banner: 20px;
 }
 
 @layer base {
-  body {
-    @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  html {
+    -webkit-text-size-adjust: 100%;
   }
+
+  body {
+    @apply bg-bone font-sans text-sm text-ink antialiased;
+  }
+
+  /* Arabic pages (dir="rtl", set by useDocumentLanguage) prefer Noto Kufi. */
+  [dir='rtl'],
+  [dir='rtl'] body {
+    font-family: var(--font-arabic);
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply text-graphite;
+    line-height: 1.15;
+  }
+
+  /* Visible keyboard focus: a 2 px graphite ring on light backgrounds.
+     Anything on graphite adds the `on-graphite` class for a lime ring. */
+  :focus-visible {
+    outline: 2px solid var(--color-graphite);
+    outline-offset: 2px;
+  }
+  .on-graphite :focus-visible,
+  .on-graphite:focus-visible {
+    outline-color: var(--color-lime);
+  }
+
+  /* Only action feedback moves; people who ask for less motion get none. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Prices and figures: tabular numerals so digits line up, extra bold. */
+@utility figure {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
 }

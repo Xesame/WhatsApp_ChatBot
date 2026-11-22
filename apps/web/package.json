@@ -9,6 +9,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@fontsource-variable/manrope": "5.3.0",
+    "@fontsource/noto-kufi-arabic": "5.3.0",
     "@reb/schema": "workspace:*",
     "@reb/search": "workspace:*",
     "@tanstack/react-query": "5.104.1",

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { api } from '../api.ts';
 import { useDocumentLanguage, useI18n } from '../i18n.tsx';
-import { Button, Card, ErrorNote, Input, Label, Loading } from '../ui.tsx';
+import { AuthLayout, Button, buttonClass, ErrorNote, Input, Label, Loading, Note } from '../ui.tsx';
 
 interface LinkInfo {
   purpose: 'invite' | 'reset';
@@ -38,79 +38,80 @@ export function SetPassword() {
   });
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold">
-          {info.data?.purpose === 'reset' ? t('password.reset') : t('password.title')}
-        </h1>
-        {info.isLoading && <Loading />}
-        {(!token || info.isError) && (
-          <div className="mt-3 space-y-3">
-            <ErrorNote error={t('password.invalid')} />
-            <Link to="/login" className="text-sm underline">
-              {t('password.toLogin')}
-            </Link>
-          </div>
-        )}
-        {info.data && redeem.isSuccess && (
-          <div className="mt-3 space-y-3">
-            <p className="text-sm">{t('password.done')}</p>
-            <Link
-              to={`/login?email=${encodeURIComponent(info.data.email)}`}
-              className="inline-block rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white dark:bg-slate-100 dark:text-slate-900"
-            >
-              {t('password.toLogin')}
-            </Link>
-          </div>
-        )}
-        {info.data && !redeem.isSuccess && (
-          <form
-            className="mt-3 space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const issue =
-                password.length < 10
-                  ? t('password.short')
-                  : password !== repeat
-                    ? t('password.differ')
-                    : null;
-              setProblem(issue);
-              if (!issue) redeem.mutate();
-            }}
+    <AuthLayout name={t('app.name')} tagline={t('login.subtitle')}>
+      <h1 className="mb-6 text-xl font-extrabold">
+        {info.data?.purpose === 'reset' ? t('password.reset') : t('password.title')}
+      </h1>
+      {info.isLoading && <Loading />}
+      {(!token || info.isError) && (
+        <div className="space-y-4">
+          <ErrorNote error={t('password.invalid')} />
+          <Link
+            to="/login"
+            className="text-sm font-bold text-graphite underline underline-offset-4"
           >
-            <p className="text-sm">
-              {t('password.welcome', { name: info.data.name })}
-              {info.data.firmName && <> {t('password.firm', { firm: info.data.firmName })}</>}
-            </p>
-            <p className="text-sm text-slate-500" dir="ltr">
-              {info.data.email}
-            </p>
-            <input type="email" autoComplete="username" value={info.data.email} readOnly hidden />
-            <Label text={t('password.new')}>
-              <Input
-                type="password"
-                autoComplete="new-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </Label>
-            <Label text={t('password.repeat')}>
-              <Input
-                type="password"
-                autoComplete="new-password"
-                required
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value)}
-              />
-            </Label>
-            <ErrorNote error={problem ?? (redeem.error ? t('password.invalid') : null)} />
-            <Button type="submit" className="w-full" disabled={redeem.isPending}>
-              {t('password.submit')}
-            </Button>
-          </form>
-        )}
-      </Card>
-    </div>
+            {t('password.toLogin')}
+          </Link>
+        </div>
+      )}
+      {info.data && redeem.isSuccess && (
+        <div className="space-y-4">
+          <Note tone="success">{t('password.done')}</Note>
+          <Link
+            to={`/login?email=${encodeURIComponent(info.data.email)}`}
+            className={buttonClass('primary', 'lg')}
+          >
+            {t('password.toLogin')}
+          </Link>
+        </div>
+      )}
+      {info.data && !redeem.isSuccess && (
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const issue =
+              password.length < 10
+                ? t('password.short')
+                : password !== repeat
+                  ? t('password.differ')
+                  : null;
+            setProblem(issue);
+            if (!issue) redeem.mutate();
+          }}
+        >
+          <p className="text-sm">
+            {t('password.welcome', { name: info.data.name })}
+            {info.data.firmName && <> {t('password.firm', { firm: info.data.firmName })}</>}
+          </p>
+          <p className="text-sm text-muted" dir="ltr">
+            {info.data.email}
+          </p>
+          <input type="email" autoComplete="username" value={info.data.email} readOnly hidden />
+          <Label text={t('password.new')}>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </Label>
+          <Label text={t('password.repeat')}>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              required
+              value={repeat}
+              onChange={(e) => setRepeat(e.target.value)}
+            />
+          </Label>
+          <ErrorNote error={problem ?? (redeem.error ? t('password.invalid') : null)} />
+          <Button type="submit" size="lg" className="w-full" disabled={redeem.isPending}>
+            {t('password.submit')}
+          </Button>
+        </form>
+      )}
+    </AuthLayout>
   );
 }
