@@ -44,6 +44,8 @@ export function describeFilters(
     chips.push(`${t('field.downPayment')} ≤ ${f.downPaymentMax}%`);
   if (f.installmentYearsMin !== undefined)
     chips.push(`${t('field.installments')} ≥ ${t('common.years', { n: f.installmentYearsMin })}`);
+  if (f.monthlyInstallmentMax !== undefined)
+    chips.push(`${t('filter.monthlyInstallmentMax')} ${i18n.moneyFull(f.monthlyInstallmentMax)}`);
   return chips;
 }
 

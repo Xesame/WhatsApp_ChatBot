@@ -1,3 +1,4 @@
+import type { PaymentPlan } from '@reb/schema';
 /** Calls to the API (same address as this page; see vite.config.ts). */
 import type { PaymentPlan } from '@reb/schema';
 
@@ -226,6 +227,8 @@ export interface ListingDetail {
     installmentYears: number | null;
     observedAt: string;
   }[];
+  /** `monthlyEquivalent`: minor units per month in the plan's currency, from the server. */
+  paymentPlans: (PaymentPlan & { monthlyEquivalent: number | null })[];
   sources: {
     role: string;
     sentAt: string;

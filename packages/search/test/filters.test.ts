@@ -44,3 +44,13 @@ describe('search filters from a URL query', () => {
     expect(isEmptySearch({ bedroomsMin: 2 })).toBe(false);
   });
 });
+
+describe('monthly payment filter', () => {
+  it('accepts monthlyInstallmentMax', () => {
+    expect(filtersFromQuery({ monthlyInstallmentMax: '60000' })).toEqual({
+      monthlyInstallmentMax: 60_000,
+    });
+    expect(() => filtersFromQuery({ monthlyInstallmentMax: '0' })).toThrow();
+    expect(() => filtersFromQuery({ monthlyInstallmentMax: '200000000' })).toThrow();
+  });
+});

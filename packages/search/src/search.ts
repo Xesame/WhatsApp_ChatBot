@@ -1,5 +1,6 @@
 import type { Db } from '@reb/db';
 import { normalizeName } from '@reb/normalize';
+import { PAYMENTS_PER_YEAR } from '@reb/schema/enums';
 import { sql, type SQL } from 'drizzle-orm';
 import type { SearchFilters } from './filters.ts';
 
@@ -58,6 +59,28 @@ const list = (values: readonly (string | number)[]) =>
 /** Escapes `%` and `_` so typed text is matched literally inside LIKE. */
 const likeText = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+/**
+ * "Some current payment plan of the unit satisfies `onPlan`" (plans are rows
+ * `pp`). A unit's current plans are the rows of its newest source: the same
+ * rule as `currentPlans` in packages/pipeline/src/plans.ts (newest observed_at,
+ * then newest id; rows of one source share message and time). It is written
+ * again here in SQL because search sits below the pipeline. Units with no
+ * plans at all fall back to `onColumns`, their own columns (none: no match).
+ */
+function anyPlan(onPlan: SQL[], onColumns: SQL[] | undefined): SQL {
+  const newest = (column: SQL) =>
+    sql`(select ${column} from unit_payment_plans n where n.unit_id = u.id order by n.observed_at desc, n.id desc limit 1)`;
+  // One exists over every plan condition, so a single plan must satisfy them all.
+  const current = sql`exists (
+    select 1 from unit_payment_plans pp
+    where pp.unit_id = u.id
+      and pp.observed_at = ${newest(sql`n.observed_at`)}
+      and pp.source_message_id is not distinct from ${newest(sql`n.source_message_id`)}
+      and ${sql.join(onPlan, sql` and `)})`;
+  if (!onColumns) return current;
+  return sql`(${current} or (not exists (select 1 from unit_payment_plans x where x.unit_id = u.id) and ${sql.join(onColumns, sql` and `)}))`;
+}
+
 /** The WHERE conditions and price expressions shared by search, count and export. */
 function build(filters: SearchFilters, rate: number | undefined) {
   const r = sql`${rate ?? null}::numeric`;
@@ -87,9 +110,30 @@ function build(filters: SearchFilters, rate: number | undefined) {
     add(sql`(u.ready_to_move or u.delivery_year <= ${filters.deliveryYearMax})`);
   }
   if (filters.readyToMove !== undefined) add(sql`u.ready_to_move = ${filters.readyToMove}`);
-  if (filters.downPaymentMax !== undefined) add(sql`u.down_payment <= ${filters.downPaymentMax}`);
+  const onPlan: SQL[] = [];
+  const onColumns: SQL[] = [];
+  if (filters.downPaymentMax !== undefined) {
+    onPlan.push(sql`pp.down_payment_percent <= ${filters.downPaymentMax}`);
+    onColumns.push(sql`u.down_payment <= ${filters.downPaymentMax}`);
+  }
   if (filters.installmentYearsMin !== undefined) {
-    add(sql`u.installment_years >= ${filters.installmentYearsMin}`);
+    onPlan.push(sql`pp.installment_years >= ${filters.installmentYearsMin}`);
+    onColumns.push(sql`u.installment_years >= ${filters.installmentYearsMin}`);
+  }
+  if (filters.monthlyInstallmentMax !== undefined) {
+    // Plans without an amount or frequency (cash-only ones) give null, so they never match.
+    // The payments per year come from the schema, so a new frequency cannot silently become null.
+    const perYear = sql`(case pp.installment_frequency ${sql.join(
+      Object.entries(PAYMENTS_PER_YEAR).map(([f, n]) => sql`when ${f}::text then ${n}::int`),
+      sql` `,
+    )} end)`;
+    const monthly = sql`(pp.installment_amount * ${perYear} / 12.0)`;
+    const monthlyEgp = sql`(case when pp.currency = 'EGP' then ${monthly} else ${monthly} * ${r} end)`;
+    onPlan.push(sql`${monthlyEgp} <= ${Math.round(filters.monthlyInstallmentMax * 100)}`);
+  }
+  // Units without plans use their own columns, which have no monthly figure.
+  if (onPlan.length > 0) {
+    add(anyPlan(onPlan, filters.monthlyInstallmentMax === undefined ? onColumns : undefined));
   }
   if (filters.priceDropped) add(sql`u.min_price < ${previous}`);
   if (filters.q) {

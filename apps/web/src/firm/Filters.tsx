@@ -168,6 +168,17 @@ export function Filters({
         </label>
       </div>
 
+      <label className="block">
+        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
+          {t('filter.monthlyInstallmentMax')}
+        </span>
+        <NumberField
+          className="mt-1"
+          value={filters.monthlyInstallmentMax}
+          onCommit={(text) => set('monthlyInstallmentMax', num(text))}
+        />
+      </label>
+
       <MultiPick
         label={t('filter.finishing')}
         options={fixed(FINISHING_SPECS)}
