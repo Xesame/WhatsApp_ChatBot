@@ -1,6 +1,6 @@
 # Handoff: the story so far
 
-Written 20 November 2026 so a new Claude Code session (on Hassan's Windows laptop, or anywhere) can continue without the earlier chat. Read `CLAUDE.md` first for how to work; this file is what happened.
+Written 20 November 2026 and updated 22 November so a new Claude Code session (on Hassan's Windows laptop, or anywhere) can continue without the earlier chat. Read `CLAUDE.md` first for how to work; this file is what happened.
 
 ## Where things are
 
@@ -19,37 +19,43 @@ Written 20 November 2026 so a new Claude Code session (on Hassan's Windows lapto
 
 ## Build status
 
-| Phase                                                                                                                                                                   | Status                                                |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| 0 Foundation (monorepo, config, Docker, database, seed)                                                                                                                 | Done                                                  |
-| 1 Capture (Baileys, messages, media)                                                                                                                                    | Done; live WhatsApp test waits for the scraper number |
-| 2 Text extraction + eval harness                                                                                                                                        | Built; accuracy on real messages not yet measured     |
-| 3 Media (images, PDFs, Excel; voice notes dropped)                                                                                                                      | Built                                                 |
-| 4 Dedup, price history, sold/stale                                                                                                                                      | Done                                                  |
-| 5 Owner admin console (login, pairing QR, groups, review, names, stats, jobs, settings)                                                                                 | Done                                                  |
-| 6 Firm dashboard (firms, invitations, search, listing page, notes, saved searches, exports, share cards, Arabic/English)                                                | Done                                                  |
-| After 6: `import` command for sample messages; Flash-Lite extraction fallback; sold notices find their unit                                                             | Done (8 Nov)                                          |
-| Learning from reviews, stage A (names as written, suggestions, remembered spellings, re-check, learned price check): checkpoints 1-2 done, on branch `learning-stage-a` | In progress                                           |
-| 7 Chat bots and alerts (WhatsApp query bot, Telegram, alerts)                                                                                                           | Not started                                           |
-| 8 Hardening and deploy (server, HTTPS, backups, monitoring)                                                                                                             | Not started                                           |
+| Phase                                                                                                                                                                         | Status                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| 0 Foundation (monorepo, config, Docker, database, seed)                                                                                                                       | Done                                                        |
+| 1 Capture (Baileys, messages, media)                                                                                                                                          | Done; live WhatsApp test waits for the scraper number       |
+| 2 Text extraction + eval harness                                                                                                                                              | Built; accuracy on real messages not yet measured           |
+| 3 Media (images, PDFs, Excel; voice notes dropped)                                                                                                                            | Built                                                       |
+| 4 Dedup, price history, sold/stale                                                                                                                                            | Done                                                        |
+| 5 Owner admin console (login, pairing QR, groups, review, names, stats, jobs, settings)                                                                                       | Done                                                        |
+| 6 Firm dashboard (firms, invitations, search, listing page, notes, saved searches, exports, share cards, Arabic/English)                                                      | Done                                                        |
+| After 6: `import` command for sample messages; Flash-Lite extraction fallback; sold notices find their unit                                                                   | Done (8 Nov)                                                |
+| Learning from reviews, stage A (names as written, suggestions, remembered spellings, re-check, learned price check, weekly table), on branch `learning-stage-a`               | Done (22 Nov); not yet merged to `main`                     |
+| Name suggestions from Gemini's memory (one lookup per unknown project; Review shows "Gemini thinks ..."; migration 0010)                                                      | Done (22 Nov)                                               |
+| Payment plans: Gemini copies every plan, code parses and stores them (migrations 0011-0012), Review edits them, firms see and search them, Excel gets a "Payment plans" sheet | Done (22 Nov); live accuracy check of the new prompt passed |
+| 7 Chat bots and alerts (WhatsApp query bot, Telegram, alerts)                                                                                                                 | Not started                                                 |
+| 8 Hardening and deploy (server, HTTPS, backups, monitoring)                                                                                                                   | Not started                                                 |
 
 432 tests pass (`pnpm check`). Everything runs with `docker compose up -d --build`.
 
 ## Decisions Hassan made
 
-| Date   | Decision                                                                                                                                                                                                                     |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 25 Oct | Seed lists: separate cities; Sarai under Mostakbal City; short project names; SouthMED = Ras El Hekma                                                                                                                        |
-| 25 Oct | Categories: Residential, Commercial, Administrative, Medical. Down payment stored as percent and amount. Maintenance currency EGP, USD or %. Ready-to-move units have no delivery year. One row per unit type                |
-| 25 Oct | EGP is the main currency; USD prices converted at a rate the owner sets (now on the console's Settings page; `USD_EGP_RATE` is a fallback)                                                                                   |
-| 26 Oct | Models: Gemini first (text and images), then Groq, then OpenRouter. Cerebras went paid; kept only as an option                                                                                                               |
-| 26 Oct | Voice notes are not processed (rare in the groups)                                                                                                                                                                           |
-| 26 Oct | Images may be sent to the vision model as they are (the groups are semi-public)                                                                                                                                              |
-| 26 Oct | A lone "من" / "from" before a price means "starting from" (minimum)                                                                                                                                                          |
-| 27 Oct | Only the owner creates firms; firms never self-sign-up                                                                                                                                                                       |
-| 27 Oct | Arabic and English from day one for firm users, per-user language, right to left; the owner console stays English                                                                                                            |
-| 27 Oct | Firms never see sender, group name or contact details in text (only "developer group" / "broker group")                                                                                                                      |
-| 27 Oct | Pricing recommended in the playbook: Solo EGP 1,500, Team (5 users) 4,500, Office (15) 9,900, Enterprise from 15,000 a month; annual = 10 months; first 10 firms 40% off for 12 months. Not yet confirmed by Hassan as final |
+| Date   | Decision                                                                                                                                                                                                                                                                                                  |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 25 Oct | Seed lists: separate cities; Sarai under Mostakbal City; short project names; SouthMED = Ras El Hekma                                                                                                                                                                                                     |
+| 25 Oct | Categories: Residential, Commercial, Administrative, Medical. Down payment stored as percent and amount. Maintenance currency EGP, USD or %. Ready-to-move units have no delivery year. One row per unit type                                                                                             |
+| 25 Oct | EGP is the main currency; USD prices converted at a rate the owner sets (now on the console's Settings page; `USD_EGP_RATE` is a fallback)                                                                                                                                                                |
+| 26 Oct | Models: Gemini first (text and images), then Groq, then OpenRouter. Cerebras went paid; kept only as an option                                                                                                                                                                                            |
+| 26 Oct | Voice notes are not processed (rare in the groups)                                                                                                                                                                                                                                                        |
+| 26 Oct | Images may be sent to the vision model as they are (the groups are semi-public)                                                                                                                                                                                                                           |
+| 26 Oct | A lone "من" / "from" before a price means "starting from" (minimum)                                                                                                                                                                                                                                       |
+| 27 Oct | Only the owner creates firms; firms never self-sign-up                                                                                                                                                                                                                                                    |
+| 27 Oct | Arabic and English from day one for firm users, per-user language, right to left; the owner console stays English                                                                                                                                                                                         |
+| 27 Oct | Firms never see sender, group name or contact details in text (only "developer group" / "broker group")                                                                                                                                                                                                   |
+| 27 Oct | Pricing recommended in the playbook: Solo EGP 1,500, Team (5 users) 4,500, Office (15) 9,900, Enterprise from 15,000 a month; annual = 10 months; first 10 firms 40% off for 12 months. Not yet confirmed by Hassan as final                                                                              |
+| 21 Nov | Payment plans: firms can see and search them. The newest post that states plans wins, even over Hassan's own Review corrections; a price-only update keeps the plans and flags "Price changed; check the payment plans"; the Excel export gets a second "Payment plans" sheet (26-column sheet unchanged) |
+| 21 Nov | Name suggestions come from Gemini's own memory (free); Google Search grounding would be more precise but needs a paid plan, so it is a future option, not now. The answer is only a suggestion he confirms in Review                                                                                      |
+| 21 Nov | Learning from reviews: Stage A first, then stage B (his corrected answers shown to Gemini as examples); no auto-trust yet                                                                                                                                                                                 |
+| 22 Nov | Next big piece of work after learning: the admin panel redesign (Hassan asked for it)                                                                                                                                                                                                                     |
 
 The full technical decision log is the last chapter of `PROJECT.md`.
 
@@ -79,6 +85,13 @@ Connecting his laptop folder to the cloud session didn't work (the folder `Whats
 6. Open http://localhost:4173.
 7. Import samples: unzip each WhatsApp export into `samples/<name>/`, then `docker compose exec worker node apps/worker/src/cli.ts import "samples/<name>/<file>.txt" --group "<name>" --type broker`.
 
+## Laptop setup facts (Hassan's Windows laptop)
+
+- The bot's own database listens on **port 5433** on the laptop (set in a local override file, not committed), because another program already uses 5432.
+- **Docker Desktop must be running** (it shows "Engine running") before anything works, including the checks.
+- The Docker virtual machine has about **6 GB** of memory, so run the checks in pieces (lint and types, then each package's tests, then the database tests) instead of everything at once.
+- There is no Node 24 or pnpm on the laptop itself; checks, formatting and the docs check run inside a Docker container built from the project's Dockerfile.
+
 ## Known gaps
 
 - Two duplicate units can't be merged by hand in the console yet (duplicate names can).
@@ -90,7 +103,9 @@ Connecting his laptop folder to the cloud session didn't work (the folder `Whats
 
 ## What's next
 
-1. Learning from reviews: the weekly progress table on the Overview page (checkpoint 3), then stage B once about 20 messages have been reviewed, then the admin panel redesign. Design: `docs/superpowers/specs/2026-11-21-learning-from-reviews-design.md`.
-2. Hassan's local test with real samples, then tune spellings, tolerances and prompts from his findings.
-3. Phase 8 (server, HTTPS, nightly backups with a tested restore, monitoring) before any firm uses it.
-4. Phase 7 (WhatsApp query bot, Telegram fallback, alerts on saved searches) after that.
+1. **Learning, stage B** (his corrected answers shown to Gemini as worked examples for similar new messages): after about 20 real messages have been reviewed, so there is something real to learn from. Design: `docs/superpowers/specs/2026-11-21-learning-from-reviews-design.md`. Merge `learning-stage-a` to `main` before starting.
+2. **Admin panel redesign** (Hassan asked for it; this is next, with its own design first). Payment plans and name suggestions in Review were built in the current style on purpose.
+3. Hassan's local test with real samples (using the weekly "Is the bot learning?" table on Overview), then tune spellings, tolerances and prompts from his findings.
+4. **Phase 8** (server, HTTPS, nightly backups with a tested restore, monitoring) before any firm uses it.
+5. **Phase 7** (WhatsApp query bot, Telegram fallback, alerts on saved searches) after that.
+6. Later options: Google Search grounding for name suggestions (needs a paid Gemini plan); auto-trust (stage C) only if the weekly numbers justify it.

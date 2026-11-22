@@ -2,7 +2,7 @@
 
 **Every primary-market listing posted in Egypt's developer and broker WhatsApp groups, turned into one clean, searchable, always-current database.**
 
-_Last updated: 27 October 2026 · Status: core system, operator console and firm dashboard built and tested; first live run with real groups is next._
+_Last updated: 22 November 2026 · Status: core system, operator console and firm dashboard built and tested; first live run with real groups is next._
 
 ---
 
@@ -100,13 +100,25 @@ Every time the operator checks a flagged listing, the system gets smarter:
 - **It remembers spellings.** If a broker writes a project name in a way the system did not recognise, one tick teaches it. The same spelling is understood in every later post, and other listings that were waiting only because of that name clear on their own.
 - **It suggests instead of guessing.** A name that is only a rough match is not attached to the wrong project; the console shows "closest: X" and the operator confirms it once.
 - **It learns what normal prices look like.** Once a few units of a project have been approved, a new listing priced far above or below the project's usual price per m² is held for a check.
+- **It suggests who builds a new project.** When a post names a project the system does not know yet, it asks Google's Gemini AI what it remembers about it (only the project name is sent, never the message) and shows "Gemini thinks: ... (from memory, check)" next to the developer and area. The operator confirms with one click, or adds the new name; nothing is filled in without a person's click.
+- **It shows whether it is learning.** The console's Overview has a weekly table: how many new listings arrived, how many the system itself flagged for a check, how many the operator reviewed, and how many were right the first time. If the system is learning, flags and fixes go down week by week and right-first-time goes up.
 - **It never overrides a person.** Listings the operator has already reviewed are left exactly as decided.
+
+### Every payment plan, searchable
+
+Developers rarely offer one payment plan: a single price list can offer five (0%, 10%, 15%, 20% or 30% down), each with its own installment. The system **copies every plan** from the post, and tested code turns them into numbers: down payment as a percent and an amount, installment amount, how often it is paid and for how many years, and the monthly equivalent of a quarterly payment (worked out by the system, never by the AI).
+
+- **Firms see all the plans** on the listing page, each with "about X per month".
+- **Firms can search by plan**: maximum down payment, minimum number of years, and maximum monthly payment. Filters set together must be met by one plan, so a unit that offers "5% down over 3 years" and "30% down over 10 years" is not shown for "10% down over 8 years or more".
+- **The newest post wins**: when a broker reposts a unit with new plans, they replace the old ones, and if only the price changes the unit is flagged to check that the plans still fit.
+- **The operator can correct them**: edit, add or remove a plan, or clear them all, in the same review screen.
+- **Excel export**: the 26-column template is untouched; a second sheet lists every plan next to its unit.
 
 ### 12. A dashboard firms can use from day one, in Arabic or English
 
 Each firm gets its own login and a dashboard built for brokers:
 
-- **Search the whole market in seconds**: area, developer, project, unit type, bedrooms, size, price, delivery year, down payment, installment years, finishing, ready to move, and "price dropped". Type a project's name in Arabic or English, or its nickname, and it is found.
+- **Search the whole market in seconds**: area, developer, project, unit type, bedrooms, size, price, delivery year, down payment, installment years, monthly payment, finishing, ready to move, and "price dropped". Type a project's name in Arabic or English, or its nickname, and it is found.
 - **Every price in Egyptian pounds**, with **price per m²** to compare across projects; dollar listings are converted at the owner's rate.
 - **A full page per listing**: all details, its price history, how many times it was reposted, and the original post and flyer.
 - **Private notes** on any listing ("client Ahmed is interested"), seen only by the firm's own team.
