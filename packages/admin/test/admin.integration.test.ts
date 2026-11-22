@@ -767,6 +767,59 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
     });
   });
 
+  describe('weekly learning numbers', () => {
+    const approve = (unitId: number) =>
+      testDb.database.db.insert(reviewCorrections).values({ unitId, action: 'approve' });
+    const edit = (unitId: number, field: string) =>
+      testDb.database.db
+        .insert(reviewCorrections)
+        .values({ unitId, action: 'edit', field, before: 1, after: 2 });
+    const weeksNow = async () => (await stats(testDb.database)).weeks;
+
+    it('reports learning per week', async () => {
+      const a = await listing({ flaggedOnArrival: true });
+      const b = await listing({ flaggedOnArrival: true });
+      await listing();
+      await approve(a.unit.id);
+      await approve(b.unit.id);
+      await edit(b.unit.id, 'minPrice');
+      await edit(b.unit.id, 'maxPrice');
+      const weeks = await weeksNow();
+      expect(weeks).toHaveLength(12);
+      expect(weeks.slice(0, 11).every((w) => w.newUnits === 0 && w.reviewed === 0)).toBe(true);
+      expect(weeks[0]?.correctionsPerReviewed).toBeNull();
+      expect(weeks[11]).toMatchObject({
+        newUnits: 3,
+        flaggedOnArrival: 2,
+        reviewed: 2,
+        rightFirstTime: 1,
+        correctionsPerReviewed: 1,
+      });
+      expect(weeks[11]?.week).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('does not count a unit as right first time when its name was learned during review', async () => {
+      const a = await listing();
+      await approve(a.unit.id);
+      await testDb.database.db.insert(entityAliases).values({
+        alias: 'ميفيدا الجديدة',
+        aliasNormalized: 'ميفيدا الجديدة',
+        projectId: mivida.id,
+        source: 'review',
+        reviewUnitId: a.unit.id,
+      });
+      try {
+        expect((await weeksNow())[11]).toMatchObject({
+          reviewed: 1,
+          rightFirstTime: 0,
+          correctionsPerReviewed: 0,
+        });
+      } finally {
+        await testDb.database.db.delete(entityAliases).where(eq(entityAliases.source, 'review'));
+      }
+    });
+  });
+
   it('stats count messages, outcomes, model cost and review load', async () => {
     const { db } = testDb.database;
     const { message } = await listing();
