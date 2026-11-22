@@ -3,13 +3,13 @@ import { Link } from 'react-router';
 import { api, type Connection } from '../api.ts';
 import { Badge, Card, ErrorNote, formatDate, Loading, PageTitle } from '../ui.tsx';
 
-const STATES: Record<string, { label: string; tone: 'green' | 'amber' | 'red' | 'gray' }> = {
-  open: { label: 'Connected', tone: 'green' },
-  awaiting_pairing: { label: 'Waiting for pairing', tone: 'amber' },
-  starting: { label: 'Starting', tone: 'gray' },
-  reconnecting: { label: 'Reconnecting', tone: 'amber' },
-  logged_out: { label: 'Logged out', tone: 'red' },
-  stopped: { label: 'Stopped', tone: 'gray' },
+const STATES: Record<string, { label: string; tone: 'lime' | 'warn' | 'danger' | 'neutral' }> = {
+  open: { label: 'Connected', tone: 'lime' },
+  awaiting_pairing: { label: 'Waiting for pairing', tone: 'warn' },
+  starting: { label: 'Starting', tone: 'neutral' },
+  reconnecting: { label: 'Reconnecting', tone: 'warn' },
+  logged_out: { label: 'Logged out', tone: 'danger' },
+  stopped: { label: 'Stopped', tone: 'neutral' },
 };
 
 export function WhatsApp() {
@@ -39,7 +39,7 @@ export function WhatsApp() {
       )}
       <div className="grid gap-4 lg:grid-cols-2">
         {connections.data?.map((c) => {
-          const state = STATES[c.state] ?? { label: c.state, tone: 'gray' as const };
+          const state = STATES[c.state] ?? { label: c.state, tone: 'neutral' as const };
           return (
             <Card
               key={c.account}
@@ -48,11 +48,13 @@ export function WhatsApp() {
             >
               {c.qrSvg && (
                 <div className="mb-4 space-y-3">
-                  <img
-                    alt="WhatsApp pairing QR code"
-                    className="mx-auto w-64 rounded bg-white p-2"
-                    src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(c.qrSvg)}`}
-                  />
+                  <div className="mx-auto w-fit rounded-card border border-line bg-paper p-4">
+                    <img
+                      alt="WhatsApp pairing QR code"
+                      className="block w-60"
+                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(c.qrSvg)}`}
+                    />
+                  </div>
                   <ol className="list-decimal space-y-1 pl-5 text-sm">
                     <li>On the scraper phone, open WhatsApp → Settings → Linked devices.</li>
                     <li>Tap “Link a device” and scan this code.</li>
@@ -67,19 +69,19 @@ export function WhatsApp() {
                     {c.pairingCode}
                   </span>
                   <br />
-                  <span className="text-slate-500">
+                  <span className="text-muted">
                     Enter it in WhatsApp → Linked devices → Link with phone number instead.
                   </span>
                 </p>
               )}
               <dl className="grid grid-cols-2 gap-y-1 text-sm">
-                <dt className="text-slate-500">Last connected</dt>
+                <dt className="text-muted">Last connected</dt>
                 <dd>{formatDate(c.lastConnectedAt)}</dd>
-                <dt className="text-slate-500">Last message</dt>
+                <dt className="text-muted">Last message</dt>
                 <dd>{formatDate(c.lastMessageAt)}</dd>
                 {c.lastDisconnectReason && (
                   <>
-                    <dt className="text-slate-500">Last disconnect</dt>
+                    <dt className="text-muted">Last disconnect</dt>
                     <dd>
                       {formatDate(c.lastDisconnectedAt)} ({c.lastDisconnectReason})
                     </dd>
@@ -89,7 +91,7 @@ export function WhatsApp() {
               {c.state === 'open' && c.account === 'scraper' && (
                 <p className="mt-3 text-sm">
                   Next:{' '}
-                  <Link className="underline" to="/groups">
+                  <Link className="font-bold text-ink underline" to="/groups">
                     choose which groups to watch
                   </Link>
                   .

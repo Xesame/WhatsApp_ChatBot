@@ -33,7 +33,9 @@ export function Jobs() {
         {jobs.isPending && <Loading />}
         <ErrorNote error={jobs.error ?? retry.error} />
         {jobs.data?.length === 0 && (
-          <p className="text-sm text-slate-500">No failed jobs. Everything is flowing.</p>
+          <p className="text-sm text-muted">
+            No failed jobs. Everything is flowing, so there is nothing to do here.
+          </p>
         )}
         {jobs.data && jobs.data.length > 0 && (
           <Table head={['Step', 'Message', 'Error', 'Failed', 'Tries', '']}>
@@ -43,18 +45,17 @@ export function Jobs() {
                 <td className={td}>
                   {(job.data as { messageId?: number } | null)?.messageId ?? '—'}
                 </td>
-                <td className={`${td} max-w-md break-words text-red-700 dark:text-red-400`}>
-                  {job.error ?? '—'}
-                </td>
+                <td className={`${td} max-w-md break-words text-danger-ink`}>{job.error ?? '—'}</td>
                 <td className={td}>{formatDate(job.failedAt)}</td>
                 <td className={td}>{job.retries + 1}</td>
                 <td className={td}>
                   <Button
                     variant="secondary"
+                    size="sm"
                     disabled={retry.isPending}
                     onClick={() => retry.mutate(job)}
                   >
-                    Retry
+                    Retry this step
                   </Button>
                 </td>
               </tr>

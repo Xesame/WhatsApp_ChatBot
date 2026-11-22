@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { api, type Group } from '../api.ts';
 import {
   Badge,
@@ -50,10 +51,11 @@ export function Groups() {
       <Card
         title={`${watchedCount} of ${groups.data?.length ?? 0} watched`}
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1.5 text-sm">
               <input
                 type="checkbox"
+                className="accent-graphite"
                 checked={onlyWatched}
                 onChange={(e) => setOnlyWatched(e.target.checked)}
               />
@@ -72,20 +74,20 @@ export function Groups() {
         {groups.isPending && <Loading />}
         <Table head={['Watch', 'Group', 'Posted by', 'Messages saved', 'Last message']}>
           {rows.map((g) => (
-            <tr key={g.id} className={g.watched ? '' : 'text-slate-500'}>
+            <tr key={g.id} className={g.watched ? '' : 'text-muted'}>
               <td className={td}>
                 <input
                   type="checkbox"
                   aria-label={`Watch ${g.name ?? 'group'}`}
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-graphite"
                   checked={g.watched}
                   disabled={update.isPending}
                   onChange={(e) => update.mutate({ id: g.id, watched: e.target.checked })}
                 />
               </td>
               <td className={td} dir="auto">
-                {g.name ?? <span className="italic">Unnamed group</span>}{' '}
-                {!g.isMember && <Badge tone="red">left</Badge>}
+                {g.name ?? <span className="italic text-muted">Unnamed group</span>}{' '}
+                {!g.isMember && <Badge tone="danger">Left</Badge>}
               </td>
               <td className={td}>
                 <Select
@@ -109,8 +111,12 @@ export function Groups() {
           ))}
         </Table>
         {groups.data?.length === 0 && (
-          <p className="py-4 text-sm text-slate-500">
-            No groups yet. They appear once the scraper number is paired.
+          <p className="py-4 text-sm text-muted">
+            No groups yet. Pair the scraper number on the{' '}
+            <Link className="font-bold text-ink underline" to="/whatsapp">
+              WhatsApp page
+            </Link>
+            ; its groups then appear here.
           </p>
         )}
       </Card>

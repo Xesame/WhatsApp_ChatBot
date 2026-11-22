@@ -12,6 +12,7 @@ import {
   Input,
   Label,
   Loading,
+  Note,
   PageTitle,
   Select,
 } from '../ui.tsx';
@@ -56,9 +57,9 @@ export function Entities() {
         subtitle="Projects, developers and areas, with every spelling that should be recognised as each."
       />
       {recheck && (
-        <p role="status" className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+        <Note tone="success" className="mb-4">
           {recheckMessage(recheck)}
-        </p>
+        </Note>
       )}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {KINDS.map((k) => (
@@ -71,7 +72,7 @@ export function Entities() {
           </Button>
         ))}
         <Input
-          className="ml-auto w-56"
+          className="ms-auto w-56"
           placeholder="Search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -84,7 +85,11 @@ export function Entities() {
           {list.data?.map((entity) => (
             <EntityCard key={entity.id} kind={kind} entity={entity} onChange={changed} />
           ))}
-          {list.data?.length === 0 && <p className="text-sm text-slate-500">Nothing found.</p>}
+          {list.data?.length === 0 && (
+            <p className="text-sm text-muted">
+              Nothing found. Try another search, or add it with the form on the side.
+            </p>
+          )}
         </div>
         <CreateEntity kind={kind} onCreated={(_id, counts) => changed({ recheck: counts })} />
       </div>
@@ -131,17 +136,17 @@ function EntityCard({
   return (
     <Card
       title={
-        <span>
-          {entity.nameEn}{' '}
-          <span dir="rtl" className="font-normal text-slate-500">
-            · {entity.nameAr}
+        <span className="flex flex-wrap items-baseline gap-x-3">
+          <span>{entity.nameEn}</span>
+          <span dir="rtl" className="font-normal text-muted">
+            {entity.nameAr}
           </span>
         </span>
       }
       actions={
         <span className="flex items-center gap-2">
           <Badge>{entity.unitCount} units</Badge>
-          <Button variant="ghost" onClick={() => setEditing(!editing)}>
+          <Button variant="quiet" size="sm" onClick={() => setEditing(!editing)}>
             {editing ? 'Close' : 'Edit'}
           </Button>
         </span>
@@ -152,17 +157,17 @@ function EntityCard({
           <span
             key={a.id}
             className={cx(
-              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs',
+              'inline-flex items-center gap-1 rounded-control border px-2 py-0.5 text-xs',
               a.source === 'seed'
-                ? 'border-slate-200 dark:border-slate-700'
-                : 'border-sky-300 dark:border-sky-800',
+                ? 'border-line bg-bone'
+                : 'border-lime-ink/40 bg-lime-soft text-lime-ink',
             )}
           >
             <span dir="auto">{a.alias}</span>
             {a.source === 'review' && a.reviewUnitId !== null && (
               <Link
                 to={`/review?unit=${a.reviewUnitId}`}
-                className="text-slate-500 underline hover:text-sky-600"
+                className="text-muted underline hover:text-ink"
               >
                 from review of unit {a.reviewUnitId}
               </Link>
@@ -171,7 +176,7 @@ function EntityCard({
               <button
                 type="button"
                 aria-label={`Remove ${a.alias}`}
-                className="text-slate-400 hover:text-red-600"
+                className="text-muted hover:text-danger-ink"
                 onClick={() =>
                   call.mutate({ path: `/api/admin/aliases/${a.id}`, method: 'DELETE' })
                 }
@@ -194,7 +199,7 @@ function EntityCard({
         </Button>
       </form>
       {editing && (
-        <div className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+        <div className="mt-4 space-y-4 border-t border-line pt-4">
           <div className="grid grid-cols-2 gap-2">
             <Label text="English name">
               <Input
@@ -215,7 +220,7 @@ function EntityCard({
             disabled={call.isPending}
             onClick={() => call.mutate({ path: base, method: 'PATCH', body: names })}
           >
-            Rename (old names stay as spellings)
+            Rename, keeping old names as spellings
           </Button>
           <div className="flex items-end gap-2">
             <Label
@@ -228,7 +233,7 @@ function EntityCard({
                   ?.filter((o) => o.id !== entity.id)
                   .map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.nameEn} · {o.nameAr}
+                      {o.nameEn} ({o.nameAr})
                     </option>
                   ))}
               </Select>
@@ -250,7 +255,7 @@ function EntityCard({
                 }
               }}
             >
-              Merge
+              Merge into it
             </Button>
           </div>
         </div>
@@ -406,7 +411,7 @@ export function CreateEntity({
         )}
         <ErrorNote error={create.error} />
         <Button type="submit" disabled={create.isPending}>
-          Add
+          Add {kind === 'city' ? 'area' : kind}
         </Button>
       </form>
     </Card>
@@ -457,7 +462,7 @@ function AddRelated({
     else if (action === 'cancel') onCancel();
   };
   return (
-    <div className="space-y-2 rounded-md border border-slate-200 p-2 dark:border-slate-700">
+    <div className="space-y-2 rounded-control border border-line bg-bone p-2">
       <p className="text-xs font-semibold">New {word}</p>
       <Label text="English name">
         <Input value={nameEn} onKeyDown={onKeyDown} onChange={(e) => setNameEn(e.target.value)} />
@@ -479,7 +484,7 @@ function AddRelated({
         >
           Save {word}
         </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
+        <Button type="button" variant="quiet" onClick={onCancel}>
           Cancel
         </Button>
       </div>
