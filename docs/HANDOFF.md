@@ -1,6 +1,6 @@
 # Handoff: the story so far
 
-Written 20 November 2026 and updated 22 November so a new Claude Code session (on Hassan's Windows laptop, or anywhere) can continue without the earlier chat. Read `CLAUDE.md` first for how to work; this file is what happened.
+Written 20 November 2026 and updated 23 November so a new Claude Code session (on Hassan's Windows laptop, or anywhere) can continue without the earlier chat. Read `CLAUDE.md` first for how to work; this file is what happened.
 
 ## Where things are
 
@@ -32,6 +32,7 @@ Written 20 November 2026 and updated 22 November so a new Claude Code session (o
 | Learning from reviews, stage A (names as written, suggestions, remembered spellings, re-check, learned price check, weekly table), on branch `learning-stage-a`               | Done (22 Nov); on `main`                                    |
 | Name suggestions from Gemini's memory (one lookup per unknown project; Review shows "Gemini thinks ..."; migration 0010)                                                      | Done (22 Nov)                                               |
 | Payment plans: Gemini copies every plan, code parses and stores them (migrations 0011-0012), Review edits them, firms see and search them, Excel gets a "Payment plans" sheet | Done (22 Nov); live accuracy check of the new prompt passed |
+| Redesign of the whole web app ("Bone, Graphite & Lime", Manrope + Noto Kufi Arabic; owner console, sign-in pages, firm dashboard in English and Arabic)                       | Done (23 Nov); running on the laptop at localhost:4173      |
 | 7 Chat bots and alerts (WhatsApp query bot, Telegram, alerts)                                                                                                                 | Not started                                                 |
 | 8 Hardening and deploy (server, HTTPS, backups, monitoring)                                                                                                                   | Not started                                                 |
 
@@ -56,6 +57,7 @@ Written 20 November 2026 and updated 22 November so a new Claude Code session (o
 | 21 Nov | Name suggestions come from Gemini's own memory (free); Google Search grounding would be more precise but needs a paid plan, so it is a future option, not now. The answer is only a suggestion he confirms in Review                                                                                      |
 | 21 Nov | Learning from reviews: Stage A first, then stage B (his corrected answers shown to Gemini as examples); no auto-trust yet                                                                                                                                                                                 |
 | 22 Nov | Next big piece of work after learning: the admin panel redesign (Hassan asked for it)                                                                                                                                                                                                                     |
+| 22 Nov | Redesign: "bold, like a property site"; colours Bone, Graphite & Lime (60-30-10); fonts Manrope (English) and Noto Kufi Arabic; covers everything (console, sign-in, firm dashboard EN/AR); dark mode dropped                                                                                             |
 
 The full technical decision log is the last chapter of `PROJECT.md`.
 
@@ -89,7 +91,7 @@ Connecting his laptop folder to the cloud session didn't work (the folder `Whats
 
 - The bot's own database listens on **port 5433** on the laptop (set in a local override file, not committed), because another program already uses 5432.
 - **Docker Desktop must be running** (it shows "Engine running") before anything works, including the checks.
-- The Docker virtual machine has about **6 GB** of memory, so run the checks in pieces (lint and types, then each package's tests, then the database tests) instead of everything at once.
+- The Docker virtual machine has about **5.6 GB** of memory, so run at most two building agents at once, make sure every test container exits, and run the checks in pieces (lint and types, then each package's tests, then the database tests) instead of everything at once.
 - There is no Node 24 or pnpm on the laptop itself; checks, formatting and the docs check run inside a Docker container built from the project's Dockerfile.
 
 ## Known gaps
@@ -103,9 +105,8 @@ Connecting his laptop folder to the cloud session didn't work (the folder `Whats
 
 ## What's next
 
-1. **Learning, stage B** (his corrected answers shown to Gemini as worked examples for similar new messages): after about 20 real messages have been reviewed, so there is something real to learn from. Design: `docs/superpowers/specs/2026-11-21-learning-from-reviews-design.md`. Merge `learning-stage-a` to `main` before starting.
-2. **Admin panel redesign** (Hassan asked for it; this is next, with its own design first). Payment plans and name suggestions in Review were built in the current style on purpose.
-3. Hassan's local test with real samples (using the weekly "Is the bot learning?" table on Overview), then tune spellings, tolerances and prompts from his findings.
-4. **Phase 8** (server, HTTPS, nightly backups with a tested restore, monitoring) before any firm uses it.
-5. **Phase 7** (WhatsApp query bot, Telegram fallback, alerts on saved searches) after that.
-6. Later options: Google Search grounding for name suggestions (needs a paid Gemini plan); auto-trust (stage C) only if the weekly numbers justify it.
+1. **Learning, stage B** (his corrected answers shown to Gemini as worked examples for similar new messages): after about 20 real messages have been reviewed, so there is something real to learn from. Design: `docs/superpowers/specs/2026-11-21-learning-from-reviews-design.md`. (Stage A is already on `main`.)
+2. Hassan's local test with real samples (using the weekly "Is the bot learning?" table on Overview), then tune spellings, tolerances and prompts from his findings.
+3. **Phase 8** (server, HTTPS, nightly backups with a tested restore, monitoring) before any firm uses it.
+4. **Phase 7** (WhatsApp query bot, Telegram fallback, alerts on saved searches) after that.
+5. Later options: Google Search grounding for name suggestions (needs a paid Gemini plan); auto-trust (stage C) only if the weekly numbers justify it.

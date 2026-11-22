@@ -510,6 +510,14 @@ Among several matches, the closest area wins. When unsure, the rules say "differ
 
 **Admin console (Phase 5)** at `PUBLIC_URL` (http://localhost:4173 by default). The owner signs in with e-mail and password; there is no public sign-up.
 
+**Look (redesign, 23 Nov 2026).** The console, sign-in pages and firm dashboard share one design system, "Bone, Graphite & Lime", chosen by Hassan (spec: `docs/superpowers/specs/2026-11-22-console-redesign-design.md`).
+
+- Colours are Tailwind v4 `@theme` tokens in `apps/web/src/index.css`: `bone` #F4F5F0 page, `paper` #FFFFFF panels, `graphite` #23271F sidebar, top bar and search banner, `graphite-2` #353A2F active row, `ink` #1B1F15 text, `muted` #686E60, `line` #E1E4D8, `lime` #B8E04A for what needs action, plus `lime-soft`, `warn` and `danger` tints with their own text colours. Tailwind's default palette is switched off (`--color-*: initial`), so only these names exist.
+- The 60-30-10 rule: about 60% bone, 30% graphite, 10% lime. Lime is a fill with dark text, or text on graphite, never text on a light background (it fails contrast).
+- Fonts are self-hosted (no requests to Google): Manrope for English, Noto Kufi Arabic for Arabic (`@fontsource` packages). Prices and counts use weight 800 with tabular numbers.
+- Radii 8 (inputs, buttons, tags), 12 (panels, cards), 20 (banner, big tiles); borders instead of shadows; no gradients, entrance animations, all-caps labels or middle-dot strings. Dark mode was dropped.
+- Shared pieces live in `apps/web/src/ui.tsx` (Button, Badge, Note, Stat, Table, AuthLayout, ...). The owner console's sidebar is `apps/web/src/AdminShell.tsx` (it becomes a top bar with a menu under 768 px); the firm dashboard's top bar and search banner are in `apps/web/src/firm/`. Arabic pages mirror right to left using logical spacing (`ms-`, `pe-`, `start`, `end`), and the drawn dropdown arrow (`.select-chevron`) moves to the left in Arabic.
+
 | Page              | What it does                                                                                                                                                                                                                    |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Overview          | Messages per day, how many were read successfully, model calls and cost, units waiting for review, units by status; and **"Is the bot learning?"**, a weekly table (below)                                                      |

@@ -116,7 +116,7 @@ Developers rarely offer one payment plan: a single price list can offer five (0%
 
 ### 12. A dashboard firms can use from day one, in Arabic or English
 
-Each firm gets its own login and a dashboard built for brokers:
+Each firm gets its own login and a dashboard built for brokers, with a clean, confident look of its own (a dark search banner, listing cards that lead with area, size, price and payment plan, and a true right-to-left Arabic version):
 
 - **Search the whole market in seconds**: area, developer, project, unit type, bedrooms, size, price, delivery year, down payment, installment years, monthly payment, finishing, ready to move, and "price dropped". Type a project's name in Arabic or English, or its nickname, and it is found.
 - **Every price in Egyptian pounds**, with **price per m²** to compare across projects; dollar listings are converted at the owner's rate.
