@@ -43,6 +43,7 @@ import {
   COMPARED_FIELDS,
   KEY_FIELDS,
   percent,
+  PLAN_FIELDS,
   scoreCase,
   sumScores,
   type CaseScore,
@@ -164,6 +165,12 @@ function comparable(unit: Unit): ComparableUnit {
     installmentsCount: unit.installmentsCount,
     bedrooms: unit.bedrooms,
     bathrooms: unit.bathrooms,
+    paymentPlans: unit.paymentPlans.map((plan) => ({
+      downPaymentPercent: plan.downPaymentPercent,
+      installmentAmount: major(plan.installmentAmount),
+      installmentFrequency: plan.installmentFrequency,
+      installmentYears: plan.installmentYears,
+    })),
   };
 }
 
@@ -280,11 +287,16 @@ async function runCase(id: string): Promise<CaseResult> {
   };
 }
 
-function table(
-  title: string,
-  results: CaseResult[],
-  previous: Record<string, number> | undefined,
-): string[] {
+interface Baseline {
+  fields: Record<string, number>;
+  plans?: Record<string, number>;
+}
+
+/** "+1.5" / "-3.0" against the last saved report, or blank. */
+const changeFrom = (now: number, before: number | undefined) =>
+  before === undefined ? '' : `${now - before >= 0 ? '+' : ''}${(now - before).toFixed(1)}`;
+
+function table(title: string, results: CaseResult[], previous: Baseline | undefined): string[] {
   if (results.length === 0) return [];
   const fields = sumScores(results.map((r) => r.score));
   const tally = (f: string): FieldTally => fields[f] ?? { correct: 0, total: 0 };
@@ -300,15 +312,41 @@ function table(
   ];
   for (const field of COMPARED_FIELDS) {
     const now = percent(tally(field));
-    const before = previous?.[field];
-    const change =
-      before === undefined ? '' : `${now - before >= 0 ? '+' : ''}${(now - before).toFixed(1)}`;
+    const before = previous?.fields[field];
+    const change = changeFrom(now, before);
     const flag =
       KEY_FIELDS.includes(field) && before !== undefined && now - before < -2
         ? ' ⚠ needs approval'
         : '';
     lines.push(
       `| ${KEY_FIELDS.includes(field) ? `**${field}**` : field} | ${now}% | ${change}${flag} | ${tally(field).correct}/${tally(field).total} |`,
+    );
+  }
+  // Payment plans: their own table, never flagged (not part of the 2-point rule).
+  const plans = sumScores(
+    results.map((r) => r.score),
+    'plans',
+  );
+  const planCount = results.reduce(
+    (t, r) => ({
+      correct: t.correct + r.score.planCount.correct,
+      total: t.total + r.score.planCount.total,
+    }),
+    { correct: 0, total: 0 },
+  );
+  lines.push(
+    '',
+    '**Payment plans** (plans paired by position; reported only, not part of the 2-point rule)',
+    '',
+    `- Units with the right number of plans: ${planCount.correct}/${planCount.total}`,
+    '',
+    '| Plan detail | Accuracy | Change | Correct / total |',
+    '| --- | --- | --- | --- |',
+  );
+  for (const field of PLAN_FIELDS) {
+    const t = plans[field] ?? { correct: 0, total: 0 };
+    lines.push(
+      `| ${field} | ${percent(t)}% | ${changeFrom(percent(t), previous?.plans?.[field])} | ${t.correct}/${t.total} |`,
     );
   }
   lines.push('', '**Mistakes**', '');
@@ -344,7 +382,7 @@ try {
 
   const latestPath = join(reportsDir, 'latest.json');
   const previous = existsSync(latestPath)
-    ? (JSON.parse(await readFile(latestPath, 'utf8')) as { fields: Record<string, number> }).fields
+    ? (JSON.parse(await readFile(latestPath, 'utf8')) as Baseline)
     : undefined;
   const real = results.filter((r) => r.expected.source !== 'example');
   const examples = results.filter((r) => r.expected.source === 'example');
@@ -376,11 +414,15 @@ try {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   await writeFile(join(reportsDir, `${stamp}.md`), report);
   if (real.length > 0 && !values.replay) {
-    const fields = sumScores(real.map((r) => r.score));
-    await writeFile(
-      latestPath,
-      `${JSON.stringify({ date: new Date().toISOString(), fields: Object.fromEntries(Object.entries(fields).map(([f, t]) => [f, percent(t)])) }, null, 2)}\n`,
-    );
+    const scores = real.map((r) => r.score);
+    const asPercent = (tallies: Record<string, FieldTally>) =>
+      Object.fromEntries(Object.entries(tallies).map(([f, t]) => [f, percent(t)]));
+    const baseline = {
+      date: new Date().toISOString(),
+      fields: asPercent(sumScores(scores)),
+      plans: asPercent(sumScores(scores, 'plans')),
+    };
+    await writeFile(latestPath, `${JSON.stringify(baseline, null, 2)}\n`);
   }
   console.log(`\n${report}\nSaved to eval/reports/${stamp}.md`);
 } catch (error) {

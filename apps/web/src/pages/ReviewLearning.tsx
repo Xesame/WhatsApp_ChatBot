@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { api, type Entity, type EntityKind, type UnitView } from '../api.ts';
 import { Button } from '../ui.tsx';
 import { CreateEntity } from './Entities.tsx';
-import { lookupOffer, rememberKey, spellingsToOffer } from './learning.ts';
+import { lookupOffer, newNameButtons, rememberKey, spellingsToOffer } from './learning.ts';
 
 /**
  * The "teach the system" controls on the Review page: next to Project,
@@ -67,6 +67,8 @@ export function LearnControls({
   // Gemini's answer for an empty developer / area (the project is never looked up).
   const answer = kind === 'project' || value !== '' ? null : (view.learning.lookup?.[kind] ?? null);
   const offer = kind === 'project' ? null : lookupOffer(answer, entities);
+  // One "+ New" button when the written name and Gemini's answer are the same name.
+  const buttons = newNameButtons(newName, offer?.kind === 'new' ? offer.name : null);
   // The New project form: a developer / area Gemini named that we do not have
   // is offered by its name when the message did not write one.
   const lookedUp = view.learning.lookup;
@@ -106,25 +108,25 @@ export function LearnControls({
             >
               Use {offer.name}
             </Button>
-          ) : (
+          ) : buttons.lookup ? (
             <Button
               variant="ghost"
               className="!px-1 !py-0.5 !text-xs"
-              onClick={() => setCreating({ name: offer.name })}
+              onClick={() => setCreating({ name: buttons.lookup ?? offer.name })}
             >
-              + New {WORD[kind]} named “{offer.name}”
+              + New {WORD[kind]} named “{buttons.lookup}”
             </Button>
-          )}
+          ) : null}
         </div>
       )}
-      {value === '' && newName && !creating && (
+      {value === '' && buttons.written && !creating && (
         <div>
           <Button
             variant="ghost"
             className="!px-1 !py-0.5 !text-xs"
-            onClick={() => setCreating({ name: newName })}
+            onClick={() => setCreating({ name: buttons.written ?? '' })}
           >
-            + New {WORD[kind]} named “{newName}”
+            + New {WORD[kind]} named “{buttons.written}”
           </Button>
         </div>
       )}

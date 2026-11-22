@@ -98,6 +98,27 @@ export function lookupOffer(
 }
 
 /**
+ * Which "+ New developer / area named ..." buttons to show when the message
+ * wrote a name and Gemini also named one. The same name (ignoring case and
+ * extra spaces) gets ONE button, in the written slot, spelled as Gemini
+ * spelled it when the message wrote it all in lower or upper case, else as
+ * written. Different names keep both buttons.
+ */
+export function newNameButtons(
+  written: string | undefined,
+  answer: string | null,
+): { written: string | null; lookup: string | null } {
+  const w = written?.trim() || null;
+  const a = answer?.trim() || null;
+  const squash = (s: string) => s.replace(/\s+/g, ' ').toLowerCase();
+  if (w && a && squash(w) === squash(a)) {
+    const flat = w === w.toLowerCase() || w === w.toUpperCase();
+    return { written: flat ? a : w, lookup: null };
+  }
+  return { written: w, lookup: a };
+}
+
+/**
  * What a key press means inside the small "new developer / area" box.
  * Enter saves it (only with both names filled in, and not twice); Escape
  * cancels. The page must stop Enter from reaching the project form around

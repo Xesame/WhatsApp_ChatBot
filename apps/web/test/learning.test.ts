@@ -4,6 +4,7 @@ import {
   afterReview,
   inlineKeyAction,
   lookupOffer,
+  newNameButtons,
   newEntityOption,
   recheckMessage,
   rememberedSpellings,
@@ -137,5 +138,29 @@ describe('what to do with an answer from Gemini’s memory', () => {
   it('offers nothing without an answer', () => {
     expect(lookupOffer(null, [emaar])).toBeNull();
     expect(lookupOffer('   ', [emaar])).toBeNull();
+  });
+});
+
+describe('one "+ New" button when the written name and Gemini agree', () => {
+  it('shows one button for the same name', () => {
+    expect(newNameButtons('Aknan Developments', 'Aknan Developments')).toEqual({
+      written: 'Aknan Developments',
+      lookup: null,
+    });
+  });
+
+  it('ignores case, and takes Gemini spelling when the written one is all lower or upper case', () => {
+    expect(newNameButtons('Taj misr', 'Taj Misr')).toEqual({ written: 'Taj misr', lookup: null });
+    expect(newNameButtons('taj  misr', 'Taj Misr')).toEqual({ written: 'Taj Misr', lookup: null });
+    expect(newNameButtons('TAJ MISR', 'Taj Misr')).toEqual({ written: 'Taj Misr', lookup: null });
+  });
+
+  it('keeps both buttons for different names, and works with only one of them', () => {
+    expect(newNameButtons('Palm Hills', 'Emaar')).toEqual({
+      written: 'Palm Hills',
+      lookup: 'Emaar',
+    });
+    expect(newNameButtons(undefined, 'Emaar')).toEqual({ written: null, lookup: 'Emaar' });
+    expect(newNameButtons('Emaar', null)).toEqual({ written: 'Emaar', lookup: null });
   });
 });

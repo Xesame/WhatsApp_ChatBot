@@ -385,6 +385,98 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
     expect(notListing?.expected).toMatchObject({ intent: 'not_relevant', units: [] });
   });
 
+  it("takes expected plans only from the case's own message", async () => {
+    const { db } = testDb.database;
+    const { unit, message } = await listing();
+    // A later repost of the same unit with different plans: today's plans, but
+    // not what the first message said.
+    const [repost] = await db
+      .insert(messages)
+      .values({
+        groupId,
+        waMessageId: `W${Math.random()}`,
+        senderHash: 's'.repeat(64),
+        sentAt: new Date('2026-10-25T10:00:00Z'),
+        text: 'repost',
+        status: 'processed',
+      })
+      .returning();
+    if (!repost) throw new Error('insert failed');
+    await db.insert(unitSources).values({ unitId: unit.id, messageId: repost.id, role: 'listing' });
+    const row = (position: number, downPaymentPercent: number, installmentAmount: number) => ({
+      unitId: unit.id,
+      position,
+      downPaymentPercent,
+      installmentAmount,
+      installmentFrequency: 'quarterly' as const,
+      installmentYears: 8,
+      currency: 'EGP' as const,
+    });
+    await db.insert(unitPaymentPlans).values([
+      {
+        ...row(0, 0, 15_200_000),
+        source: 'message',
+        sourceMessageId: message.id,
+        observedAt: message.sentAt,
+      },
+      {
+        ...row(1, 10, 10_461_200),
+        source: 'message',
+        sourceMessageId: message.id,
+        observedAt: message.sentAt,
+      },
+      {
+        ...row(0, 20, 7_527_600),
+        source: 'message',
+        sourceMessageId: repost.id,
+        observedAt: repost.sentAt,
+      },
+    ]);
+    await reviewUnit(testDb.database, unit.id, { action: 'approve' }, null);
+
+    const planOf = async () =>
+      (await reviewCases(db)).find((c) => c.id === `review-message-${message.id}`)?.expected
+        .units[0]?.paymentPlans;
+    expect(await planOf()).toEqual([
+      {
+        downPaymentPercent: 0,
+        installmentAmount: 152_000,
+        installmentFrequency: 'quarterly',
+        installmentYears: 8,
+      },
+      {
+        downPaymentPercent: 10,
+        installmentAmount: 104_612,
+        installmentFrequency: 'quarterly',
+        installmentYears: 8,
+      },
+    ]);
+
+    // Plans the owner typed while reviewing this unit are the expected answer.
+    await db.insert(unitPaymentPlans).values({
+      ...row(0, 5, 9_000_000),
+      source: 'review',
+      sourceMessageId: null,
+      observedAt: new Date('2026-10-26T10:00:00Z'),
+    });
+    await db.insert(reviewCorrections).values({
+      unitId: unit.id,
+      messageId: message.id,
+      action: 'edit',
+      field: 'paymentPlans',
+      before: [],
+      after: [],
+    });
+    expect(await planOf()).toEqual([
+      {
+        downPaymentPercent: 5,
+        installmentAmount: 90_000,
+        installmentFrequency: 'quarterly',
+        installmentYears: 8,
+      },
+    ]);
+  });
+
   it('unit view shows the price history in order', async () => {
     const { unit } = await listing();
     const view = await unitView(testDb.database.db, unit.id);

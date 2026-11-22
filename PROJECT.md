@@ -399,7 +399,7 @@ _(Phase 7)_ alerts.
 | Quotes the evidence for project, unit type, area, price                               | Checks every value and quote really appears in the message (no invention) |
 | Writes a short English note                                                           | Computes confidence and review reasons                                    |
 
-**Prompts and versions.** `packages/llm/prompts/classify.ts` and `extract.ts`, each with a `VERSION` (currently `classify-2026-10-26.1`, `extract-2026-10-26.1`). Every `extraction_runs` row records it. To change a prompt: edit it, bump `VERSION`, run `pnpm eval`, compare with the previous report, and get approval if a key field drops by more than 2 points (chapter 12).
+**Prompts and versions.** `packages/llm/prompts/classify.ts` and `extract.ts`, each with a `VERSION` (currently `classify-2026-10-26.1`, `extract-2026-11-21.1`). Every `extraction_runs` row records it. To change a prompt: edit it, bump `VERSION`, run `pnpm eval`, compare with the previous report, and get approval if a key field drops by more than 2 points (chapter 12).
 
 **Models and fallback.** Set in `.env` as `provider:model` lists in fallback order:
 
@@ -928,13 +928,23 @@ The eval set is the accuracy gate: prompts and models change only when the numbe
       "deliveryYear": 2028,
       "downPayment": 10,
       "installmentsCount": 32,
-      "bedrooms": 3
+      "bedrooms": 3,
+      "paymentPlans": [
+        {
+          "downPaymentPercent": 10,
+          "installmentAmount": null,
+          "installmentFrequency": "quarterly",
+          "installmentYears": 8
+        }
+      ]
     }
   ]
 }
 ```
 
 Prices are whole currency units (9500000 = 9.5 million), names are the English canonical names. Fields left out count as "expected empty", except `readyToMove` (assumed `false`) and `priceCurrency` (assumed `EGP`). `source` is `real` (from a group), `review` (from a review-queue correction, Phase 5) or `example` (hand-written, never counted).
+
+`paymentPlans` lists the unit's plans in the order the message wrote them (amounts in whole currency units; `installmentFrequency` is `monthly`, `quarterly`, `semi-annual` or `annual`); left out means "no plans". A review case takes its plans only from what that message said (or the plans you typed while reviewing the unit), never from a later repost.
 
 **Media cases** (Phase 3): put one file next to `message.txt`, named `image.jpg` / `image.png` / `image.webp` / `document.pdf` / `document.xlsx`; `message.txt` then holds the caption (it may be empty) and `"kind"` is `image`, `pdf` or `spreadsheet`. The runner reads the file exactly as the pipeline does (vision, PDF text layer, Excel cells) and records vision answers under `transcriptions` for `--replay`. The report splits accuracy by kind.
 
@@ -949,11 +959,11 @@ pnpm eval --replay        # uses saved answers: free, offline, repeatable
 pnpm eval --case <id>     # one case
 ```
 
-**The report** (printed, and saved to `eval/reports/<time>.md`) shows, for real cases: intent accuracy, unit-count accuracy, model calls, cost and average latency per message, and per-field accuracy with the change since the last live run (`eval/reports/latest.json`). Key fields are in bold. Every wrong field is listed (`case: field: expected X, got Y`). Example cases appear in a separate table that never counts. Once image and PDF cases exist (Phase 3), the report also splits by kind.
+**The report** (printed, and saved to `eval/reports/<time>.md`) shows, for real cases: intent accuracy, unit-count accuracy, model calls, cost and average latency per message, and per-field accuracy with the change since the last live run (`eval/reports/latest.json`). Key fields are in bold. Every wrong field is listed (`case: field: expected X, got Y`). **Payment plans** get their own table: plans are paired by position (first with first) and their down payment percent, installment amount, frequency and years are compared, plus how many units had the right number of plans. The plans table is reported only: it is not part of the 2-point rule below until there are at least 20 real reviewed cases with plans. Example cases appear in a separate table that never counts. Once image and PDF cases exist (Phase 3), the report also splits by kind.
 
 **Approval rule.** Any prompt or model change must be run against the eval set, and the report attached to the checkpoint summary. A drop of more than 2 points on a key field (price, area, city, project, developer, unit type) is marked "⚠ needs approval" and needs Hassan's approval. With fewer than 50 real cases one mistake moves a field by more than 2 points, so until the set reaches 50, **any new mistake on a key field** needs approval.
 
-**Current state:** no real cases yet. The four `example-*` cases (three text, one two-page PDF) (hand-written messages and hand-written model answers, marked `"handwritten": true`) only prove the runner works; they found and fixed one real bug ("320 m" read as 320 million).
+**Current state:** no real cases yet. The five `example-*` cases (four text, one two-page PDF; `example-05-payment-plans` is a five-plan price list with a made-up project name) (hand-written messages and hand-written model answers, marked `"handwritten": true`) only prove the runner works; they found and fixed one real bug ("320 m" read as 320 million).
 
 ## 13. Testing
 

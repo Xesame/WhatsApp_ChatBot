@@ -89,6 +89,35 @@ describe('normalizePlans', () => {
     ]);
   });
 
+  it('keeps both the percent and the amount when one phrase carries both (live phrasing)', () => {
+    const phrases = [
+      '0% DP',
+      '10% DP DP: 395,200 L.E',
+      '15% DP DP: 592,800 L.E',
+      '20% DP DP: 790,400 L.E',
+      '30% DP DP: 1,185,600 L.E',
+    ];
+    const { plans } = normalizePlans(
+      phrases.map((p) => plan({ label: p.slice(0, 6), down_payment: p })),
+      ctx(VELORIA),
+    );
+    expect(plans.map((p) => [p.downPaymentPercent, p.downPaymentAmount])).toEqual([
+      [0, null],
+      [10, 39_520_000],
+      [15, 59_280_000],
+      [20, 79_040_000],
+      [30, 118_560_000],
+    ]);
+  });
+
+  it('keeps both in Arabic: "مقدم 10% (500,000 ج)"', () => {
+    const { plans } = normalizePlans(
+      [plan({ down_payment: 'مقدم 10% (500,000 ج)' })],
+      ctx('مقدم 10% (500,000 ج)'),
+    );
+    expect(plans[0]).toMatchObject({ downPaymentPercent: 10, downPaymentAmount: 50_000_000 });
+  });
+
   it('reads Arabic words and Arabic digits', () => {
     const text = 'مقدم ١٠٪ والباقي على ٨ سنين ربع سنوي القسط الربع سنوي ١٠٤٬٦١٢ ج';
     const { plans, reasons } = normalizePlans(
@@ -168,6 +197,8 @@ describe('normalizePlans', () => {
       ['15,000 monthly', 1_500_000],
       ['100,000 yearly', 10_000_000],
       ['15,000 قسط شهري', 1_500_000],
+      ['قسط ١٢٬٠٠٠ شهر', 1_200_000],
+      ['قسط ١٢٬٥٠٠٫٥ شهر', 1_250_050],
     ];
     for (const [phrase, minor] of cases) {
       const { plans } = normalizePlans([plan({ installment_amount: phrase })], ctx(phrase));

@@ -19,7 +19,8 @@
       "priceCurrency": "USD",
       "deliveryYear": null,
       "readyToMove": true,
-      "bedrooms": 4
+      "bedrooms": 4,
+      "paymentPlans": []
     }
   ]
 }

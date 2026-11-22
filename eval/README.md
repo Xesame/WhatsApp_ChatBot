@@ -22,6 +22,8 @@ pnpm eval --case <id>     # one case
 pnpm eval:from-review     # reviewed messages → cases/review-message-<id>/ (needs DATABASE_URL)
 ```
 
-The three `example-*` cases are written by hand (`"source": "example"`, recordings marked `"handwritten": true`) to show the format and test the runner. They are reported separately and never count toward real accuracy.
+The `example-*` cases are written by hand (`"source": "example"`, recordings marked `"handwritten": true`) to show the format and test the runner. They are reported separately and never count toward real accuracy.
+
+**Payment plans.** Each unit in `expected.json` may list `paymentPlans` (in the order written: `downPaymentPercent`, `installmentAmount` in whole currency units, `installmentFrequency`, `installmentYears`); left out means none. The report scores plans in their own table, paired by position, and keeps them out of the 2-point rule for key fields.
 
 **Cases from reviews.** Each message reviewed in the admin console (corrected, approved or rejected) becomes `cases/review-message-<id>/` with `"source": "review"`: the message with phone numbers and e-mails removed, the reply it answered, the flyer or PDF, and the units as the owner left them. Existing folders are kept unless `--force`. Read each new case before committing it.

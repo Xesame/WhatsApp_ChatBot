@@ -16,7 +16,15 @@
       "maxPrice": 9800000,
       "priceCurrency": "EGP",
       "downPayment": 10,
-      "bedrooms": 3
+      "bedrooms": 3,
+      "paymentPlans": [
+        {
+          "downPaymentPercent": 10,
+          "installmentAmount": null,
+          "installmentFrequency": null,
+          "installmentYears": 8
+        }
+      ]
     },
     {
       "category": "Residential",
@@ -29,7 +37,15 @@
       "minPrice": 16500000,
       "maxPrice": 16500000,
       "priceCurrency": "EGP",
-      "downPayment": 10
+      "downPayment": 10,
+      "paymentPlans": [
+        {
+          "downPaymentPercent": 10,
+          "installmentAmount": null,
+          "installmentFrequency": null,
+          "installmentYears": 8
+        }
+      ]
     }
   ]
 }
