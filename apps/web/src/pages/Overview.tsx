@@ -48,9 +48,13 @@ export function Overview() {
     <>
       <PageTitle title="Overview" subtitle="The last 14 days" />
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Link to="/review" className="block rounded-banner">
-          <Stat value={s.needsReview.toLocaleString()} label="Waiting for review" tone="lime" />
-        </Link>
+        {s.needsReview > 0 ? (
+          <Link to="/review" className="block rounded-banner">
+            <Stat value={s.needsReview.toLocaleString()} label="Waiting for review" tone="lime" />
+          </Link>
+        ) : (
+          <Stat value="0" label="Waiting for review" />
+        )}
         <Stat value={(s.units.active ?? 0).toLocaleString()} label="Active listings" />
         <Stat value={percent(rightThisWeek)} label="Right first time this week" />
       </div>

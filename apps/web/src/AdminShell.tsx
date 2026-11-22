@@ -34,17 +34,31 @@ export function AdminShell() {
     queryKey: ['stats'],
     queryFn: () => api<Stats>('/api/admin/stats?days=14'),
     refetchInterval: 60_000,
+    staleTime: 30_000,
     enabled: isOwner,
   });
   const jobs = useQuery({
     queryKey: ['jobs'],
     queryFn: () => api<FailedJob[]>('/api/admin/jobs/failed'),
     refetchInterval: 30_000,
+    staleTime: 30_000,
     enabled: isOwner,
   });
 
   // Close the phone menu after choosing a page.
   useEffect(() => setOpen(false), [location.pathname]);
+
+  // Escape closes the phone menu and puts focus back on the Menu button.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      document.getElementById('menu-button')?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
 
   if (me.isPending) {
     return (
@@ -82,15 +96,17 @@ export function AdminShell() {
       <header className="on-graphite flex items-center justify-between bg-graphite px-4 py-3 md:hidden">
         <Wordmark name="Real Estate Bot" className="text-base" />
         <Button
+          id="menu-button"
           variant="inverse"
           aria-expanded={open}
-          aria-controls="console-nav"
+          aria-controls="console-sidebar"
           onClick={() => setOpen((o) => !o)}
         >
           {open ? 'Close' : 'Menu'}
         </Button>
       </header>
       <aside
+        id="console-sidebar"
         className={cx(
           'on-graphite flex-col bg-graphite text-bone md:sticky md:top-0 md:flex md:h-screen md:w-58 md:shrink-0',
           open ? 'flex' : 'hidden',
@@ -99,7 +115,7 @@ export function AdminShell() {
         <div className="hidden px-5 pt-6 pb-5 md:block">
           <Wordmark name="Real Estate Bot" className="text-base" />
         </div>
-        <nav id="console-nav" aria-label="Console" className="flex-1 overflow-y-auto px-3 py-2">
+        <nav aria-label="Console" className="flex-1 overflow-y-auto px-3 py-2">
           <ul className="space-y-0.5">
             {NAV.map((item) => {
               const count = counts[item.count];
