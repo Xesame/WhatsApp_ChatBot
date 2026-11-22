@@ -58,6 +58,27 @@ const list = (values: readonly (string | number)[]) =>
 /** Escapes `%` and `_` so typed text is matched literally inside LIKE. */
 const likeText = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+/**
+ * "Some current payment plan of the unit satisfies `onPlan`" (plans are rows
+ * `pp`). A unit's current plans are the rows of its newest source: the same
+ * rule as `currentPlans` in packages/pipeline/src/plans.ts (newest observed_at,
+ * then newest id; rows of one source share message and time). It is written
+ * again here in SQL because search sits below the pipeline. Units with no
+ * plans at all fall back to `onColumns`, their own columns (none: no match).
+ */
+function anyPlan(onPlan: SQL, onColumns: SQL | undefined): SQL {
+  const newest = (column: SQL) =>
+    sql`(select ${column} from unit_payment_plans n where n.unit_id = u.id order by n.observed_at desc, n.id desc limit 1)`;
+  const current = sql`exists (
+    select 1 from unit_payment_plans pp
+    where pp.unit_id = u.id
+      and pp.observed_at = ${newest(sql`n.observed_at`)}
+      and pp.source_message_id is not distinct from ${newest(sql`n.source_message_id`)}
+      and ${onPlan})`;
+  if (!onColumns) return current;
+  return sql`(${current} or (not exists (select 1 from unit_payment_plans x where x.unit_id = u.id) and ${onColumns}))`;
+}
+
 /** The WHERE conditions and price expressions shared by search, count and export. */
 function build(filters: SearchFilters, rate: number | undefined) {
   const r = sql`${rate ?? null}::numeric`;
@@ -87,9 +108,30 @@ function build(filters: SearchFilters, rate: number | undefined) {
     add(sql`(u.ready_to_move or u.delivery_year <= ${filters.deliveryYearMax})`);
   }
   if (filters.readyToMove !== undefined) add(sql`u.ready_to_move = ${filters.readyToMove}`);
-  if (filters.downPaymentMax !== undefined) add(sql`u.down_payment <= ${filters.downPaymentMax}`);
+  if (filters.downPaymentMax !== undefined) {
+    add(
+      anyPlan(
+        sql`pp.down_payment_percent <= ${filters.downPaymentMax}`,
+        sql`u.down_payment <= ${filters.downPaymentMax}`,
+      ),
+    );
+  }
   if (filters.installmentYearsMin !== undefined) {
-    add(sql`u.installment_years >= ${filters.installmentYearsMin}`);
+    add(
+      anyPlan(
+        sql`pp.installment_years >= ${filters.installmentYearsMin}`,
+        sql`u.installment_years >= ${filters.installmentYearsMin}`,
+      ),
+    );
+  }
+  if (filters.monthlyInstallmentMax !== undefined) {
+    // Plans without an amount or frequency (cash-only ones) give null, so they never match.
+    const perYear = sql`(case pp.installment_frequency when 'monthly' then 12 when 'quarterly' then 4 when 'semi-annual' then 2 when 'annual' then 1 end)`;
+    const monthly = sql`(pp.installment_amount * ${perYear} / 12.0)`;
+    const monthlyEgp = sql`(case when pp.currency = 'EGP' then ${monthly} else ${monthly} * ${r} end)`;
+    add(
+      anyPlan(sql`${monthlyEgp} <= ${Math.round(filters.monthlyInstallmentMax * 100)}`, undefined),
+    );
   }
   if (filters.priceDropped) add(sql`u.min_price < ${previous}`);
   if (filters.q) {

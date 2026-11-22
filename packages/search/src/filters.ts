@@ -40,6 +40,8 @@ export const searchFiltersSchema = z
     readyToMove: z.boolean(),
     downPaymentMax: z.number().min(0).max(100),
     installmentYearsMin: z.number().min(0).max(30),
+    /** EGP per month: some current payment plan costs this much a month or less. */
+    monthlyInstallmentMax: z.number().positive().max(100_000_000),
     /** Only listings whose latest price is lower than the one before. */
     priceDropped: z.boolean(),
     statuses: z.array(z.enum(VISIBLE_STATUSES)).min(1).max(3),
@@ -70,6 +72,7 @@ const NUMBER_KEYS = [
   'deliveryYearMax',
   'downPaymentMax',
   'installmentYearsMin',
+  'monthlyInstallmentMax',
 ] as const;
 const BOOLEAN_KEYS = ['readyToMove', 'priceDropped'] as const;
 const NUMBER_LISTS = new Set(['cityIds', 'developerIds', 'projectIds']);

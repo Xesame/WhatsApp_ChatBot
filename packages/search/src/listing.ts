@@ -4,6 +4,7 @@ import {
   mediaFiles,
   messages,
   projects,
+  unitPaymentPlans,
   unitPrices,
   units,
   unitSources,
@@ -11,7 +12,8 @@ import {
   type Db,
 } from '@reb/db';
 import { scrubPersonalData } from '@reb/llm';
-import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm';
+import type { PaymentPlan } from '@reb/schema';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { VISIBLE_STATUSES } from './filters.ts';
 import type { Names } from './search.ts';
 
@@ -41,6 +43,8 @@ export interface ListingDetail {
     installmentYears: number | null;
     observedAt: string;
   }[];
+  /** The unit's current payment plans, in the order written; no source or message ids. */
+  paymentPlans: PaymentPlan[];
   sources: ListingSource[];
 }
 
@@ -52,6 +56,49 @@ const HIDDEN = new Set([
   'reviewReasons',
   'needsReview',
 ]);
+
+/**
+ * The unit's current plans: the rows of its newest source (same rule as
+ * `currentPlans` in packages/pipeline/src/plans.ts; search sits below the
+ * pipeline, so it is written again here).
+ */
+async function plansOf(db: Db, unitId: number): Promise<PaymentPlan[]> {
+  const [newest] = await db
+    .select({
+      sourceMessageId: unitPaymentPlans.sourceMessageId,
+      observedAt: unitPaymentPlans.observedAt,
+    })
+    .from(unitPaymentPlans)
+    .where(eq(unitPaymentPlans.unitId, unitId))
+    .orderBy(desc(unitPaymentPlans.observedAt), desc(unitPaymentPlans.id))
+    .limit(1);
+  if (!newest) return [];
+  const rows = await db
+    .select()
+    .from(unitPaymentPlans)
+    .where(
+      and(
+        eq(unitPaymentPlans.unitId, unitId),
+        eq(unitPaymentPlans.observedAt, newest.observedAt),
+        sql`${unitPaymentPlans.sourceMessageId} is not distinct from ${newest.sourceMessageId}`,
+      ),
+    )
+    .orderBy(asc(unitPaymentPlans.position), asc(unitPaymentPlans.id));
+  return rows.map((row) => ({
+    position: row.position,
+    label: row.label,
+    downPaymentPercent: row.downPaymentPercent,
+    downPaymentAmount: row.downPaymentAmount,
+    installmentAmount: row.installmentAmount,
+    installmentFrequency: row.installmentFrequency,
+    installmentsCount: row.installmentsCount,
+    installmentYears: row.installmentYears,
+    planPrice: row.planPrice,
+    cash: row.cash,
+    notes: row.notes,
+    currency: row.currency,
+  }));
+}
 
 export async function listingDetail(db: Db, unitId: number): Promise<ListingDetail | null> {
   const [unit] = await db
@@ -71,7 +118,7 @@ export async function listingDetail(db: Db, unitId: number): Promise<ListingDeta
       .where(eq(table.id, id));
     return row ?? null;
   };
-  const [project, developer, city, prices, sourceRows] = await Promise.all([
+  const [project, developer, city, prices, paymentPlans, sourceRows] = await Promise.all([
     nameOf(projects, unit.projectId),
     nameOf(developers, unit.developerId),
     nameOf(cities, unit.cityId),
@@ -80,6 +127,7 @@ export async function listingDetail(db: Db, unitId: number): Promise<ListingDeta
       .from(unitPrices)
       .where(eq(unitPrices.unitId, unitId))
       .orderBy(desc(unitPrices.observedAt), desc(unitPrices.id)),
+    plansOf(db, unitId),
     db
       .select({
         role: unitSources.role,
@@ -112,6 +160,7 @@ export async function listingDetail(db: Db, unitId: number): Promise<ListingDeta
       installmentYears: p.installmentYears,
       observedAt: p.observedAt.toISOString(),
     })),
+    paymentPlans,
     sources: sourceRows.map((s) => ({
       role: s.role,
       sentAt: s.sentAt.toISOString(),

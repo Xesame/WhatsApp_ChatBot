@@ -182,7 +182,7 @@ export const appRoutes: FastifyPluginCallback<AppRoutesOptions> = (parent, optio
       schema: {
         tags: ['Dashboard'],
         summary:
-          'Search listings. Filters as query parameters (lists comma-separated): q, cityIds, developerIds, projectIds, unitTypes, categories, finishing, bedroomsMin/Max, areaMin/Max (m²), priceMin/Max (EGP), deliveryYearMax, readyToMove, downPaymentMax, installmentYearsMin, priceDropped, statuses, sort; plus page and pageSize',
+          'Search listings. Filters as query parameters (lists comma-separated): q, cityIds, developerIds, projectIds, unitTypes, categories, finishing, bedroomsMin/Max, areaMin/Max (m²), priceMin/Max (EGP), deliveryYearMax, readyToMove, downPaymentMax, installmentYearsMin, monthlyInstallmentMax (EGP per month), priceDropped, statuses, sort; plus page and pageSize',
         querystring: filtersQuery,
       },
     },

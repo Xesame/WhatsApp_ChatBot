@@ -235,6 +235,7 @@ export function Listing() {
             <FactList title={t('listing.facts')} rows={facts} />
             <FactList title={t('listing.payment')} rows={payment} />
           </div>
+          <PaymentPlans detail={detail} />
           <Card title={t('listing.sources')}>
             <div className="space-y-4">
               {detail.sources.map((src, i) => (
@@ -304,6 +305,64 @@ export function Listing() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Every current payment plan, as the message wrote it (amounts shown in the plan's own currency). */
+function PaymentPlans({ detail }: { detail: ListingDetail }) {
+  const i18n = useI18n();
+  const { t } = i18n;
+  const plans = detail.paymentPlans;
+  if (plans.length === 0) return null;
+  const amount = (minor: number, currency: string) =>
+    currency === 'USD' ? `USD ${i18n.number(minor / 100)}` : i18n.moneyFull(pounds(minor));
+  return (
+    <Card title={t('listing.plans')}>
+      <div className="space-y-3">
+        {plans.map((plan, i) => {
+          const lines = [
+            plan.cash ? t('plan.cash') : null,
+            plan.downPaymentPercent === null && plan.downPaymentAmount === null
+              ? null
+              : [
+                  plan.downPaymentPercent === null
+                    ? null
+                    : t('unit.down', { p: i18n.number(plan.downPaymentPercent, 1) }),
+                  plan.downPaymentAmount === null
+                    ? null
+                    : amount(plan.downPaymentAmount, plan.currency),
+                ]
+                  .filter(Boolean)
+                  .join(' · '),
+            plan.installmentAmount !== null && plan.installmentFrequency !== null
+              ? t('plan.every', {
+                  amount: amount(plan.installmentAmount, plan.currency),
+                  freq: i18n.value(plan.installmentFrequency),
+                })
+              : null,
+            plan.installmentYears === null
+              ? null
+              : t('unit.overYears', { n: i18n.number(plan.installmentYears, 1) }),
+            plan.installmentsCount === null
+              ? null
+              : t('listing.count', { n: plan.installmentsCount }),
+            plan.planPrice === null
+              ? null
+              : `${t('plan.planPrice')}: ${amount(plan.planPrice, plan.currency)}`,
+            plan.notes,
+          ].filter(Boolean);
+          return (
+            <div
+              key={i}
+              className="border-b border-slate-100 pb-3 text-sm last:border-0 last:pb-0 dark:border-slate-800"
+            >
+              {plan.label && <p className="font-medium">{plan.label}</p>}
+              <p className="tabular-nums">{lines.join(' · ')}</p>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 

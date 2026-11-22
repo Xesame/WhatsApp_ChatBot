@@ -1,3 +1,4 @@
+import type { PaymentPlan } from '@reb/schema';
 /** Calls to the API (same address as this page; see vite.config.ts). */
 
 export class ApiError extends Error {
@@ -223,6 +224,7 @@ export interface ListingDetail {
     installmentYears: number | null;
     observedAt: string;
   }[];
+  paymentPlans: PaymentPlan[];
   sources: {
     role: string;
     sentAt: string;

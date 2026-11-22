@@ -1,4 +1,13 @@
-import { mediaFiles, messages, projects, unitPrices, units, unitSources, waGroups } from '@reb/db';
+import {
+  mediaFiles,
+  messages,
+  projects,
+  unitPaymentPlans,
+  unitPrices,
+  units,
+  unitSources,
+  waGroups,
+} from '@reb/db';
 import { seed } from '@reb/db/seed-runner';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { eq } from 'drizzle-orm';
@@ -161,6 +170,67 @@ describe.skipIf(!testDatabaseUrl)('listing search (real Postgres)', () => {
         sourceMessageId: mid.m.id,
       },
     ]);
+    // Payment plans. 'veloria': an old message said 5% (stale), the newest says 20% and 0%.
+    const plan = (
+      unitName: string,
+      daysAgo: number,
+      position: number,
+      values: Partial<typeof unitPaymentPlans.$inferInsert>,
+    ) => ({
+      unitId: id[unitName] ?? 0,
+      sourceMessageId: planMessage[unitName]?.[daysAgo] ?? null,
+      source: 'message' as const,
+      position,
+      currency: 'EGP' as const,
+      cash: false,
+      observedAt: at(daysAgo),
+      ...values,
+    });
+    const planMessage: Record<string, Record<number, number>> = {};
+    for (const [name, days] of [
+      ['cheap', [30, 3]],
+      ['mid', [3]],
+      ['usd', [3]],
+      ['madinaty', [3]],
+    ] as const) {
+      planMessage[name] = {};
+      for (const d of days) {
+        const [m] = await db
+          .insert(messages)
+          .values({
+            groupId: group?.id ?? 0,
+            waMessageId: `plan-${name}-${d}`,
+            senderHash: 'secret-sender-hash',
+            sentAt: at(d),
+            text: 'plans',
+            status: 'processed',
+          })
+          .returning();
+        planMessage[name][d] = m?.id ?? 0;
+      }
+    }
+    await db.insert(unitPaymentPlans).values([
+      // cheap: an old message said 50% over 20 years; the newest says 20% and 0%
+      plan('cheap', 30, 0, { downPaymentPercent: 50, installmentYears: 20 }),
+      plan('cheap', 3, 0, { downPaymentPercent: 20, installmentYears: 7 }),
+      plan('cheap', 3, 1, { downPaymentPercent: 0, installmentYears: 10 }),
+      // mid: quarterly 152,000 EGP = 50,667 a month; plus a cash option
+      plan('mid', 3, 0, {
+        downPaymentPercent: 10,
+        installmentAmount: 15_200_000,
+        installmentFrequency: 'quarterly',
+        installmentYears: 8,
+      }),
+      plan('mid', 3, 1, { cash: true, downPaymentPercent: null }),
+      // usd: 1,000 USD monthly = 50,000 EGP at the rate of 50
+      plan('usd', 3, 0, {
+        currency: 'USD',
+        installmentAmount: 100_000,
+        installmentFrequency: 'monthly',
+      }),
+      // madinaty: cash only
+      plan('madinaty', 3, 0, { cash: true }),
+    ]);
     const [file] = await db
       .insert(mediaFiles)
       .values({
@@ -210,6 +280,50 @@ describe.skipIf(!testDatabaseUrl)('listing search (real Postgres)', () => {
       named('cheap'),
     );
     expect(await search({ priceDropped: true })).toEqual([id.mid]);
+  });
+
+  it('matches a unit when any plan fits', async () => {
+    // cheap's newest plans are 20% and 0%; its old 50% / 20 years plan no longer counts
+    expect(await search({ downPaymentMax: 20 })).toContain(id.cheap);
+    expect(sorted(await search({ downPaymentMax: 0 }))).toEqual(named('cheap'));
+    expect(sorted(await search({ downPaymentMax: 5 }))).toEqual(named('cheap'));
+    expect(await search({ installmentYearsMin: 10 })).toEqual([id.cheap]);
+    expect(await search({ installmentYearsMin: 15 })).toEqual([]);
+    // mid's plan says 10%
+    expect(sorted(await search({ downPaymentMax: 10 }))).toEqual(named('cheap', 'mid'));
+  });
+
+  it('filters by monthly payment', async () => {
+    expect(sorted(await search({ monthlyInstallmentMax: 60_000 }))).toEqual(named('mid', 'usd'));
+    expect(sorted(await search({ monthlyInstallmentMax: 50_000 }))).toEqual(named('usd'));
+  });
+
+  it('skips cash-only plans', async () => {
+    expect(await search({ monthlyInstallmentMax: 100_000_000 })).not.toContain(id.madinaty);
+    expect(await search({ monthlyInstallmentMax: 100_000_000 })).not.toContain(id.cheap);
+  });
+
+  it('converts USD plans for the monthly filter', async () => {
+    expect(await search({ monthlyInstallmentMax: 60_000 }, 50)).toContain(id.usd);
+    expect(await search({ monthlyInstallmentMax: 60_000 }, 70)).not.toContain(id.usd);
+    expect(await search({ monthlyInstallmentMax: 60_000 }, null)).not.toContain(id.usd);
+  });
+
+  it('shows plans on the listing without sources', async () => {
+    const detail = await listingDetail(testDb.database.db, id.mid ?? 0);
+    expect(detail?.paymentPlans).toHaveLength(2);
+    expect(detail?.paymentPlans[0]).toMatchObject({
+      downPaymentPercent: 10,
+      installmentAmount: 15_200_000,
+      installmentFrequency: 'quarterly',
+      installmentYears: 8,
+    });
+    expect(detail?.paymentPlans[1]).toMatchObject({ cash: true });
+    const old = await listingDetail(testDb.database.db, id.cheap ?? 0);
+    expect(old?.paymentPlans.map((p) => p.downPaymentPercent)).toEqual([20, 0]);
+    const json = JSON.stringify(detail?.paymentPlans);
+    expect(json).not.toContain('sourceMessageId');
+    expect(json).not.toContain('observedAt');
   });
 
   it('sorts by newest, price and price per m²', async () => {
