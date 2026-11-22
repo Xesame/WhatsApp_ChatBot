@@ -94,7 +94,7 @@ export function Search() {
       if (e.key !== 'Tab' || !drawer.current) return;
       const items = [
         ...drawer.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input, select, [href]',
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
         ),
       ];
       const first = items[0];
@@ -109,8 +109,13 @@ export function Search() {
       }
     };
     document.addEventListener('keydown', onKey);
+    // Growing to the desktop layout hides the drawer, so close it and free the scroll.
+    const wide = window.matchMedia('(min-width: 1024px)');
+    const onWide = () => wide.matches && setShowFilters(false);
+    wide.addEventListener('change', onWide);
     return () => {
       document.removeEventListener('keydown', onKey);
+      wide.removeEventListener('change', onWide);
       document.body.style.overflow = previousOverflow;
       opener?.focus();
     };
