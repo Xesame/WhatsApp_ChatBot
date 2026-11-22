@@ -90,6 +90,40 @@ export function Overview() {
             ))}
           </dl>
         </Card>
+        <Card title="Is the bot learning?" className="lg:col-span-3">
+          <Table
+            head={[
+              'Week',
+              'New listings',
+              'Flagged on arrival (%)',
+              'Reviewed',
+              'Right first time (%)',
+              'Fixes per listing',
+            ]}
+          >
+            {[...s.weeks].reverse().map((w) => (
+              <tr key={w.week}>
+                <td className={td}>{w.week}</td>
+                <td className={td}>{w.newUnits}</td>
+                <td className={td}>
+                  {percent(w.newUnits > 0 ? w.flaggedOnArrival / w.newUnits : null)}
+                </td>
+                <td className={td}>{w.reviewed}</td>
+                <td className={td}>
+                  {percent(w.reviewed > 0 ? w.rightFirstTime / w.reviewed : null)}
+                </td>
+                <td className={td}>
+                  {w.correctionsPerReviewed === null ? '—' : w.correctionsPerReviewed.toFixed(1)}
+                </td>
+              </tr>
+            ))}
+          </Table>
+          <p className="mt-3 text-xs text-slate-500">
+            Each row is one week, starting Monday. If the bot is learning, the share flagged on
+            arrival, and the fixes per listing, go down over the weeks, and the share right first
+            time goes up.
+          </p>
+        </Card>
       </div>
     </>
   );

@@ -20,6 +20,93 @@ export interface Stats {
   needsReviewRate: number | null;
   units: Record<string, number>;
   needsReview: number;
+  /** "Is the bot learning?": the last 12 weeks (Cairo time, Monday start), oldest first. */
+  weeks: LearningWeek[];
+}
+
+export interface LearningWeek {
+  /** The Monday the week starts, YYYY-MM-DD. */
+  week: string;
+  /** Listings the bot created this week. */
+  newUnits: number;
+  /** Of those, how many the bot itself marked "check me" when it first saw them. */
+  flaggedOnArrival: number;
+  /** Listings whose first approval by a person fell in this week. */
+  reviewed: number;
+  /** Reviewed listings approved with no fixes and no name learned during the review. */
+  rightFirstTime: number;
+  /** Fixes made to the reviewed listings ÷ reviewed; null when none were reviewed. */
+  correctionsPerReviewed: number | null;
+}
+
+/**
+ * Weekly learning numbers. A reviewed listing counts as "right first time"
+ * only if it was approved with no `edit` row AND no spelling was learned from
+ * it (`entity_aliases.review_unit_id`): choosing a project, developer or area
+ * during review means the bot had left that field empty, even though no
+ * `edit` row exists. We cannot tell from stored data whether a re-check
+ * cleared a flag before approval, so that case is not separated out.
+ */
+async function learningWeeks(database: Database): Promise<LearningWeek[]> {
+  const result = await database.pool.query<{
+    week: string;
+    new_units: number;
+    flagged: number;
+    reviewed: number;
+    right_first_time: number;
+    edits: number;
+  }>(`
+    with weeks as (
+      select generate_series(
+        date_trunc('week', now() at time zone 'Africa/Cairo') - interval '77 days',
+        date_trunc('week', now() at time zone 'Africa/Cairo'),
+        interval '7 days')::date as week
+    ),
+    created as (
+      select date_trunc('week', created_at at time zone 'Africa/Cairo')::date as week,
+             count(*)::int as new_units,
+             (count(*) filter (where flagged_on_arrival))::int as flagged
+      from units group by 1
+    ),
+    first_approval as (
+      select unit_id, min(created_at) as at
+      from review_corrections
+      where action = 'approve' and unit_id is not null
+      group by unit_id
+    ),
+    reviewed as (
+      select date_trunc('week', fa.at at time zone 'Africa/Cairo')::date as week,
+             (select count(*) from review_corrections e
+               where e.unit_id = fa.unit_id and e.action = 'edit')::int as edits,
+             exists (select 1 from entity_aliases a where a.review_unit_id = fa.unit_id) as learned
+      from first_approval fa
+    ),
+    reviewed_by_week as (
+      select week,
+             count(*)::int as reviewed,
+             (count(*) filter (where edits = 0 and not learned))::int as right_first_time,
+             coalesce(sum(edits), 0)::int as edits
+      from reviewed group by week
+    )
+    select to_char(weeks.week, 'YYYY-MM-DD') as week,
+           coalesce(created.new_units, 0) as new_units,
+           coalesce(created.flagged, 0) as flagged,
+           coalesce(r.reviewed, 0) as reviewed,
+           coalesce(r.right_first_time, 0) as right_first_time,
+           coalesce(r.edits, 0) as edits
+    from weeks
+    left join created using (week)
+    left join reviewed_by_week r using (week)
+    order by weeks.week
+  `);
+  return result.rows.map((r) => ({
+    week: r.week,
+    newUnits: r.new_units,
+    flaggedOnArrival: r.flagged,
+    reviewed: r.reviewed,
+    rightFirstTime: r.right_first_time,
+    correctionsPerReviewed: r.reviewed > 0 ? r.edits / r.reviewed : null,
+  }));
 }
 
 /** The numbers on the admin stats page (build plan, section 8). */
@@ -85,6 +172,7 @@ export async function stats(database: Database, days = 14): Promise<Stats> {
     needsReviewRate: active > 0 ? (review?.count ?? 0) / active : null,
     units: Object.fromEntries(byStatus.map((s) => [s.status, s.count])),
     needsReview: review?.count ?? 0,
+    weeks: await learningWeeks(database),
   };
 }
 

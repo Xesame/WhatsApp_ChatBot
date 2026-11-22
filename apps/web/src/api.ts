@@ -1,6 +1,5 @@
 import type { PaymentPlan } from '@reb/schema';
 /** Calls to the API (same address as this page; see vite.config.ts). */
-import type { PaymentPlan } from '@reb/schema';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -142,6 +141,14 @@ export interface Stats {
   needsReviewRate: number | null;
   units: Record<string, number>;
   needsReview: number;
+  weeks: {
+    week: string;
+    newUnits: number;
+    flaggedOnArrival: number;
+    reviewed: number;
+    rightFirstTime: number;
+    correctionsPerReviewed: number | null;
+  }[];
 }
 
 export interface FailedJob {
