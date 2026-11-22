@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { filtersFromQuery, filtersToQuery, SORTS, type SearchFilters } from '@reb/search/filters';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { api, type FilterOptions, type SearchItem, type SearchPage } from '../api.ts';
 import { useI18n, type I18n } from '../i18n.tsx';
@@ -22,6 +22,7 @@ import { Filters } from './Filters.tsx';
 import { areaText, deliveryText, paymentText, priceText } from './format.ts';
 
 const PAGE_SIZE = 25;
+const SEVERAL = 'several';
 
 function readFilters(params: URLSearchParams): SearchFilters {
   try {
@@ -78,13 +79,48 @@ export function Search() {
   const total = results.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // The phone drawer: focus moves into it on open, Tab stays inside, the page
+  // behind does not scroll, and focus goes back to the Filters button on close.
+  const drawer = useRef<HTMLDivElement>(null);
   const closeDrawer = () => setShowFilters(false);
   useEffect(() => {
     if (!showFilters) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setShowFilters(false);
+    const opener = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    drawer.current?.querySelector<HTMLElement>('button')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowFilters(false);
+      if (e.key !== 'Tab' || !drawer.current) return;
+      const items = [
+        ...drawer.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input, select, [href]',
+        ),
+      ];
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) return;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+      opener?.focus();
+    };
   }, [showFilters]);
+  const cityIds = filters.cityIds ?? [];
+  // The quick fields only show a plain value; a richer choice made in the
+  // sidebar shows as "Several" / "Custom" instead of looking like "Any".
+  const bedroomsCustom =
+    filters.bedroomsMax !== undefined ||
+    (filters.bedroomsMin !== undefined && (filters.bedroomsMin < 1 || filters.bedroomsMin > 5));
   const activeCount = Object.keys(filters).filter((k) => k !== 'sort' && k !== 'q').length;
   const setQuick = (key: 'cityIds' | 'bedroomsMin', value: string) => {
     const rest = Object.fromEntries(
@@ -115,7 +151,7 @@ export function Search() {
             submitText();
           }}
         >
-          <Label text={t('search.title')}>
+          <Label tone="inverse" text={t('search.title')}>
             <Input
               type="search"
               dir="auto"
@@ -125,12 +161,19 @@ export function Search() {
               onBlur={submitText}
             />
           </Label>
-          <Label text={t('filter.city')}>
+          <Label tone="inverse" text={t('filter.city')}>
             <Select
-              value={filters.cityIds?.length === 1 ? String(filters.cityIds[0]) : ''}
+              value={
+                cityIds.length > 1 ? SEVERAL : cityIds.length === 1 ? String(cityIds[0]) : ''
+              }
               onChange={(e) => setQuick('cityIds', e.target.value)}
             >
               <option value="">{t('common.any')}</option>
+              {cityIds.length > 1 && (
+                <option value={SEVERAL} disabled>
+                  {t('search.several')}
+                </option>
+              )}
               {(options.data?.cities ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
                   {i18n.name(c)}
@@ -138,12 +181,17 @@ export function Search() {
               ))}
             </Select>
           </Label>
-          <Label text={t('filter.bedrooms')}>
+          <Label tone="inverse" text={t('filter.bedrooms')}>
             <Select
-              value={filters.bedroomsMin ?? ''}
+              value={bedroomsCustom ? SEVERAL : (filters.bedroomsMin ?? '')}
               onChange={(e) => setQuick('bedroomsMin', e.target.value)}
             >
               <option value="">{t('common.any')}</option>
+              {bedroomsCustom && (
+                <option value={SEVERAL} disabled>
+                  {t('search.custom')}
+                </option>
+              )}
               {[1, 2, 3, 4, 5].map((n) => (
                 <option key={n} value={n}>
                   {n}+
@@ -166,11 +214,13 @@ export function Search() {
           <div className="fixed inset-0 z-40 lg:hidden">
             <button
               type="button"
+              tabIndex={-1}
               aria-label={t('common.close')}
               className="absolute inset-0 bg-graphite/60"
               onClick={closeDrawer}
             />
             <div
+              ref={drawer}
               role="dialog"
               aria-modal="true"
               aria-label={t('search.filters')}
@@ -185,7 +235,7 @@ export function Search() {
               <div className="flex-1 overflow-y-auto px-4 py-4">{filterPanel}</div>
               <div className="border-t border-line p-4">
                 <Button size="lg" className="w-full" onClick={closeDrawer}>
-                  {t('search.showResults', { n: i18n.number(total) })}
+                  {results.data ? t('search.showResults', { n: i18n.number(total) }) : t('common.close')}
                 </Button>
               </div>
             </div>
@@ -194,7 +244,11 @@ export function Search() {
 
         <section className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" className="lg:hidden" onClick={() => setShowFilters(true)}>
+            <Button
+              variant="secondary"
+              className="lg:hidden"
+              onClick={() => setShowFilters(true)}
+            >
               {t('search.filters')}
               {activeCount > 0 && ` (${i18n.number(activeCount)})`}
             </Button>
@@ -346,7 +400,7 @@ function ResultsTable({ items }: { items: SearchItem[] }) {
                 {[item.developer, item.city]
                   .filter(Boolean)
                   .map((n) => i18n.name(n))
-                  .join('، ')}
+                  .join(i18n.locale === 'ar' ? '، ' : ', ')}
               </div>
               <div className="mt-1">
                 <Flags item={item} i18n={i18n} />

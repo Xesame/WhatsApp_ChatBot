@@ -79,14 +79,19 @@ export function Label({
   text,
   children,
   hint,
+  tone = 'default',
 }: {
   text: string;
   children: ReactNode;
   hint?: string;
+  /** `inverse` for labels sitting on graphite (bone text). */
+  tone?: 'default' | 'inverse';
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="block text-sm font-medium text-ink">{text}</span>
+      <span className={cx('block text-sm font-medium', tone === 'inverse' ? 'text-bone' : 'text-ink')}>
+        {text}
+      </span>
       {children}
       {hint && <span className="block text-xs text-muted">{hint}</span>}
     </label>

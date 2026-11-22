@@ -98,6 +98,12 @@ function TopBar({
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cx(
       'whitespace-nowrap rounded-control px-3 py-1.5 text-sm font-bold',
