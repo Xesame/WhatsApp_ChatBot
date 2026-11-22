@@ -11,6 +11,7 @@ import {
   Input,
   Label,
   Loading,
+  Note,
   PageTitle,
   Select,
   Table,
@@ -60,16 +61,12 @@ export function Firms() {
               {firms.data?.map((f) => (
                 <tr
                   key={f.id}
-                  className={
-                    f.id === selected
-                      ? 'bg-sky-50 dark:bg-sky-950/40'
-                      : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                  }
+                  className={f.id === selected ? 'bg-lime-soft' : 'cursor-pointer hover:bg-bone'}
                   onClick={() => setSelected(f.id)}
                 >
                   <td className={td}>
                     <span className="font-medium">{f.name}</span>{' '}
-                    {f.status === 'suspended' && <Badge tone="red">suspended</Badge>}
+                    {f.status === 'suspended' && <Badge tone="danger">Suspended</Badge>}
                   </td>
                   <td className={td}>{f.plan}</td>
                   <td className={`${td} tabular-nums`}>
@@ -82,7 +79,9 @@ export function Firms() {
               ))}
             </Table>
             {firms.data?.length === 0 && (
-              <p className="p-4 text-sm text-slate-500">No firms yet. Add the first one.</p>
+              <p className="p-4 text-sm text-muted">
+                No firms yet. Add the first one with the form below.
+              </p>
             )}
           </Card>
           <Card title="Add a firm">
@@ -113,7 +112,9 @@ export function Firms() {
             <FirmPanel key={firm.id} firm={firm} />
           ) : (
             <Card>
-              <p className="text-sm text-slate-500">Choose a firm to manage it.</p>
+              <p className="text-sm text-muted">
+                Choose a firm in the table to change its plan, add people or see its usage.
+              </p>
             </Card>
           )}
         </div>
@@ -180,18 +181,18 @@ function FirmPanel({ firm }: { firm: FirmSummary }) {
         title={firm.name}
         actions={
           firm.status === 'active' ? (
-            <Button variant="danger" onClick={() => save.mutate({ status: 'suspended' })}>
-              Suspend
+            <Button variant="dangerQuiet" onClick={() => save.mutate({ status: 'suspended' })}>
+              Suspend firm
             </Button>
           ) : (
-            <Button onClick={() => save.mutate({ status: 'active' })}>Reactivate</Button>
+            <Button onClick={() => save.mutate({ status: 'active' })}>Reactivate firm</Button>
           )
         }
       >
         {firm.status === 'suspended' && (
-          <p className="mb-3 text-sm text-red-700 dark:text-red-400">
+          <Note tone="danger" className="mb-3">
             Suspended: its users can't sign in.
-          </p>
+          </Note>
         )}
         <form
           className="grid grid-cols-2 gap-3"
@@ -242,9 +243,9 @@ function FirmPanel({ firm }: { firm: FirmSummary }) {
           </div>
           <div className="col-span-2 flex items-center gap-3">
             <Button type="submit" disabled={save.isPending}>
-              {save.isSuccess ? 'Saved' : 'Save'}
+              {save.isSuccess ? 'Saved' : 'Save changes'}
             </Button>
-            <span className="text-xs text-slate-500">Created {formatDate(firm.createdAt)}</span>
+            <span className="text-xs text-muted">Created {formatDate(firm.createdAt)}</span>
           </div>
         </form>
         <div className="mt-2">
@@ -256,30 +257,31 @@ function FirmPanel({ firm }: { firm: FirmSummary }) {
 
       <Card title={`People (${firm.activeUsers} of ${firm.maxUsers})`}>
         <ErrorNote error={team.error ?? newLink.error ?? setRemoved.error} />
-        <ul className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+        <ul className="divide-y divide-line text-sm">
           {team.data?.map((m) => (
             <li key={m.id} className="flex flex-wrap items-center gap-2 py-2">
               <div className="min-w-0 flex-1">
-                <p className={m.status === 'removed' ? 'text-slate-400' : ''}>
+                <p className={m.status === 'removed' ? 'text-muted line-through' : ''}>
                   {m.name}{' '}
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-muted">
                     {m.role === 'firm_admin' ? 'firm admin' : 'agent'}
                   </span>
                 </p>
-                <p className="truncate text-xs text-slate-500">{m.email}</p>
+                <p className="truncate text-xs text-muted">{m.email}</p>
               </div>
               <Badge
-                tone={m.status === 'active' ? 'green' : m.status === 'invited' ? 'amber' : 'gray'}
+                tone={m.status === 'active' ? 'lime' : m.status === 'invited' ? 'warn' : 'neutral'}
               >
                 {m.status}
               </Badge>
               {m.status !== 'removed' && (
-                <Button variant="ghost" onClick={() => newLink.mutate(m)}>
+                <Button variant="quiet" size="sm" onClick={() => newLink.mutate(m)}>
                   New link
                 </Button>
               )}
               <Button
-                variant="ghost"
+                variant={m.status === 'removed' ? 'quiet' : 'dangerQuiet'}
+                size="sm"
                 onClick={() => setRemoved.mutate({ id: m.id, removed: m.status !== 'removed' })}
               >
                 {m.status === 'removed' ? 'Restore' : 'Remove'}
@@ -288,7 +290,7 @@ function FirmPanel({ firm }: { firm: FirmSummary }) {
           ))}
         </ul>
         <form
-          className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 dark:border-slate-800"
+          className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-3"
           onSubmit={(e) => {
             e.preventDefault();
             add.mutate();
@@ -338,14 +340,14 @@ function FirmPanel({ firm }: { firm: FirmSummary }) {
         <dl className="grid grid-cols-3 gap-2 text-center text-sm">
           {(['search', 'export', 'listing_view'] as const).map((kind) => (
             <div key={kind}>
-              <dt className="text-xs text-slate-500">
+              <dt className="text-xs text-muted">
                 {kind === 'listing_view'
                   ? 'Listings opened'
                   : kind === 'search'
                     ? 'Searches'
                     : 'Exports'}
               </dt>
-              <dd className="text-lg font-semibold tabular-nums">{totals[kind] ?? 0}</dd>
+              <dd className="figure text-lg">{totals[kind] ?? 0}</dd>
             </div>
           ))}
         </dl>
