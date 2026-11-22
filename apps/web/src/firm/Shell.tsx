@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router';
 import { api, ApiError, type Me } from '../api.ts';
 import { useDocumentLanguage, useI18n } from '../i18n.tsx';
-import { Button, cx, ErrorNote, Loading } from '../ui.tsx';
+import { Button, cx, ErrorNote, Loading, Wordmark } from '../ui.tsx';
 
 /** The signed-in person (any role). Shared by the dashboard and the admin console. */
 export function useMe() {
@@ -68,49 +68,99 @@ export function DashboardShell() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">{t('app.name')}</p>
-            <p className="truncate text-xs text-slate-500">
-              {me.data.firm?.name ?? t('role.owner')}
-            </p>
-          </div>
-          <nav className="order-last flex w-full gap-1 overflow-x-auto sm:order-none sm:w-auto sm:flex-1">
-            {links.map(([to, label]) => (
-              <NavLink
-                key={to}
-                to={to}
-                end
-                className={({ isActive }) =>
-                  cx(
-                    'whitespace-nowrap rounded-md px-3 py-1.5 text-sm',
-                    isActive
-                      ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                      : 'hover:bg-slate-100 dark:hover:bg-slate-800',
-                  )
-                }
-              >
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              onClick={() => switchLanguage.mutate(locale === 'ar' ? 'en' : 'ar')}
-            >
-              {t('lang.switch')}
-            </Button>
-            <Button variant="ghost" onClick={() => void signOut()}>
-              {t('nav.signOut')}
-            </Button>
-          </div>
-        </div>
-      </header>
+      <TopBar
+        firmName={me.data.firm?.name ?? t('role.owner')}
+        links={links}
+        onLanguage={() => switchLanguage.mutate(locale === 'ar' ? 'en' : 'ar')}
+        onSignOut={() => void signOut()}
+      />
       <main className="mx-auto w-full max-w-7xl px-4 py-6">
         <Outlet context={me.data} />
       </main>
     </div>
+  );
+}
+
+/**
+ * The graphite bar: product name, firm, the pages, the language switch and
+ * sign out. On phones the pages, language and sign out fold into a menu.
+ */
+function TopBar({
+  firmName,
+  links,
+  onLanguage,
+  onSignOut,
+}: {
+  firmName: string;
+  links: [string, string][];
+  onLanguage: () => void;
+  onSignOut: () => void;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+  const linkClass = ({ isActive }: { isActive: boolean }) =>
+    cx(
+      'whitespace-nowrap rounded-control px-3 py-1.5 text-sm font-bold',
+      isActive ? 'bg-graphite-2 text-lime' : 'text-bone hover:bg-graphite-2',
+    );
+  return (
+    <header className="on-graphite sticky top-0 z-20 bg-graphite text-bone">
+      <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-2.5">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <Wordmark name={t('app.name')} className="shrink-0 text-base" />
+          <span className="hidden truncate text-sm text-bone/70 sm:block">{firmName}</span>
+        </div>
+        <nav className="hidden flex-1 gap-1 md:flex" aria-label={t('nav.menu')}>
+          {links.map(([to, label]) => (
+            <NavLink key={to} to={to} end className={linkClass}>
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="ms-auto hidden items-center gap-1 md:flex">
+          <Button variant="inverse" onClick={onLanguage}>
+            {t('lang.switch')}
+          </Button>
+          <Button variant="inverse" onClick={onSignOut}>
+            {t('nav.signOut')}
+          </Button>
+        </div>
+        <Button
+          variant="inverse"
+          className="ms-auto md:hidden"
+          aria-expanded={open}
+          aria-controls="phone-menu"
+          onClick={() => setOpen(!open)}
+        >
+          {t('nav.menu')}
+        </Button>
+      </div>
+      {open && (
+        <div id="phone-menu" className="border-t border-graphite-2 px-4 pb-3 md:hidden">
+          <p className="py-2 text-sm text-bone/70">{firmName}</p>
+          <nav className="flex flex-col gap-1">
+            {links.map(([to, label]) => (
+              <NavLink key={to} to={to} end className={linkClass} onClick={() => setOpen(false)}>
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+          <div className="mt-2 flex gap-1 border-t border-graphite-2 pt-2">
+            <Button variant="inverse" onClick={onLanguage}>
+              {t('lang.switch')}
+            </Button>
+            <Button variant="inverse" onClick={onSignOut}>
+              {t('nav.signOut')}
+            </Button>
+          </div>
+        </div>
+      )}
+    </header>
   );
 }

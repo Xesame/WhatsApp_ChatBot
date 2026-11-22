@@ -43,23 +43,23 @@ export function MultiPick({
 
   return (
     <div ref={box} className="relative">
-      <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</span>
+      <span className="text-sm font-medium text-ink">{label}</span>
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
         className={cx(
-          'mt-1 flex w-full items-center justify-between gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-start text-sm dark:border-slate-700 dark:bg-slate-900',
-          selected.length > 0 && 'border-sky-500',
+          'mt-1.5 flex min-h-9 w-full items-center justify-between gap-2 rounded-control border border-line bg-paper px-3 py-1.5 text-start text-sm text-ink hover:border-muted/50',
+          selected.length > 0 && 'border-graphite',
         )}
       >
         <span className="truncate">{summary}</span>
-        <span aria-hidden className="text-slate-400">
+        <span aria-hidden className="text-muted">
           ▾
         </span>
       </button>
       {open && (
-        <div className="absolute inset-x-0 z-30 mt-1 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div className="absolute inset-x-0 z-30 mt-1 max-h-72 overflow-auto rounded-card border border-line bg-paper p-2 shadow-lg">
           {options.length > 8 && (
             <Input
               autoFocus
@@ -72,7 +72,7 @@ export function MultiPick({
           {shown.map((o) => (
             <label
               key={o.value}
-              className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="flex cursor-pointer items-center gap-2 rounded-control px-1.5 py-1.5 text-sm hover:bg-bone"
             >
               <input
                 type="checkbox"

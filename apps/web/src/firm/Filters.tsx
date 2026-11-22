@@ -79,9 +79,7 @@ export function Filters({
       />
 
       <fieldset>
-        <legend className="text-xs font-medium text-slate-600 dark:text-slate-400">
-          {t('filter.bedrooms')}
-        </legend>
+        <legend className="text-sm font-medium text-ink">{t('filter.bedrooms')}</legend>
         <div className="mt-1 grid grid-cols-2 gap-2">
           {(['bedroomsMin', 'bedroomsMax'] as const).map((key, i) => (
             <Select
@@ -108,9 +106,7 @@ export function Filters({
         ] as const
       ).map(([labelKey, minKey, maxKey, scale]) => (
         <fieldset key={labelKey}>
-          <legend className="text-xs font-medium text-slate-600 dark:text-slate-400">
-            {t(labelKey)}
-          </legend>
+          <legend className="text-sm font-medium text-ink">{t(labelKey)}</legend>
           <div className="mt-1 grid grid-cols-2 gap-2">
             {([minKey, maxKey] as const).map((key, i) => (
               <NumberField
@@ -126,9 +122,7 @@ export function Filters({
       ))}
 
       <label className="block">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-          {t('filter.deliveryBy')}
-        </span>
+        <span className="text-sm font-medium text-ink">{t('filter.deliveryBy')}</span>
         <Select
           className="mt-1"
           value={filters.deliveryYearMax ?? ''}
@@ -147,9 +141,7 @@ export function Filters({
 
       <div className="grid grid-cols-2 gap-2">
         <label className="block">
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-            {t('filter.downPaymentMax')}
-          </span>
+          <span className="text-sm font-medium text-ink">{t('filter.downPaymentMax')}</span>
           <NumberField
             className="mt-1"
             value={filters.downPaymentMax}
@@ -157,9 +149,7 @@ export function Filters({
           />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-            {t('filter.installmentYearsMin')}
-          </span>
+          <span className="text-sm font-medium text-ink">{t('filter.installmentYearsMin')}</span>
           <NumberField
             className="mt-1"
             value={filters.installmentYearsMin}
@@ -169,9 +159,7 @@ export function Filters({
       </div>
 
       <label className="block">
-        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-          {t('filter.monthlyInstallmentMax')}
-        </span>
+        <span className="text-sm font-medium text-ink">{t('filter.monthlyInstallmentMax')}</span>
         <NumberField
           className="mt-1"
           value={filters.monthlyInstallmentMax}
@@ -206,9 +194,7 @@ export function Filters({
       </div>
 
       <fieldset>
-        <legend className="text-xs font-medium text-slate-600 dark:text-slate-400">
-          {t('filter.status')}
-        </legend>
+        <legend className="text-sm font-medium text-ink">{t('filter.status')}</legend>
         <div className="mt-1 space-y-1 text-sm">
           {VISIBLE_STATUSES.map((status) => {
             const chosen = filters.statuses ?? ['active'];
