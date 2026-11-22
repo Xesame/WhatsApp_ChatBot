@@ -224,10 +224,12 @@ export function Listing() {
               </p>
             )}
             {u.priceCurrency === 'USD' && detail.usdEgpRate && (
-              <p className="text-xs text-muted">
-                {money('minPrice')}{' '}
-                {t('listing.usdNote', { rate: i18n.number(detail.usdEgpRate, 2) })}
-              </p>
+              <>
+                <p className="text-xs text-muted">{money('minPrice')}</p>
+                <p className="text-xs text-muted">
+                  ({t('listing.usdNote', { rate: i18n.number(detail.usdEgpRate, 2) })})
+                </p>
+              </>
             )}
             <Button className="mt-3" size="lg" onClick={() => setSharing(true)}>
               {t('listing.share')}
@@ -359,7 +361,7 @@ function PaymentPlans({ detail }: { detail: ListingDetail }) {
           return (
             <tr key={i}>
               <td className={td}>
-                <p className="font-bold">{plan.label ?? (plan.cash ? t('plan.cash') : '')}</p>
+                <p className="font-bold">{plan.label || (plan.cash ? t('plan.cash') : '')}</p>
                 {plan.label && plan.cash && <Badge tone="lime">{t('plan.cash')}</Badge>}
                 {plan.notes && <p className="mt-1 text-xs text-muted">{plan.notes}</p>}
               </td>
@@ -370,7 +372,7 @@ function PaymentPlans({ detail }: { detail: ListingDetail }) {
                 {installments.some(Boolean) ? <Lines parts={installments} /> : dash}
               </td>
               <td className={`${td} font-bold tabular-nums`}>
-                {plan.monthlyEquivalent !== null
+                {plan.monthlyEquivalent !== null && plan.installmentFrequency !== 'monthly'
                   ? t('plan.perMonth', { amount: amount(plan.monthlyEquivalent, plan.currency) })
                   : dash}
               </td>
@@ -462,8 +464,9 @@ function Notes({ detail }: { detail: ListingDetail }) {
               {note.body}
             </p>
             <div className="mt-1 flex items-center justify-between gap-2 text-xs text-warn-ink">
-              <span>
-                {note.authorName ?? '—'} {i18n.date(note.createdAt)}
+              <span className="flex flex-wrap gap-x-3">
+                <span>{note.authorName ?? '—'}</span>
+                <span className="text-muted">{i18n.date(note.createdAt)}</span>
               </span>
               <Button variant="dangerQuiet" size="sm" onClick={() => remove.mutate(note.id)}>
                 {t('common.delete')}

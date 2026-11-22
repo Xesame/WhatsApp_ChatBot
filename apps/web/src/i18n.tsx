@@ -131,7 +131,7 @@ const en = {
   'listing.plans': 'Payment plans',
   'plan.cash': 'Cash',
   'plan.every': '{amount} {freq}',
-  'plan.perMonth': '≈ {amount} per month',
+  'plan.perMonth': '≈ {amount}',
   'plan.colPlan': 'Plan',
   'plan.colMonthly': 'Per month',
   'plan.planPrice': 'Price on this plan',
@@ -192,6 +192,7 @@ const en = {
   'team.invite': 'Add an agent',
   'team.name': 'Name',
   'team.email': 'E-mail',
+  'team.actions': 'Actions',
   'team.language': 'Language',
   'team.add': 'Add and get link',
   'team.linkReady':
@@ -341,7 +342,7 @@ const ar: Record<MessageKey, string> = {
   'listing.plans': 'خطط السداد',
   'plan.cash': 'كاش',
   'plan.every': '{amount} {freq}',
-  'plan.perMonth': '≈ {amount} شهرياً',
+  'plan.perMonth': '≈ {amount}',
   'plan.colPlan': 'الخطة',
   'plan.colMonthly': 'القسط الشهري',
   'plan.planPrice': 'السعر على هذه الخطة',
@@ -402,6 +403,7 @@ const ar: Record<MessageKey, string> = {
   'team.invite': 'إضافة وسيط',
   'team.name': 'الاسم',
   'team.email': 'البريد الإلكتروني',
+  'team.actions': 'إجراءات',
   'team.language': 'اللغة',
   'team.add': 'إضافة واستلام الرابط',
   'team.linkReady':
