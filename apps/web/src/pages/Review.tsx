@@ -25,7 +25,9 @@ import {
   Select,
 } from '../ui.tsx';
 import { afterReview, lookupOffer, rememberedSpellings, unitStateLabel } from './learning.ts';
+import { planToRow, plansChanged, rowsToPlans, type PlanRow } from './plans.ts';
 import { LearnControls, useEntities } from './ReviewLearning.tsx';
+import { ReviewPlans } from './ReviewPlans.tsx';
 
 /**
  * Side-by-side review: the original message (and its flyer or PDF) on the
@@ -264,6 +266,11 @@ function ReviewItem({
   const [values, setValues] = useState<Record<string, string>>(initial);
   const [formError, setFormError] = useState<string | null>(null);
   useEffect(() => setValues(initial), [initial]);
+  // The payment-plans table, edited beside the fields.
+  const initialPlans = useMemo(() => view.plans.map(planToRow), [view.plans]);
+  const [planRows, setPlanRows] = useState<PlanRow[]>(initialPlans);
+  useEffect(() => setPlanRows(initialPlans), [initialPlans]);
+  const plansEdited = plansChanged(initialPlans, planRows);
 
   // Spellings offered for remembering are ticked unless the person unticks them.
   const [unticked, setUnticked] = useState<Set<string>>(new Set());
@@ -295,9 +302,16 @@ function ReviewItem({
           changes[def.key] = fromInput(def, values[def.key] ?? '');
       }
       const remember = remembered();
+      // Plans are sent only when the table was touched.
+      const paymentPlans = plansEdited ? rowsToPlans(planRows) : undefined;
       return api(`/api/admin/units/${unit.id}/review`, {
         method: 'POST',
-        body: { action, changes, ...(remember.length > 0 ? { remember } : {}) },
+        body: {
+          action,
+          changes,
+          ...(paymentPlans ? { paymentPlans } : {}),
+          ...(remember.length > 0 ? { remember } : {}),
+        },
       });
     },
     onSuccess: (_data, action) => onDone(action),
@@ -312,7 +326,8 @@ function ReviewItem({
       setFormError(e instanceof Error ? e.message : String(e));
     }
   };
-  const changed = FIELDS.filter((f) => values[f.key] !== initial[f.key]).length;
+  const changed =
+    FIELDS.filter((f) => values[f.key] !== initial[f.key]).length + (plansEdited ? 1 : 0);
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -423,6 +438,14 @@ function ReviewItem({
             </fieldset>
           ))}
         </div>
+        <div className="mt-4">
+          <ReviewPlans
+            rows={planRows}
+            initial={initialPlans}
+            currency={unit.priceCurrency === 'USD' ? 'USD' : 'EGP'}
+            onChange={setPlanRows}
+          />
+        </div>
         <p className="mt-3 text-xs text-slate-500">
           Prices and amounts in whole pounds or dollars. Empty means “not stated”.
         </p>
@@ -439,7 +462,14 @@ function ReviewItem({
             >
               Save only
             </Button>
-            <Button variant="secondary" disabled={changed === 0} onClick={() => setValues(initial)}>
+            <Button
+              variant="secondary"
+              disabled={changed === 0}
+              onClick={() => {
+                setValues(initial);
+                setPlanRows(initialPlans);
+              }}
+            >
               Undo changes
             </Button>
             <Button

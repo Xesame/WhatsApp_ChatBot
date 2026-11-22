@@ -8,6 +8,7 @@ import {
   nameLookups,
   projects,
   reviewCorrections,
+  unitPaymentPlans,
   unitPrices,
   units,
   unitSources,
@@ -194,6 +195,127 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
       await expect(
         reviewUnit(testDb.database, 999_999, { action: 'approve' }, null),
       ).rejects.toThrow(/not found/);
+    });
+  });
+
+  describe('payment plans in review', () => {
+    const plan = (over: Record<string, unknown> = {}) => ({
+      position: 0,
+      label: '10% down',
+      downPaymentPercent: 10,
+      downPaymentAmount: null,
+      installmentAmount: null,
+      installmentFrequency: null,
+      installmentsCount: null,
+      installmentYears: 8,
+      planPrice: null,
+      cash: false,
+      notes: null,
+      currency: 'EGP',
+      ...over,
+    });
+    const storedPlans = (unitId: number) =>
+      testDb.database.db
+        .select()
+        .from(unitPaymentPlans)
+        .where(eq(unitPaymentPlans.unitId, unitId))
+        .orderBy(asc(unitPaymentPlans.id));
+    const messagePlan = (unitId: number, messageId: number, sentAt: Date, over = {}) =>
+      testDb.database.db.insert(unitPaymentPlans).values({
+        ...plan(over),
+        unitId,
+        sourceMessageId: messageId,
+        source: 'message',
+        observedAt: sentAt,
+      } as typeof unitPaymentPlans.$inferInsert);
+
+    it("corrects a unit's plans", async () => {
+      const { unit, message } = await listing();
+      await messagePlan(unit.id, message.id, message.sentAt, {
+        label: 'misread',
+        downPaymentPercent: 5,
+      });
+      expect((await unitView(testDb.database.db, unit.id))?.plans).toHaveLength(1);
+
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        {
+          action: 'save',
+          paymentPlans: [plan(), plan({ position: 5, label: 'cash', cash: true })],
+        },
+        null,
+      );
+
+      const rows = await storedPlans(unit.id);
+      expect(rows.map((r) => r.source)).toEqual(['message', 'review', 'review']); // message row kept
+      expect(rows.slice(1).map((r) => [r.sourceMessageId, r.position])).toEqual([
+        [null, 0],
+        [null, 1],
+      ]);
+      const view = await unitView(testDb.database.db, unit.id);
+      expect(view?.plans.map((p) => p.label)).toEqual(['10% down', 'cash']);
+      const [c] = await testDb.database.db
+        .select()
+        .from(reviewCorrections)
+        .where(eq(reviewCorrections.field, 'paymentPlans'));
+      expect(c).toMatchObject({ unitId: unit.id, action: 'edit', messageId: message.id });
+      expect((c?.before as { label: string }[]).map((p) => p.label)).toEqual(['misread']);
+      expect((c?.after as { label: string }[]).map((p) => p.label)).toEqual(['10% down', 'cash']);
+
+      // Sending the same plans again changes nothing and records nothing.
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        { action: 'save', paymentPlans: view?.plans },
+        null,
+      );
+      expect(await storedPlans(unit.id)).toHaveLength(3);
+    });
+
+    it('refuses an impossible plan', async () => {
+      const { unit } = await listing();
+      await expect(
+        reviewUnit(
+          testDb.database,
+          unit.id,
+          { action: 'save', paymentPlans: [plan({ downPaymentPercent: 150 })] },
+          null,
+        ),
+      ).rejects.toThrow();
+      const tooMany = Array.from({ length: 13 }, (_, i) => plan({ position: i }));
+      await expect(
+        reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: tooMany }, null),
+      ).rejects.toThrow();
+      expect(await storedPlans(unit.id)).toHaveLength(0);
+      expect(await testDb.database.db.select().from(reviewCorrections)).toHaveLength(0);
+    });
+
+    it('leaves plans alone when not sent', async () => {
+      const { unit, message } = await listing();
+      await messagePlan(unit.id, message.id, message.sentAt);
+      await reviewUnit(
+        testDb.database,
+        unit.id,
+        { action: 'approve', changes: { bedrooms: 4 } },
+        null,
+      );
+      expect(await storedPlans(unit.id)).toHaveLength(1);
+      expect(
+        await testDb.database.db
+          .select()
+          .from(reviewCorrections)
+          .where(eq(reviewCorrections.field, 'paymentPlans')),
+      ).toHaveLength(0);
+    });
+
+    it('will not empty a unit that has plans', async () => {
+      const { unit, message } = await listing();
+      await messagePlan(unit.id, message.id, message.sentAt);
+      await expect(
+        reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: [] }, null),
+      ).rejects.toThrow(/at least one plan/);
+      expect(await storedPlans(unit.id)).toHaveLength(1);
     });
   });
 

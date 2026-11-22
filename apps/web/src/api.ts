@@ -1,4 +1,5 @@
 /** Calls to the API (same address as this page; see vite.config.ts). */
+import type { PaymentPlan } from '@reb/schema';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -99,6 +100,8 @@ export interface PriceRow {
 
 export interface UnitView {
   unit: UnitRecord;
+  /** The unit's current payment plans, in the order written. */
+  plans: PaymentPlan[];
   names: { developer: string | null; project: string | null; city: string | null };
   sources: Source[];
   prices: PriceRow[];
