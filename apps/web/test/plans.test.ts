@@ -31,11 +31,24 @@ describe('plans table helpers', () => {
   });
 
   it('numbers plans in table order and treats empty boxes as not stated', () => {
-    const rows = [emptyRow('USD'), { ...emptyRow('USD'), label: ' cash ', cash: true }];
+    const rows = [
+      { ...emptyRow('USD'), downPaymentPercent: '10' },
+      { ...emptyRow('USD'), label: ' cash ', cash: true },
+    ];
     expect(rowsToPlans(rows)).toMatchObject([
       { position: 0, label: null, planPrice: null, currency: 'USD', cash: false },
       { position: 1, label: 'cash', cash: true },
     ]);
+  });
+
+  it('leaves out a row left empty ("+ Add plan" with nothing typed)', () => {
+    const rows = [
+      emptyRow('EGP'),
+      { ...emptyRow('EGP'), label: '   ', notes: ' ' },
+      { ...emptyRow('EGP'), label: 'cash', cash: true },
+    ];
+    expect(rowsToPlans(rows)).toMatchObject([{ position: 0, label: 'cash' }]);
+    expect(rowsToPlans([emptyRow('EGP')])).toEqual([]);
   });
 
   it('accepts commas and refuses text where a number goes', () => {

@@ -1,4 +1,5 @@
 import type { PaymentPlan } from '@reb/schema';
+import { isEmptyPlan } from '@reb/schema/plans';
 
 /**
  * The payment-plans table in Review, as plain text boxes. Pure helpers (no
@@ -75,32 +76,41 @@ function number(name: string, box: string): number | null {
   return n;
 }
 
-/** Rows → plans to send. Throws a plain sentence when a box is not a number. */
+/**
+ * Rows → plans to send. Throws a plain sentence when a box is not a number.
+ * A row left completely empty ("+ Add plan" with nothing typed) is left out;
+ * the server drops such rows too.
+ */
 export function rowsToPlans(rows: readonly PlanRow[]): PaymentPlan[] {
-  return rows.map((row, position) => {
-    const name = String(position + 1);
-    const amount = (box: string) => {
-      const n = number(name, box);
-      return n === null ? null : Math.round(n * 100);
-    };
-    const label = row.label.trim();
-    const notes = row.notes.trim();
-    return {
-      position,
-      label: label === '' ? null : label,
-      downPaymentPercent: number(name, row.downPaymentPercent),
-      downPaymentAmount: amount(row.downPaymentAmount),
-      installmentAmount: amount(row.installmentAmount),
-      installmentFrequency: (row.installmentFrequency ||
-        null) as PaymentPlan['installmentFrequency'],
-      installmentsCount: row.installmentsCount,
-      installmentYears: number(name, row.installmentYears),
-      planPrice: amount(row.planPrice),
-      cash: row.cash,
-      notes: notes === '' ? null : notes,
-      currency: row.currency,
-    };
-  });
+  return rows
+    .map(toPlan)
+    .filter((plan) => !isEmptyPlan(plan))
+    .map((plan, position) => ({ ...plan, position }));
+}
+
+/** One row → one plan; `position` is its row in the table (for error messages). */
+function toPlan(row: PlanRow, position: number): PaymentPlan {
+  const name = String(position + 1);
+  const amount = (box: string) => {
+    const n = number(name, box);
+    return n === null ? null : Math.round(n * 100);
+  };
+  const label = row.label.trim();
+  const notes = row.notes.trim();
+  return {
+    position,
+    label: label === '' ? null : label,
+    downPaymentPercent: number(name, row.downPaymentPercent),
+    downPaymentAmount: amount(row.downPaymentAmount),
+    installmentAmount: amount(row.installmentAmount),
+    installmentFrequency: (row.installmentFrequency || null) as PaymentPlan['installmentFrequency'],
+    installmentsCount: row.installmentsCount,
+    installmentYears: number(name, row.installmentYears),
+    planPrice: amount(row.planPrice),
+    cash: row.cash,
+    notes: notes === '' ? null : notes,
+    currency: row.currency,
+  };
 }
 
 /** True when the table differs from what was loaded. */
