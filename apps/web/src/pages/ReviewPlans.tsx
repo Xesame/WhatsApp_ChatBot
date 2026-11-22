@@ -35,9 +35,7 @@ export function ReviewPlans({
   currency: PlanRow['currency'];
   onChange: (rows: PlanRow[]) => void;
 }) {
-  const ring = plansChanged(initial, rows)
-    ? 'border-sky-500 ring-2 ring-sky-100 dark:ring-sky-900'
-    : '';
+  const ring = plansChanged(initial, rows) ? 'border-graphite ring-2 ring-graphite/20' : '';
   const set = (index: number, patch: Partial<PlanRow>) =>
     onChange(rows.map((row, i) => (i === index ? editRow(row, patch) : row)));
   const box = (
@@ -65,34 +63,34 @@ export function ReviewPlans({
 
   return (
     <fieldset>
-      <legend className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-        Payment plans
-      </legend>
+      <legend className="mb-2 text-sm font-bold text-graphite">Payment plans</legend>
       {rows.length === 0 ? (
-        <p className="text-sm text-slate-500">No payment plans stated.</p>
+        <p className="text-sm text-muted">No payment plans stated.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-card border border-line bg-paper">
           <table className="w-full min-w-[56rem] text-start text-sm">
-            <thead className="text-xs text-slate-500">
+            <thead className="bg-bone text-xs text-muted">
               <tr>
                 {COLUMNS.map((c) => (
-                  <th key={c} className="px-1 pb-1 text-start font-medium">
+                  <th key={c} className="px-1.5 py-2 text-start font-bold">
                     {c}
                   </th>
                 ))}
                 <th />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-line">
               {rows.map((row, i) => (
                 <tr key={i}>
-                  <td className="px-1 py-1">{box(i, 'label', 'label', false)}</td>
-                  <td className="px-1 py-1">{box(i, 'downPaymentPercent', 'down payment %')}</td>
-                  <td className="px-1 py-1">
+                  <td className="px-1.5 py-1.5">{box(i, 'label', 'label', false)}</td>
+                  <td className="px-1.5 py-1.5">
+                    {box(i, 'downPaymentPercent', 'down payment %')}
+                  </td>
+                  <td className="px-1.5 py-1.5">
                     {box(i, 'downPaymentAmount', 'down payment amount')}
                   </td>
-                  <td className="px-1 py-1">{box(i, 'installmentAmount', 'installment')}</td>
-                  <td className="px-1 py-1">
+                  <td className="px-1.5 py-1.5">{box(i, 'installmentAmount', 'installment')}</td>
+                  <td className="px-1.5 py-1.5">
                     <Select
                       aria-label={`Plan ${i + 1} how often`}
                       className={ring}
@@ -107,20 +105,22 @@ export function ReviewPlans({
                       ))}
                     </Select>
                   </td>
-                  <td className="px-1 py-1">{box(i, 'installmentYears', 'years')}</td>
-                  <td className="px-1 py-1">{box(i, 'planPrice', 'plan price')}</td>
-                  <td className="px-1 py-1 text-center">
+                  <td className="px-1.5 py-1.5">{box(i, 'installmentYears', 'years')}</td>
+                  <td className="px-1.5 py-1.5">{box(i, 'planPrice', 'plan price')}</td>
+                  <td className="px-1.5 py-1.5 text-center">
                     <input
                       type="checkbox"
+                      className="accent-graphite"
                       aria-label={`Plan ${i + 1} cash`}
                       checked={row.cash}
                       onChange={(e) => set(i, { cash: e.target.checked })}
                     />
                   </td>
-                  <td className="px-1 py-1">{box(i, 'notes', 'notes', false)}</td>
-                  <td className="px-1 py-1">
+                  <td className="px-1.5 py-1.5">{box(i, 'notes', 'notes', false)}</td>
+                  <td className="px-1.5 py-1.5">
                     <Button
-                      variant="secondary"
+                      variant="dangerQuiet"
+                      size="sm"
                       aria-label={`Remove plan ${i + 1}`}
                       onClick={() => onChange(rows.filter((_, j) => j !== i))}
                     >

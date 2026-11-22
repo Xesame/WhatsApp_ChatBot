@@ -21,6 +21,7 @@ import {
   Input,
   Label,
   Loading,
+  Note,
   PageTitle,
   Select,
 } from '../ui.tsx';
@@ -170,7 +171,7 @@ export function Review() {
         title="Review"
         subtitle={
           queue.data && !wanted
-            ? `${queue.data.remaining} unit(s) waiting. Oldest first.`
+            ? `${queue.data.remaining} ${queue.data.remaining === 1 ? 'listing' : 'listings'} waiting, oldest first`
             : undefined
         }
         actions={
@@ -197,27 +198,13 @@ export function Review() {
                 Back to first
               </Button>
             )}
-            {item && !wanted && (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setNotice(null);
-                  setAfterId(item.unit.id);
-                }}
-              >
-                Skip
-              </Button>
-            )}
           </div>
         }
       />
       {notice && (
-        <p
-          role="status"
-          className="mb-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-        >
+        <Note tone="success" className="mb-4">
           {notice}
-        </p>
+        </Note>
       )}
       {queue.isPending && <Loading />}
       <ErrorNote error={queue.error} />
@@ -232,6 +219,14 @@ export function Review() {
         <ReviewItem
           key={item.unit.id}
           view={item}
+          onSkip={
+            wanted
+              ? undefined
+              : () => {
+                  setNotice(null);
+                  setAfterId(item.unit.id);
+                }
+          }
           onStart={() => setNotice(null)}
           onDone={(action) => {
             const next = afterReview(action, Boolean(wanted));
@@ -251,10 +246,13 @@ export function Review() {
 
 function ReviewItem({
   view,
+  onSkip,
   onStart,
   onDone,
 }: {
   view: UnitView;
+  /** Moves on to the next unit without deciding (not offered when one unit was opened by link). */
+  onSkip?: () => void;
   onStart: () => void;
   onDone: (action: 'save' | 'approve' | 'reject') => void;
 }) {
@@ -271,6 +269,14 @@ function ReviewItem({
   const [planRows, setPlanRows] = useState<PlanRow[]>(initialPlans);
   useEffect(() => setPlanRows(initialPlans), [initialPlans]);
   const plansEdited = plansChanged(initialPlans, planRows);
+  // The sticky action bar must not hide an input the browser scrolls into view.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.scrollPaddingBottom = '8rem';
+    return () => {
+      root.style.scrollPaddingBottom = '';
+    };
+  }, []);
 
   // Spellings offered for remembering are ticked unless the person unticks them.
   const [unticked, setUnticked] = useState<Set<string>>(new Set());
@@ -330,15 +336,15 @@ function ReviewItem({
     FIELDS.filter((f) => values[f.key] !== initial[f.key]).length + (plansEdited ? 1 : 0);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       <div className="space-y-4">
         {view.sources.map((s) => (
           <Card
             key={`${s.messageId}-${s.role}`}
             title={<span dir="auto">{s.groupName ?? 'Group'}</span>}
             actions={
-              <span className="flex items-center gap-2 text-xs text-slate-500">
-                <Badge tone={s.role === 'listing' ? 'blue' : 'amber'}>
+              <span className="flex items-center gap-2 text-xs text-muted">
+                <Badge tone={s.role === 'listing' ? 'outline' : 'warn'}>
                   {s.role.replace('_', ' ')}
                 </Badge>
                 {formatDate(s.sentAt)}
@@ -347,11 +353,9 @@ function ReviewItem({
           >
             {s.media && <MediaPreview media={s.media} />}
             {s.text ? (
-              <p dir="auto" className="whitespace-pre-wrap text-sm leading-relaxed">
-                {s.text}
-              </p>
+              <MessageText text={s.text} />
             ) : (
-              !s.media && <p className="text-sm italic text-slate-500">No text</p>
+              !s.media && <p className="text-sm italic text-muted">No text</p>
             )}
           </Card>
         ))}
@@ -360,8 +364,8 @@ function ReviewItem({
             <ul className="space-y-1 text-sm">
               {view.prices.map((p) => (
                 <li key={p.id} className="flex justify-between gap-2">
-                  <span className="text-slate-500">{formatDate(p.observedAt)}</span>
-                  <span>
+                  <span className="text-muted">{formatDate(p.observedAt)}</span>
+                  <span className="figure">
                     {formatMoney(p.minPrice, p.priceCurrency)}
                     {p.maxPrice !== p.minPrice && ` – ${formatMoney(p.maxPrice, p.priceCurrency)}`}
                   </span>
@@ -373,21 +377,22 @@ function ReviewItem({
       </div>
 
       <Card
+        className="min-w-0"
         title={`Unit #${unit.id}`}
         actions={
           <span className="flex items-center gap-2">
             <Badge
-              tone={unit.confidence >= 0.8 ? 'green' : unit.confidence >= 0.5 ? 'amber' : 'red'}
+              tone={unit.confidence >= 0.8 ? 'outline' : unit.confidence >= 0.5 ? 'warn' : 'danger'}
             >
               confidence {Math.round(unit.confidence * 100)}%
             </Badge>
             <Badge>{unit.status}</Badge>
-            {unitStateLabel(unit) && <Badge tone="amber">{unitStateLabel(unit)}</Badge>}
+            {unitStateLabel(unit) && <Badge tone="warn">{unitStateLabel(unit)}</Badge>}
           </span>
         }
       >
         {unit.reviewReasons.length > 0 && (
-          <ul className="mb-4 list-disc space-y-1 rounded-md bg-amber-50 py-2 pr-3 pl-7 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <ul className="mb-4 list-disc space-y-1 rounded-control bg-warn py-2.5 ps-8 pe-3 text-sm font-medium text-warn-ink">
             {unit.reviewReasons.map((r) => (
               <li key={r}>{r}</li>
             ))}
@@ -396,10 +401,8 @@ function ReviewItem({
         <div className="space-y-4">
           {SECTIONS.map((section) => (
             <fieldset key={section.title}>
-              <legend className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-                {section.title}
-              </legend>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <legend className="mb-2 text-sm font-bold text-graphite">{section.title}</legend>
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
                 {section.fields.map((def) => (
                   <Field
                     key={def.key}
@@ -446,13 +449,19 @@ function ReviewItem({
             onChange={setPlanRows}
           />
         </div>
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-muted">
           Prices and amounts in whole pounds or dollars. Empty means “not stated”.
         </p>
-        <div className="mt-4 space-y-3">
+        {/* Sticky: Approve is always in reach while scrolling a long form. */}
+        <div className="sticky bottom-0 -mx-5 -mb-5 mt-4 space-y-2 rounded-b-card border-t border-line bg-paper px-5 py-3">
           <ErrorNote error={formError} />
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={review.isPending} onClick={() => run('approve')}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Button
+              size="lg"
+              className="w-full sm:w-auto"
+              disabled={review.isPending}
+              onClick={() => run('approve')}
+            >
               {changed > 0 ? `Save ${changed} change(s) and approve` : 'Approve'}
             </Button>
             <Button
@@ -463,7 +472,7 @@ function ReviewItem({
               Save only
             </Button>
             <Button
-              variant="secondary"
+              variant="quiet"
               disabled={changed === 0}
               onClick={() => {
                 setValues(initial);
@@ -472,9 +481,14 @@ function ReviewItem({
             >
               Undo changes
             </Button>
+            {onSkip && (
+              <Button variant="quiet" disabled={review.isPending} onClick={onSkip}>
+                Skip
+              </Button>
+            )}
             <Button
-              variant="danger"
-              className="ml-auto"
+              variant="dangerQuiet"
+              className="ms-auto"
               disabled={review.isPending}
               onClick={() => run('reject')}
             >
@@ -487,33 +501,68 @@ function ReviewItem({
   );
 }
 
+/**
+ * The original message. On phones a long one (a 60-line price list) shows
+ * about 8 lines with a toggle, so the fields are not pushed far down.
+ */
+function MessageText({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 400 || text.split(String.fromCharCode(10)).length > 8;
+  return (
+    <div>
+      <p
+        dir="auto"
+        className={`whitespace-pre-wrap text-sm leading-relaxed ${long && !open ? 'line-clamp-8 lg:line-clamp-none' : ''}`}
+      >
+        {text}
+      </p>
+      {long && (
+        <Button
+          variant="quiet"
+          size="sm"
+          className="mt-1 lg:hidden"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? 'Show less' : 'Show full message'}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function MediaPreview({ media }: { media: NonNullable<UnitView['sources'][number]['media']> }) {
   const url = `/api/admin/media/${media.id}`;
   return (
     <div className="mb-3 space-y-2">
       {media.status !== 'downloaded' ? (
-        <p className="text-sm text-slate-500">File not available ({media.status}).</p>
+        <p className="text-sm text-muted">File not available ({media.status}).</p>
       ) : media.kind === 'image' ? (
         <a href={url} target="_blank" rel="noreferrer">
           <img
             src={url}
             alt="Flyer from the message"
-            className="max-h-[32rem] w-full rounded border border-slate-200 object-contain dark:border-slate-800"
+            className="max-h-[32rem] w-full rounded-control border border-line object-contain"
           />
         </a>
       ) : (
-        <a href={url} target="_blank" rel="noreferrer" className="text-sm underline">
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-bold text-graphite underline"
+        >
           Open the {media.mimeType?.includes('pdf') ? 'PDF' : 'file'}
         </a>
       )}
       {media.derivedText && (
         <details className="text-sm">
-          <summary className="cursor-pointer text-slate-500">
+          <summary className="cursor-pointer text-muted">
             Text read from the file ({media.derivedMethod ?? 'unknown method'})
           </summary>
           <pre
             dir="auto"
-            className="mt-2 max-h-80 overflow-auto rounded bg-slate-50 p-2 text-xs whitespace-pre-wrap dark:bg-slate-950"
+            className="mt-2 max-h-80 overflow-auto rounded-control bg-bone p-2 text-xs whitespace-pre-wrap"
           >
             {media.derivedText}
           </pre>
@@ -536,8 +585,8 @@ function Field({
   onChange: (v: string) => void;
   below?: ReactNode;
 }) {
-  const ring = changed ? 'border-sky-500 ring-2 ring-sky-100 dark:ring-sky-900' : '';
-  const wide = def.key === 'notes' || def.key === 'projectId' ? 'col-span-2 sm:col-span-3' : '';
+  const ring = changed ? 'border-graphite ring-2 ring-graphite/20' : '';
+  const wide = def.key === 'notes' || def.key === 'projectId' ? 'col-span-2 xl:col-span-3' : '';
   let control;
   if (def.kind === 'bool') {
     control = (
