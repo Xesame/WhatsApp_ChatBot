@@ -20,7 +20,7 @@ function shareLines(detail: ListingDetail, i18n: I18n): { title: string; lines: 
     title,
     lines: [
       names.city ? `📍 ${i18n.name(names.city)}` : null,
-      `🏠 ${kind.join(' · ')}`,
+      `🏠 ${kind.join(' – ')}`,
       `📐 ${areaLine(u, i18n)}`,
       `💰 ${priceLine(detail, i18n)}`,
       `💳 ${paymentLine(u, i18n)}`,
@@ -37,22 +37,19 @@ function drawCard(canvas: HTMLCanvasElement, title: string, lines: string[], rtl
   canvas.height = H;
   const c = canvas.getContext('2d');
   if (!c) return;
-  const gradient = c.createLinearGradient(0, 0, W, H);
-  gradient.addColorStop(0, '#0f2742');
-  gradient.addColorStop(1, '#1d4f7a');
-  c.fillStyle = gradient;
+  c.fillStyle = '#23271f'; // graphite
   c.fillRect(0, 0, W, H);
-  c.fillStyle = '#f2c14e';
+  c.fillStyle = '#b8e04a'; // lime
   c.fillRect(0, 0, W, 16);
   c.direction = rtl ? 'rtl' : 'ltr';
   c.textAlign = rtl ? 'right' : 'left';
   const x = rtl ? W - 90 : 90;
   const font = (size: number, weight = 600) =>
-    `${weight} ${size}px system-ui, "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif`;
+    `${weight} ${size}px "Manrope Variable", "Noto Kufi Arabic", system-ui, "Segoe UI", Tahoma, sans-serif`;
 
   // title, wrapped
-  c.fillStyle = '#ffffff';
-  c.font = font(76, 700);
+  c.fillStyle = '#f4f5f0'; // bone
+  c.font = font(76, 800);
   let y = 210;
   const words = title.split(' ');
   let line = '';
@@ -66,13 +63,13 @@ function drawCard(canvas: HTMLCanvasElement, title: string, lines: string[], rtl
   }
   c.fillText(line, x, y);
   y += 70;
-  c.fillStyle = '#f2c14e';
+  c.fillStyle = '#b8e04a';
   c.fillRect(rtl ? W - 90 - 160 : 90, y, 160, 8);
   y += 110;
 
   for (const text of lines) {
-    c.fillStyle = text.startsWith('💰') ? '#f2c14e' : '#e7eef6';
-    c.font = font(text.startsWith('💰') ? 60 : 48, text.startsWith('💰') ? 700 : 500);
+    c.fillStyle = text.startsWith('💰') ? '#b8e04a' : '#f4f5f0';
+    c.font = font(text.startsWith('💰') ? 60 : 48, text.startsWith('💰') ? 800 : 500);
     c.fillText(text, x, y, W - 180);
     y += text.startsWith('💰') ? 104 : 86;
   }
@@ -115,19 +112,16 @@ export function ShareCard({ detail, onClose }: { detail: ListingDetail; onClose:
     <Card
       title={t('share.title')}
       actions={
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="quiet" onClick={onClose}>
           {t('common.close')}
         </Button>
       }
     >
-      <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">{t('share.hint')}</p>
+      <p className="mb-4 text-sm text-muted">{t('share.hint')}</p>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <p className="text-xs font-medium text-slate-500">{t('share.text')}</p>
-          <pre
-            dir="auto"
-            className="rounded-md bg-slate-50 p-3 text-sm whitespace-pre-wrap dark:bg-slate-950"
-          >
+          <p className="text-xs font-bold text-muted">{t('share.text')}</p>
+          <pre dir="auto" className="rounded-control bg-bone p-3 text-sm whitespace-pre-wrap">
             {text}
           </pre>
           <Button variant="secondary" onClick={() => void copy()}>
@@ -135,11 +129,8 @@ export function ShareCard({ detail, onClose }: { detail: ListingDetail; onClose:
           </Button>
         </div>
         <div className="space-y-2">
-          <p className="text-xs font-medium text-slate-500">{t('share.image')}</p>
-          <canvas
-            ref={canvas}
-            className="w-full max-w-xs rounded-md border border-slate-200 dark:border-slate-800"
-          />
+          <p className="text-xs font-bold text-muted">{t('share.image')}</p>
+          <canvas ref={canvas} className="w-full max-w-xs rounded-control border border-line" />
           <Button variant="secondary" onClick={download}>
             {t('share.download')}
           </Button>
