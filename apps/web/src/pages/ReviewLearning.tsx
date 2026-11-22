@@ -87,21 +87,17 @@ export function LearnControls({
   return (
     <div className="mt-1 space-y-1 text-xs">
       {suggestion && String(suggestion.id) !== value && (
-        <Button
-          variant="secondary"
-          className="!px-2 !py-0.5 !text-xs"
-          onClick={() => onPick(suggestion.id)}
-        >
+        <Button variant="quiet" size="sm" onClick={() => onPick(suggestion.id)}>
           Use {suggestion.name}
         </Button>
       )}
       {offer && answer && !creating && (
-        <div className="text-slate-600 dark:text-slate-400">
+        <div className="text-muted">
           <p dir="auto">Gemini thinks: {answer} (from memory, check)</p>
           {offer.kind === 'use' ? (
             <Button
-              variant="secondary"
-              className="!px-2 !py-0.5 !text-xs"
+              variant="quiet"
+              size="sm"
               onClick={() => {
                 onPick(offer.id);
               }}
@@ -110,8 +106,8 @@ export function LearnControls({
             </Button>
           ) : buttons.lookup ? (
             <Button
-              variant="ghost"
-              className="!px-1 !py-0.5 !text-xs"
+              variant="quiet"
+              size="sm"
               onClick={() => setCreating({ name: buttons.lookup ?? offer.name })}
             >
               + New {WORD[kind]} named “{buttons.lookup}”
@@ -122,8 +118,8 @@ export function LearnControls({
       {value === '' && buttons.written && !creating && (
         <div>
           <Button
-            variant="ghost"
-            className="!px-1 !py-0.5 !text-xs"
+            variant="quiet"
+            size="sm"
             onClick={() => setCreating({ name: buttons.written ?? '' })}
           >
             + New {WORD[kind]} named “{buttons.written}”
@@ -131,10 +127,10 @@ export function LearnControls({
         </div>
       )}
       {offers.map((alias) => (
-        <label key={alias} className="flex items-start gap-1.5 text-slate-600 dark:text-slate-400">
+        <label key={alias} className="flex items-start gap-1.5 text-muted">
           <input
             type="checkbox"
-            className="mt-0.5"
+            className="mt-0.5 accent-graphite"
             checked={!unticked.has(rememberKey(kind, alias))}
             onChange={() => onToggle(rememberKey(kind, alias))}
           />
@@ -144,7 +140,7 @@ export function LearnControls({
         </label>
       ))}
       {creating && (
-        <div className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+        <div className="rounded-control border border-line bg-bone p-2">
           <CreateEntity
             kind={kind}
             title={`New ${WORD[kind]}`}
@@ -158,7 +154,7 @@ export function LearnControls({
               setCreating(null);
             }}
           />
-          <Button variant="ghost" className="mt-1 !text-xs" onClick={() => setCreating(null)}>
+          <Button variant="quiet" size="sm" className="mt-1" onClick={() => setCreating(null)}>
             Cancel
           </Button>
         </div>
