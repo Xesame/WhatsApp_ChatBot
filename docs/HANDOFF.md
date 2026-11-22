@@ -29,13 +29,13 @@ Written 20 November 2026 and updated 22 November so a new Claude Code session (o
 | 5 Owner admin console (login, pairing QR, groups, review, names, stats, jobs, settings)                                                                                       | Done                                                        |
 | 6 Firm dashboard (firms, invitations, search, listing page, notes, saved searches, exports, share cards, Arabic/English)                                                      | Done                                                        |
 | After 6: `import` command for sample messages; Flash-Lite extraction fallback; sold notices find their unit                                                                   | Done (8 Nov)                                                |
-| Learning from reviews, stage A (names as written, suggestions, remembered spellings, re-check, learned price check, weekly table), on branch `learning-stage-a`               | Done (22 Nov); not yet merged to `main`                     |
+| Learning from reviews, stage A (names as written, suggestions, remembered spellings, re-check, learned price check, weekly table), on branch `learning-stage-a`               | Done (22 Nov); on `main`                                    |
 | Name suggestions from Gemini's memory (one lookup per unknown project; Review shows "Gemini thinks ..."; migration 0010)                                                      | Done (22 Nov)                                               |
 | Payment plans: Gemini copies every plan, code parses and stores them (migrations 0011-0012), Review edits them, firms see and search them, Excel gets a "Payment plans" sheet | Done (22 Nov); live accuracy check of the new prompt passed |
 | 7 Chat bots and alerts (WhatsApp query bot, Telegram, alerts)                                                                                                                 | Not started                                                 |
 | 8 Hardening and deploy (server, HTTPS, backups, monitoring)                                                                                                                   | Not started                                                 |
 
-432 tests pass (`pnpm check`). Everything runs with `docker compose up -d --build`.
+583 tests pass (`pnpm check`, run in Docker on this laptop). Everything runs with `docker compose up -d --build`.
 
 ## Decisions Hassan made
 
