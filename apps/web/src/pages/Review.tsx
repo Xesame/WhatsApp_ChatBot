@@ -171,7 +171,7 @@ export function Review() {
         title="Review"
         subtitle={
           queue.data && !wanted
-            ? `${queue.data.remaining} unit(s) waiting. Oldest first.`
+            ? `${queue.data.remaining} ${queue.data.remaining === 1 ? 'listing' : 'listings'} waiting, oldest first`
             : undefined
         }
         actions={
@@ -269,6 +269,14 @@ function ReviewItem({
   const [planRows, setPlanRows] = useState<PlanRow[]>(initialPlans);
   useEffect(() => setPlanRows(initialPlans), [initialPlans]);
   const plansEdited = plansChanged(initialPlans, planRows);
+  // The sticky action bar must not hide an input the browser scrolls into view.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.scrollPaddingBottom = '8rem';
+    return () => {
+      root.style.scrollPaddingBottom = '';
+    };
+  }, []);
 
   // Spellings offered for remembering are ticked unless the person unticks them.
   const [unticked, setUnticked] = useState<Set<string>>(new Set());
@@ -345,9 +353,7 @@ function ReviewItem({
           >
             {s.media && <MediaPreview media={s.media} />}
             {s.text ? (
-              <p dir="auto" className="whitespace-pre-wrap text-sm leading-relaxed">
-                {s.text}
-              </p>
+              <MessageText text={s.text} />
             ) : (
               !s.media && <p className="text-sm italic text-muted">No text</p>
             )}
@@ -376,7 +382,7 @@ function ReviewItem({
         actions={
           <span className="flex items-center gap-2">
             <Badge
-              tone={unit.confidence >= 0.8 ? 'lime' : unit.confidence >= 0.5 ? 'warn' : 'danger'}
+              tone={unit.confidence >= 0.8 ? 'outline' : unit.confidence >= 0.5 ? 'warn' : 'danger'}
             >
               confidence {Math.round(unit.confidence * 100)}%
             </Badge>
@@ -449,8 +455,13 @@ function ReviewItem({
         {/* Sticky: Approve is always in reach while scrolling a long form. */}
         <div className="sticky bottom-0 -mx-5 -mb-5 mt-4 space-y-2 rounded-b-card border-t border-line bg-paper px-5 py-3">
           <ErrorNote error={formError} />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="lg" disabled={review.isPending} onClick={() => run('approve')}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Button
+              size="lg"
+              className="w-full sm:w-auto"
+              disabled={review.isPending}
+              onClick={() => run('approve')}
+            >
               {changed > 0 ? `Save ${changed} change(s) and approve` : 'Approve'}
             </Button>
             <Button
@@ -486,6 +497,36 @@ function ReviewItem({
           </div>
         </div>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * The original message. On phones a long one (a 60-line price list) shows
+ * about 8 lines with a toggle, so the fields are not pushed far down.
+ */
+function MessageText({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 400 || text.split(String.fromCharCode(10)).length > 8;
+  return (
+    <div>
+      <p
+        dir="auto"
+        className={`whitespace-pre-wrap text-sm leading-relaxed ${long && !open ? 'line-clamp-8 lg:line-clamp-none' : ''}`}
+      >
+        {text}
+      </p>
+      {long && (
+        <Button
+          variant="quiet"
+          size="sm"
+          className="mt-1 lg:hidden"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? 'Show less' : 'Show full message'}
+        </Button>
+      )}
     </div>
   );
 }
@@ -544,7 +585,7 @@ function Field({
   onChange: (v: string) => void;
   below?: ReactNode;
 }) {
-  const ring = changed ? 'border-graphite ring-2 ring-lime/60' : '';
+  const ring = changed ? 'border-graphite ring-2 ring-graphite/20' : '';
   const wide = def.key === 'notes' || def.key === 'projectId' ? 'col-span-2 xl:col-span-3' : '';
   let control;
   if (def.kind === 'bool') {

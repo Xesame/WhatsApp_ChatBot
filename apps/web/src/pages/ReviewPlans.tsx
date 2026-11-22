@@ -35,7 +35,7 @@ export function ReviewPlans({
   currency: PlanRow['currency'];
   onChange: (rows: PlanRow[]) => void;
 }) {
-  const ring = plansChanged(initial, rows) ? 'border-graphite ring-2 ring-lime/60' : '';
+  const ring = plansChanged(initial, rows) ? 'border-graphite ring-2 ring-graphite/20' : '';
   const set = (index: number, patch: Partial<PlanRow>) =>
     onChange(rows.map((row, i) => (i === index ? editRow(row, patch) : row)));
   const box = (
