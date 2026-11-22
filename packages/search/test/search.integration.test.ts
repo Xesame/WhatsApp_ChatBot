@@ -192,6 +192,7 @@ describe.skipIf(!testDatabaseUrl)('listing search (real Postgres)', () => {
       ['mid', [3]],
       ['usd', [3]],
       ['madinaty', [3]],
+      ['sold', [3]],
     ] as const) {
       planMessage[name] = {};
       for (const d of days) {
@@ -230,6 +231,9 @@ describe.skipIf(!testDatabaseUrl)('listing search (real Postgres)', () => {
       }),
       // madinaty: cash only
       plan('madinaty', 3, 0, { cash: true }),
+      // sold: no single plan has both a low down payment and a long term
+      plan('sold', 3, 0, { downPaymentPercent: 0, installmentYears: 5 }),
+      plan('sold', 3, 1, { downPaymentPercent: 20, installmentYears: 10 }),
     ]);
     const [file] = await db
       .insert(mediaFiles)
@@ -293,6 +297,16 @@ describe.skipIf(!testDatabaseUrl)('listing search (real Postgres)', () => {
     expect(sorted(await search({ downPaymentMax: 10 }))).toEqual(named('cheap', 'mid'));
   });
 
+  it('needs one plan to satisfy every plan filter together', async () => {
+    const sold = { statuses: ['sold' as const] };
+    expect(await search({ ...sold, downPaymentMax: 5 })).toEqual([id.sold]);
+    expect(await search({ ...sold, installmentYearsMin: 10 })).toEqual([id.sold]);
+    expect(await search({ ...sold, downPaymentMax: 5, installmentYearsMin: 10 })).toEqual([]);
+    expect(await search({ ...sold, downPaymentMax: 20, installmentYearsMin: 10 })).toEqual([
+      id.sold,
+    ]);
+  });
+
   it('filters by monthly payment', async () => {
     expect(sorted(await search({ monthlyInstallmentMax: 60_000 }))).toEqual(named('mid', 'usd'));
     expect(sorted(await search({ monthlyInstallmentMax: 50_000 }))).toEqual(named('usd'));
@@ -318,7 +332,8 @@ describe.skipIf(!testDatabaseUrl)('listing search (real Postgres)', () => {
       installmentFrequency: 'quarterly',
       installmentYears: 8,
     });
-    expect(detail?.paymentPlans[1]).toMatchObject({ cash: true });
+    expect(detail?.paymentPlans[0]?.monthlyEquivalent).toBe(5_066_667);
+    expect(detail?.paymentPlans[1]).toMatchObject({ cash: true, monthlyEquivalent: null });
     const old = await listingDetail(testDb.database.db, id.cheap ?? 0);
     expect(old?.paymentPlans.map((p) => p.downPaymentPercent)).toEqual([20, 0]);
     const json = JSON.stringify(detail?.paymentPlans);

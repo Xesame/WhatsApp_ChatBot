@@ -224,7 +224,8 @@ export interface ListingDetail {
     installmentYears: number | null;
     observedAt: string;
   }[];
-  paymentPlans: PaymentPlan[];
+  /** `monthlyEquivalent`: minor units per month in the plan's currency, from the server. */
+  paymentPlans: (PaymentPlan & { monthlyEquivalent: number | null })[];
   sources: {
     role: string;
     sentAt: string;

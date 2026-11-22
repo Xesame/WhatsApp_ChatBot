@@ -346,6 +346,9 @@ function PaymentPlans({ detail }: { detail: ListingDetail }) {
             plan.installmentsCount === null
               ? null
               : t('listing.count', { n: plan.installmentsCount }),
+            plan.monthlyEquivalent !== null && plan.installmentFrequency !== 'monthly'
+              ? t('plan.perMonth', { amount: amount(plan.monthlyEquivalent, plan.currency) })
+              : null,
             plan.planPrice === null
               ? null
               : `${t('plan.planPrice')}: ${amount(plan.planPrice, plan.currency)}`,

@@ -12,6 +12,7 @@ import {
   type Db,
 } from '@reb/db';
 import { scrubPersonalData } from '@reb/llm';
+import { monthlyEquivalent } from '@reb/normalize';
 import type { PaymentPlan } from '@reb/schema';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { VISIBLE_STATUSES } from './filters.ts';
@@ -44,7 +45,7 @@ export interface ListingDetail {
     observedAt: string;
   }[];
   /** The unit's current payment plans, in the order written; no source or message ids. */
-  paymentPlans: PaymentPlan[];
+  paymentPlans: (PaymentPlan & { monthlyEquivalent: number | null })[];
   sources: ListingSource[];
 }
 
@@ -62,7 +63,15 @@ const HIDDEN = new Set([
  * `currentPlans` in packages/pipeline/src/plans.ts; search sits below the
  * pipeline, so it is written again here).
  */
-async function plansOf(db: Db, unitId: number): Promise<PaymentPlan[]> {
+const withMonthly = (plan: PaymentPlan) => ({
+  ...plan,
+  monthlyEquivalent: monthlyEquivalent(plan),
+});
+
+async function plansOf(
+  db: Db,
+  unitId: number,
+): Promise<(PaymentPlan & { monthlyEquivalent: number | null })[]> {
   const [newest] = await db
     .select({
       sourceMessageId: unitPaymentPlans.sourceMessageId,
@@ -84,20 +93,22 @@ async function plansOf(db: Db, unitId: number): Promise<PaymentPlan[]> {
       ),
     )
     .orderBy(asc(unitPaymentPlans.position), asc(unitPaymentPlans.id));
-  return rows.map((row) => ({
-    position: row.position,
-    label: row.label,
-    downPaymentPercent: row.downPaymentPercent,
-    downPaymentAmount: row.downPaymentAmount,
-    installmentAmount: row.installmentAmount,
-    installmentFrequency: row.installmentFrequency,
-    installmentsCount: row.installmentsCount,
-    installmentYears: row.installmentYears,
-    planPrice: row.planPrice,
-    cash: row.cash,
-    notes: row.notes,
-    currency: row.currency,
-  }));
+  return rows.map((row) =>
+    withMonthly({
+      position: row.position,
+      label: row.label,
+      downPaymentPercent: row.downPaymentPercent,
+      downPaymentAmount: row.downPaymentAmount,
+      installmentAmount: row.installmentAmount,
+      installmentFrequency: row.installmentFrequency,
+      installmentsCount: row.installmentsCount,
+      installmentYears: row.installmentYears,
+      planPrice: row.planPrice,
+      cash: row.cash,
+      notes: row.notes,
+      currency: row.currency,
+    }),
+  );
 }
 
 export async function listingDetail(db: Db, unitId: number): Promise<ListingDetail | null> {

@@ -45,7 +45,7 @@ export function describeFilters(
   if (f.installmentYearsMin !== undefined)
     chips.push(`${t('field.installments')} ≥ ${t('common.years', { n: f.installmentYearsMin })}`);
   if (f.monthlyInstallmentMax !== undefined)
-    chips.push(`${t('filter.monthlyInstallmentMax')} ${f.monthlyInstallmentMax}`);
+    chips.push(`${t('filter.monthlyInstallmentMax')} ${i18n.moneyFull(f.monthlyInstallmentMax)}`);
   return chips;
 }
 
