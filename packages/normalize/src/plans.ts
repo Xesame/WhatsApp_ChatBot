@@ -1,4 +1,4 @@
-import { PAYMENTS_PER_YEAR, type PaymentPlan, type RawPaymentPlan } from '@reb/schema';
+import { PAYMENTS_PER_YEAR, type PaymentPlan, type RawPaymentPlan, type Unit } from '@reb/schema';
 import { detectCurrency, parseInstallments } from './fields.ts';
 import { parseAmounts, parsePercentOrAmount } from './numbers.ts';
 import { toAsciiDigits } from './text.ts';
@@ -62,8 +62,14 @@ function firstAmount(text: string | null): number | null {
   return amount?.value ?? null;
 }
 
-/** A label that says the percent is a down payment, and wording that says it is not. */
-const DOWN_CUE = /(\bd\.?\s?p\b|down|deposit|مقدم|مقدّم|دفعة|دفعه)/i;
+/**
+ * A label that says the percent is a down payment, and wording that says it is not.
+ * English cues must be whole words ("Downtown 10%" and "10% deposit-free" are
+ * not down payments; "downpayment" and "down-payment" are). "دفعة" alone is a
+ * down payment, but "دفعة استلام" is the payment on delivery, so it does not count.
+ */
+const DOWN_CUE =
+  /(\bd\.?\s?p\b|\bdown(?:\s*-?\s*payment)?\b|\bdeposit\b(?!\s*-?\s*free)|مقدم|مقدّم|دفع[ةه](?!\s*(?:ال)?استلام))/i;
 const NOT_DOWN_PAYMENT = /(cash|discount|maintenance|كاش|نقد|خصم|صيانة|صيانه)/i;
 
 const EGP_WORDS = /(egp|l\.?\s?e\b|جنيه|جنية|ج\.?م|(^|\s)ج(\s|$))/i;
@@ -156,4 +162,46 @@ export function normalizePlans(
 export function monthlyEquivalent(plan: PaymentPlan): number | null {
   if (plan.installmentAmount === null || plan.installmentFrequency === null) return null;
   return Math.round((plan.installmentAmount * PAYMENTS_PER_YEAR[plan.installmentFrequency]) / 12);
+}
+
+/** The unit's own payment columns that follow its first plan. */
+export type PlanColumns = Pick<
+  Unit,
+  | 'downPayment'
+  | 'downPaymentAmount'
+  | 'installmentsCount'
+  | 'installmentYears'
+  | 'installmentFrequency'
+>;
+
+/**
+ * The unit's own columns taken from its first plan, the way `normalizeUnit`
+ * fills them: a down payment stated only as an amount becomes a percent of
+ * the unit's lowest price (both in minor units). No plan: all empty.
+ */
+export function columnsFromPlan(
+  plan: PaymentPlan | undefined,
+  minPrice: number | null,
+): PlanColumns {
+  if (!plan) {
+    return {
+      downPayment: null,
+      downPaymentAmount: null,
+      installmentsCount: null,
+      installmentYears: null,
+      installmentFrequency: null,
+    };
+  }
+  let downPayment = plan.downPaymentPercent;
+  if (downPayment === null && plan.downPaymentAmount !== null && minPrice) {
+    const percent = Math.round((plan.downPaymentAmount / minPrice) * 1000) / 10;
+    downPayment = percent <= 100 ? percent : null;
+  }
+  return {
+    downPayment,
+    downPaymentAmount: plan.downPaymentAmount,
+    installmentsCount: plan.installmentsCount,
+    installmentYears: plan.installmentYears,
+    installmentFrequency: plan.installmentFrequency,
+  };
 }

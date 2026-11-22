@@ -157,6 +157,26 @@ describe('normalizePlans', () => {
     }
   });
 
+  it('needs a whole word: "Downtown" or "deposit-free" is not a down payment', () => {
+    for (const label of ['Downtown 10%', '10% deposit-free', 'Deposit free 10%']) {
+      const { plans } = normalizePlans([plan({ label, notes: 'x' })], ctx(label));
+      expect(plans[0]?.downPaymentPercent).toBeNull();
+    }
+    for (const label of ['10% down', '10% deposit', '10% downpayment', '10% down-payment']) {
+      const { plans } = normalizePlans([plan({ label, notes: 'x' })], ctx(label));
+      expect(plans[0]?.downPaymentPercent).toBe(10);
+    }
+  });
+
+  it('does not read a payment on delivery ("دفعة استلام") as a down payment', () => {
+    for (const label of ['دفعة استلام 10%', '10% دفعه الاستلام']) {
+      const { plans } = normalizePlans([plan({ label, notes: 'x' })], ctx(label));
+      expect(plans[0]?.downPaymentPercent).toBeNull();
+    }
+    const { plans } = normalizePlans([plan({ label: 'دفعة 10%', notes: 'x' })], ctx('دفعة 10%'));
+    expect(plans[0]?.downPaymentPercent).toBe(10);
+  });
+
   it('reads Arabic digits and a plain label with a duration in the label', () => {
     const a = normalizePlans(
       [plan({ label: '١٠٪ مقدم', down_payment: 'DP: 395,200 L.E' })],
