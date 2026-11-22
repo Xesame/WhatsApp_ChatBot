@@ -56,6 +56,8 @@ export async function currentPlans(db: Db, unitId: number): Promise<PaymentPlan[
       ),
     )
     .orderBy(asc(unitPaymentPlans.position), asc(unitPaymentPlans.id));
+  // A "no plans" marker from Review: the unit has none until a newer message states some.
+  if (rows.some((row) => row.cleared)) return [];
   return rows.map(toPlan);
 }
 

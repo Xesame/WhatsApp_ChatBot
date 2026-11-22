@@ -41,6 +41,15 @@ export function planToRow(plan: PaymentPlan): PlanRow {
   };
 }
 
+/**
+ * Applies an edit to a row. The number of installments is not shown, so when
+ * the frequency or the years change it would be stale: it is dropped.
+ */
+export function editRow(row: PlanRow, patch: Partial<PlanRow>): PlanRow {
+  const timing = 'installmentFrequency' in patch || 'installmentYears' in patch;
+  return { ...row, ...patch, ...(timing ? { installmentsCount: null } : {}) };
+}
+
 /** A new empty row, in the unit's currency. */
 export const emptyRow = (currency: PaymentPlan['currency']): PlanRow =>
   planToRow({

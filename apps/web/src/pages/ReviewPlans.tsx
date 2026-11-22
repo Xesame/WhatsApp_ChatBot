@@ -1,6 +1,6 @@
 import { INSTALLMENT_FREQUENCIES } from '@reb/schema/enums';
 import { Button, Input, Select } from '../ui.tsx';
-import { emptyRow, plansChanged, type PlanRow } from './plans.ts';
+import { editRow, emptyRow, plansChanged, type PlanRow } from './plans.ts';
 
 /** Plans a unit can have at most (the same limit the server enforces). */
 const MAX_PLANS = 12;
@@ -39,7 +39,7 @@ export function ReviewPlans({
     ? 'border-sky-500 ring-2 ring-sky-100 dark:ring-sky-900'
     : '';
   const set = (index: number, patch: Partial<PlanRow>) =>
-    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    onChange(rows.map((row, i) => (i === index ? editRow(row, patch) : row)));
   const box = (
     index: number,
     key:

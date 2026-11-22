@@ -255,6 +255,7 @@ erDiagram
     boolean cash
     text notes
     text currency
+    boolean cleared
     timestamp_with_time_zone observed_at
     timestamp_with_time_zone created_at
   }
@@ -772,6 +773,7 @@ Every payment plan seen for a unit (0% down, 10% down, ...), one row per plan pe
 | `cash` | boolean | no |  | True for a pay-in-full option (no installments). |
 | `notes` | text | yes |  | Other notes on the plan, as written ("Equal installments"). |
 | `currency` | text | no |  | `EGP` or `USD`: the currency of the amounts in the plan. |
+| `cleared` | boolean | no |  | True for a "no plans" marker: Review saved an empty list, so the unit has no plans until a newer message states some. Other fields are empty. |
 | `observed_at` | timestamp with time zone | no |  | When the message stating the plan was posted (for Review rows: when Hassan saved it). |
 | `created_at` | timestamp with time zone | no |  | When the row was created. |
 

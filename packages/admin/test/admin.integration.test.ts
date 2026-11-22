@@ -17,7 +17,7 @@ import {
 } from '@reb/db';
 import { createTestDatabase, testDatabaseUrl, type TestDatabase } from '@reb/db/testing';
 import { seed } from '@reb/db/seed-runner';
-import { matchEntities } from '@reb/pipeline';
+import { currentPlans, matchEntities, retract } from '@reb/pipeline';
 import { asc, eq, ne } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -309,13 +309,42 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
       ).toHaveLength(0);
     });
 
-    it('will not empty a unit that has plans', async () => {
+    it("clears a unit's plans; a newer message wins again; retracting it clears again", async () => {
       const { unit, message } = await listing();
       await messagePlan(unit.id, message.id, message.sentAt);
-      await expect(
-        reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: [] }, null),
-      ).rejects.toThrow(/at least one plan/);
-      expect(await storedPlans(unit.id)).toHaveLength(1);
+      await reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: [] }, null);
+      const db = testDb.database.db;
+      expect((await unitView(db, unit.id))?.plans).toEqual([]);
+      expect(await currentPlans(db, unit.id)).toEqual([]);
+      const corrections = await db
+        .select()
+        .from(reviewCorrections)
+        .where(eq(reviewCorrections.field, 'paymentPlans'));
+      expect(corrections).toHaveLength(1);
+      expect(corrections[0]?.after).toEqual([]);
+      // Clearing again changes nothing.
+      await reviewUnit(testDb.database, unit.id, { action: 'save', paymentPlans: [] }, null);
+      expect(await storedPlans(unit.id)).toHaveLength(2);
+
+      // A newer message with plans wins.
+      const [laterRow] = await db
+        .insert(messages)
+        .values({
+          groupId: message.groupId,
+          waMessageId: `W${Math.random()}`,
+          senderHash: 's'.repeat(64),
+          sentAt: new Date(Date.now() + 60_000),
+          text: 'plans again',
+          status: 'processed',
+        })
+        .returning();
+      if (!laterRow) throw new Error('message not stored');
+      const later = laterRow;
+      await messagePlan(unit.id, later.id, later.sentAt, { label: 'back' });
+      expect((await currentPlans(db, unit.id)).map((p) => p.label)).toEqual(['back']);
+      // Retracting it leaves the cleared marker as the newest source.
+      await testDb.database.transaction((tx) => retract(tx, later.id));
+      expect(await currentPlans(db, unit.id)).toEqual([]);
     });
   });
 

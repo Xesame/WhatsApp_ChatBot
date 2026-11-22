@@ -290,11 +290,6 @@ export async function reviewUnit(
     // can still bring back the plans it replaced.
     if (newPlans) {
       const before = await currentPlans(tx, unitId);
-      if (newPlans.length === 0 && before.length > 0) {
-        throw new ConflictError(
-          'A unit needs at least one plan once it has plans; edit it instead',
-        );
-      }
       if (!same(before, newPlans)) {
         corrections.push({
           unitId,
@@ -308,8 +303,29 @@ export async function reviewUnit(
         // A JavaScript time (milliseconds), not the database's now(): rows of one
         // source are found by comparing times, and the database keeps microseconds.
         const stamp = new Date();
+        // An empty list is stored as one "no plans" marker row.
+        const rows =
+          newPlans.length > 0
+            ? newPlans.map((plan) => ({ ...plan, cleared: false }))
+            : [
+                {
+                  position: 0,
+                  label: null,
+                  downPaymentPercent: null,
+                  downPaymentAmount: null,
+                  installmentAmount: null,
+                  installmentFrequency: null,
+                  installmentsCount: null,
+                  installmentYears: null,
+                  planPrice: null,
+                  cash: false,
+                  notes: null,
+                  currency: before[0]?.currency ?? ('EGP' as const),
+                  cleared: true,
+                },
+              ];
         await tx.insert(unitPaymentPlans).values(
-          newPlans.map((plan) => ({
+          rows.map((plan) => ({
             ...plan,
             unitId,
             sourceMessageId: null,
@@ -392,8 +408,4 @@ export async function reviewUnit(
 
 export class NotFoundError extends Error {
   override name = 'NotFoundError';
-}
-
-export class ConflictError extends Error {
-  override name = 'ConflictError';
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "unit_payment_plans" ADD COLUMN "cleared" boolean DEFAULT false NOT NULL;

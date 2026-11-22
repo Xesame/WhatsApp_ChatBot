@@ -278,6 +278,9 @@ export const unitPaymentPlans = pgTable(
     cash: boolean('cash').notNull().default(false),
     notes: text('notes'),
     currency: text('currency', { enum: CURRENCIES }).notNull(),
+    // A "no plans" marker: Review saved an empty list, so the unit has none now
+    // (a newer message with plans still wins). Its other fields are empty.
+    cleared: boolean('cleared').notNull().default(false),
     observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -1,6 +1,6 @@
 import type { PaymentPlan } from '@reb/schema';
 import { describe, expect, it } from 'vitest';
-import { emptyRow, planToRow, plansChanged, rowsToPlans } from '../src/pages/plans.ts';
+import { editRow, emptyRow, planToRow, plansChanged, rowsToPlans } from '../src/pages/plans.ts';
 
 const plan: PaymentPlan = {
   position: 0,
@@ -45,6 +45,13 @@ describe('plans table helpers', () => {
     expect(() => rowsToPlans([{ ...emptyRow('EGP'), installmentYears: 'eight' }])).toThrow(
       /Plan 1: "eight" is not a number/,
     );
+  });
+
+  it('drops the hidden installment count when frequency or years change', () => {
+    const row = planToRow(plan);
+    expect(editRow(row, { installmentFrequency: 'monthly' }).installmentsCount).toBeNull();
+    expect(editRow(row, { installmentYears: '5' }).installmentsCount).toBeNull();
+    expect(editRow(row, { label: 'x' }).installmentsCount).toBe(32);
   });
 
   it('knows when the table changed', () => {
