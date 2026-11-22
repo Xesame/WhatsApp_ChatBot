@@ -147,6 +147,29 @@ describe('normalizePlans', () => {
     expect(plans[0]).toMatchObject({ downPaymentPercent: null, downPaymentAmount: 39_520_000 });
   });
 
+  it('does not take a percent from cash or discount labels', () => {
+    for (const label of ['Cash 15% discount', 'خصم 15% كاش', 'Maintenance 10% DP']) {
+      const { plans } = normalizePlans(
+        [plan({ label, down_payment: null, notes: 'x' })],
+        ctx(label),
+      );
+      expect(plans[0]?.downPaymentPercent).toBeNull();
+    }
+  });
+
+  it('reads Arabic digits and a plain label with a duration in the label', () => {
+    const a = normalizePlans(
+      [plan({ label: '١٠٪ مقدم', down_payment: 'DP: 395,200 L.E' })],
+      ctx('١٠٪ مقدم DP: 395,200 L.E'),
+    );
+    expect(a.plans[0]).toMatchObject({ downPaymentPercent: 10, downPaymentAmount: 39_520_000 });
+    const b = normalizePlans(
+      [plan({ label: 'Plan 2 - 10% DP over 5 years', down_payment: 'DP: 395,200 L.E' })],
+      ctx('Plan 2 - 10% DP over 5 years DP: 395,200 L.E'),
+    );
+    expect(b.plans[0]?.downPaymentPercent).toBe(10);
+  });
+
   it('reads Arabic words and Arabic digits', () => {
     const text = 'مقدم ١٠٪ والباقي على ٨ سنين ربع سنوي القسط الربع سنوي ١٠٤٬٦١٢ ج';
     const { plans, reasons } = normalizePlans(

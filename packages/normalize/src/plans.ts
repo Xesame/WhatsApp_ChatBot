@@ -1,6 +1,7 @@
 import { PAYMENTS_PER_YEAR, type PaymentPlan, type RawPaymentPlan } from '@reb/schema';
 import { detectCurrency, parseInstallments } from './fields.ts';
 import { parseAmounts, parsePercentOrAmount } from './numbers.ts';
+import { toAsciiDigits } from './text.ts';
 import { appearsIn } from './unit.ts';
 
 /**
@@ -61,6 +62,10 @@ function firstAmount(text: string | null): number | null {
   return amount?.value ?? null;
 }
 
+/** A label that says the percent is a down payment, and wording that says it is not. */
+const DOWN_CUE = /(\bd\.?\s?p\b|down|deposit|مقدم|مقدّم|دفعة|دفعه)/i;
+const NOT_DOWN_PAYMENT = /(cash|discount|maintenance|كاش|نقد|خصم|صيانة|صيانه)/i;
+
 const EGP_WORDS = /(egp|l\.?\s?e\b|جنيه|جنية|ج\.?م|(^|\s)ج(\s|$))/i;
 
 function currencyOf(phrases: (string | null)[], fallback: 'EGP' | 'USD'): 'EGP' | 'USD' {
@@ -98,12 +103,15 @@ export function normalizePlans(
 
     const down = parsePercentOrAmount(raw.down_payment);
     // Gemini sometimes writes the percent only in the label ("10% DP") and the
-    // amount in down_payment. Use the label's percent when it names exactly one.
+    // amount in down_payment. Use the label's percent only when it names exactly
+    // one percent and says it is a down payment (never "Cash 15% discount").
     if (down.percent === null) {
-      const labelPercents = [...(raw.label ?? '').matchAll(PERCENT_TOKEN)];
+      const label = toAsciiDigits(raw.label ?? '');
+      const labelPercents = [...label.matchAll(PERCENT_TOKEN)];
       const [only] = labelPercents.length === 1 ? labelPercents : [];
-      const labelPercent = only ? parsePercentOrAmount(only[0]).percent : null;
-      if (labelPercent !== null) down.percent = labelPercent;
+      if (only && DOWN_CUE.test(label) && !NOT_DOWN_PAYMENT.test(label)) {
+        down.percent = parsePercentOrAmount(only[0]).percent;
+      }
     }
     // Read the same way with or without a percent, so a length ("على 8 سنين")
     // never becomes the amount.
