@@ -35,7 +35,7 @@ export function paymentText(
     parts.push(i18n.t('unit.down', { p: i18n.number(item.downPayment, 1) }));
   if (item.installmentYears !== null)
     parts.push(i18n.t('unit.overYears', { n: i18n.number(item.installmentYears, 1) }));
-  return parts.length ? parts.join(' · ') : i18n.t('common.unknown');
+  return parts.length ? parts.join(' – ') : i18n.t('common.unknown');
 }
 
 export function deliveryText(
@@ -44,20 +44,4 @@ export function deliveryText(
 ): string {
   if (item.readyToMove) return i18n.t('unit.readyToMove');
   return item.deliveryYear ? String(item.deliveryYear) : i18n.t('common.unknown');
-}
-
-/** "Apartment · 3 bedrooms" */
-export function kindText(item: Pick<SearchItem, 'unitType' | 'bedrooms'>, i18n: I18n): string {
-  const parts = [i18n.value(item.unitType)];
-  if (item.bedrooms !== null) parts.push(i18n.rooms(item.bedrooms));
-  return parts.join(' · ');
-}
-
-export function placeText(item: Pick<SearchItem, 'project' | 'city'>, i18n: I18n): string {
-  return (
-    [item.project, item.city]
-      .filter(Boolean)
-      .map((n) => i18n.name(n))
-      .join(' · ') || i18n.t('common.unknown')
-  );
 }
