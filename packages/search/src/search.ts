@@ -65,20 +65,28 @@ const likeText = (text: string) => text.replace(/[\\%_]/g, (c) => `\\${c}`);
  * rule as `currentPlans` in packages/pipeline/src/plans.ts (newest observed_at,
  * then newest id; rows of one source share message and time). It is written
  * again here in SQL because search sits below the pipeline. Units with no
- * plans at all fall back to `onColumns`, their own columns (none: no match).
+ * plans (none at all, or cleared in Review) fall back to `onColumns`, their own
+ * columns (none: no match).
  */
 function anyPlan(onPlan: SQL[], onColumns: SQL[] | undefined): SQL {
   const newest = (column: SQL) =>
     sql`(select ${column} from unit_payment_plans n where n.unit_id = u.id order by n.observed_at desc, n.id desc limit 1)`;
+  // Rows of the newest source, the one `currentPlans` reads.
+  const inNewestSource = (alias: string) =>
+    sql`${sql.raw(alias)}.unit_id = u.id
+      and ${sql.raw(alias)}.observed_at = ${newest(sql`n.observed_at`)}
+      and ${sql.raw(alias)}.source_message_id is not distinct from ${newest(sql`n.source_message_id`)}`;
+  // A "no plans" marker from Review: when the newest source holds one, the unit
+  // has no plans now (`currentPlans` returns []), and the marker is never a plan.
+  const cleared = sql`exists (select 1 from unit_payment_plans c where ${inNewestSource('c')} and c.cleared)`;
   // One exists over every plan condition, so a single plan must satisfy them all.
-  const current = sql`exists (
+  const current = sql`(not ${cleared} and exists (
     select 1 from unit_payment_plans pp
-    where pp.unit_id = u.id
-      and pp.observed_at = ${newest(sql`n.observed_at`)}
-      and pp.source_message_id is not distinct from ${newest(sql`n.source_message_id`)}
-      and ${sql.join(onPlan, sql` and `)})`;
+    where ${inNewestSource('pp')}
+      and not pp.cleared
+      and ${sql.join(onPlan, sql` and `)}))`;
   if (!onColumns) return current;
-  return sql`(${current} or (not exists (select 1 from unit_payment_plans x where x.unit_id = u.id) and ${sql.join(onColumns, sql` and `)}))`;
+  return sql`(${current} or ((${cleared} or not exists (select 1 from unit_payment_plans x where x.unit_id = u.id)) and ${sql.join(onColumns, sql` and `)}))`;
 }
 
 /** The WHERE conditions and price expressions shared by search, count and export. */

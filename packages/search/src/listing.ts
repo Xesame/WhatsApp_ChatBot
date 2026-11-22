@@ -68,6 +68,12 @@ const withMonthly = (plan: PaymentPlan) => ({
   monthlyEquivalent: monthlyEquivalent(plan),
 });
 
+/**
+ * The unit's current plans: a copy of `currentPlans` in
+ * packages/pipeline/src/plans.ts (search sits below the pipeline, so it cannot
+ * import it). Keep the two identical: the rows of the newest source, and none
+ * at all when that source holds a Review "no plans" marker.
+ */
 async function plansOf(
   db: Db,
   unitId: number,
@@ -93,6 +99,8 @@ async function plansOf(
       ),
     )
     .orderBy(asc(unitPaymentPlans.position), asc(unitPaymentPlans.id));
+  // A "no plans" marker from Review: the unit has none until a newer message states some.
+  if (rows.some((row) => row.cleared)) return [];
   return rows.map((row) =>
     withMonthly({
       position: row.position,

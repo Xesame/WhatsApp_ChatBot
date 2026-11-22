@@ -235,6 +235,48 @@ describe.skipIf(!testDatabaseUrl)('listing search (real Postgres)', () => {
       plan('sold', 3, 0, { downPaymentPercent: 0, installmentYears: 5 }),
       plan('sold', 3, 1, { downPaymentPercent: 20, installmentYears: 10 }),
     ]);
+    // Cleared plans (status 'stale', so the other tests never see these units).
+    // 'wiped': a message stated plans, then Review cleared them (newer marker).
+    // 'bare': the same unit columns, but it never had plans at all.
+    const columns = { status: 'stale' as const, downPayment: 5, installmentYears: 10 };
+    await unit('wiped', columns);
+    await unit('bare', columns);
+    const [wipedMessage] = await db
+      .insert(messages)
+      .values({
+        groupId: group?.id ?? 0,
+        waMessageId: 'plan-wiped',
+        senderHash: 'secret-sender-hash',
+        sentAt: at(4),
+        text: 'plans',
+        status: 'processed',
+      })
+      .returning();
+    await db.insert(unitPaymentPlans).values([
+      {
+        unitId: id.wiped ?? 0,
+        sourceMessageId: wipedMessage?.id ?? null,
+        source: 'message' as const,
+        position: 0,
+        currency: 'EGP' as const,
+        cash: false,
+        observedAt: at(4),
+        downPaymentPercent: 0,
+        installmentYears: 12,
+        installmentAmount: 1_000_000,
+        installmentFrequency: 'monthly' as const,
+      },
+      {
+        unitId: id.wiped ?? 0,
+        sourceMessageId: null,
+        source: 'review' as const,
+        position: 0,
+        currency: 'EGP' as const,
+        cash: false,
+        cleared: true,
+        observedAt: at(1),
+      },
+    ]);
     const [file] = await db
       .insert(mediaFiles)
       .values({
@@ -339,6 +381,67 @@ describe.skipIf(!testDatabaseUrl)('listing search (real Postgres)', () => {
     const json = JSON.stringify(detail?.paymentPlans);
     expect(json).not.toContain('sourceMessageId');
     expect(json).not.toContain('observedAt');
+  });
+
+  describe('plans cleared in Review', () => {
+    const stale = { statuses: ['stale' as const] };
+
+    it('shows no plans on the listing, and never the marker', async () => {
+      const detail = await listingDetail(testDb.database.db, id.wiped ?? 0);
+      expect(detail?.paymentPlans).toEqual([]);
+    });
+
+    it('does not match plan filters through the old message plans or the marker', async () => {
+      // the old message said 0% down over 12 years at 1,000 a month; none of that counts now
+      expect(await search({ ...stale, monthlyInstallmentMax: 100_000_000 })).toEqual([]);
+    });
+
+    it('falls back to the unit columns, like a unit that never had plans', async () => {
+      expect(sorted(await search({ ...stale, downPaymentMax: 5 }))).toEqual(named('wiped', 'bare'));
+      expect(sorted(await search({ ...stale, installmentYearsMin: 10 }))).toEqual(
+        named('wiped', 'bare'),
+      );
+      // the old message's 0% / 12 years must not leak in; the columns say 5% / 10 years
+      expect(await search({ ...stale, downPaymentMax: 2 })).toEqual([]);
+      expect(await search({ ...stale, installmentYearsMin: 11 })).toEqual([]);
+    });
+
+    it('lets a newer message with plans win again', async () => {
+      const { db } = testDb.database;
+      const [group] = await db.select().from(waGroups).limit(1);
+      const [m] = await db
+        .insert(messages)
+        .values({
+          groupId: group?.id ?? 0,
+          waMessageId: 'plan-wiped-new',
+          senderHash: 'secret-sender-hash',
+          sentAt: new Date(),
+          text: 'plans',
+          status: 'processed',
+        })
+        .returning();
+      const [row] = await db
+        .insert(unitPaymentPlans)
+        .values({
+          unitId: id.wiped ?? 0,
+          sourceMessageId: m?.id ?? null,
+          source: 'message',
+          position: 0,
+          currency: 'EGP',
+          cash: false,
+          observedAt: new Date(),
+          downPaymentPercent: 1,
+          installmentYears: 3,
+        })
+        .returning();
+      try {
+        expect(await search({ ...stale, downPaymentMax: 1 })).toEqual([id.wiped]);
+        const detail = await listingDetail(db, id.wiped ?? 0);
+        expect(detail?.paymentPlans.map((p) => p.downPaymentPercent)).toEqual([1]);
+      } finally {
+        await db.delete(unitPaymentPlans).where(eq(unitPaymentPlans.id, row?.id ?? 0));
+      }
+    });
   });
 
   it('sorts by newest, price and price per m²', async () => {
