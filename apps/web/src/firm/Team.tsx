@@ -106,7 +106,17 @@ export function Team() {
               <Loading />
             </div>
           )}
-          <Table head={[t('team.name'), t('team.email'), '', '', '']}>
+          <Table
+            head={[
+              t('team.name'),
+              t('team.email'),
+              ...[0, 1, 2].map((k) => (
+                <span key={k} className="sr-only">
+                  {t('team.actions')}
+                </span>
+              )),
+            ]}
+          >
             {team.data?.map((m) => (
               <tr key={m.id} className={m.status === 'removed' ? 'text-muted' : ''}>
                 <td className={td}>

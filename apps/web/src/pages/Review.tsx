@@ -650,7 +650,7 @@ function EntitySelect({
       <option value="">— unknown —</option>
       {list.data?.map((e) => (
         <option key={e.id} value={e.id}>
-          {e.nameEn} · {e.nameAr}
+          {e.nameEn} – {e.nameAr}
         </option>
       ))}
     </Select>

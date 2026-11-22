@@ -103,7 +103,7 @@ export function Saved() {
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Link to={`/app?${filtersToQuery(s.filters)}`} className={buttonClass()}>
+              <Link to={`/app?${filtersToQuery(s.filters)}`} className={buttonClass('secondary')}>
                 {t('saved.open')}
               </Link>
               <Select

@@ -55,7 +55,7 @@ export function WhatsApp() {
                       src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(c.qrSvg)}`}
                     />
                   </div>
-                  <ol className="list-decimal space-y-1 pl-5 text-sm">
+                  <ol className="list-decimal space-y-1 ps-5 text-sm">
                     <li>On the scraper phone, open WhatsApp → Settings → Linked devices.</li>
                     <li>Tap “Link a device” and scan this code.</li>
                     <li>The code refreshes by itself; this page updates every few seconds.</li>
