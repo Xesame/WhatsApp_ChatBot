@@ -1,4 +1,5 @@
 /** Calls to the API (same address as this page; see vite.config.ts). */
+import type { PaymentPlan } from '@reb/schema';
 
 export class ApiError extends Error {
   readonly status: number;
