@@ -163,9 +163,7 @@ export function Search() {
           </Label>
           <Label tone="inverse" text={t('filter.city')}>
             <Select
-              value={
-                cityIds.length > 1 ? SEVERAL : cityIds.length === 1 ? String(cityIds[0]) : ''
-              }
+              value={cityIds.length > 1 ? SEVERAL : cityIds.length === 1 ? String(cityIds[0]) : ''}
               onChange={(e) => setQuick('cityIds', e.target.value)}
             >
               <option value="">{t('common.any')}</option>
@@ -235,7 +233,9 @@ export function Search() {
               <div className="flex-1 overflow-y-auto px-4 py-4">{filterPanel}</div>
               <div className="border-t border-line p-4">
                 <Button size="lg" className="w-full" onClick={closeDrawer}>
-                  {results.data ? t('search.showResults', { n: i18n.number(total) }) : t('common.close')}
+                  {results.data
+                    ? t('search.showResults', { n: i18n.number(total) })
+                    : t('common.close')}
                 </Button>
               </div>
             </div>
@@ -244,11 +244,7 @@ export function Search() {
 
         <section className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              className="lg:hidden"
-              onClick={() => setShowFilters(true)}
-            >
+            <Button variant="secondary" className="lg:hidden" onClick={() => setShowFilters(true)}>
               {t('search.filters')}
               {activeCount > 0 && ` (${i18n.number(activeCount)})`}
             </Button>

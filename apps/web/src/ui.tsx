@@ -89,7 +89,9 @@ export function Label({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className={cx('block text-sm font-medium', tone === 'inverse' ? 'text-bone' : 'text-ink')}>
+      <span
+        className={cx('block text-sm font-medium', tone === 'inverse' ? 'text-bone' : 'text-ink')}
+      >
         {text}
       </span>
       {children}
