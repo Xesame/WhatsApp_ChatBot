@@ -69,6 +69,26 @@ describe('isSameUnit: building and floor', () => {
     expect(isSameUnit(unit({ floor: '5-7' }), unit({ floor: '5-7' }))).toBe(true);
   });
 
+  // Floors conflict only when they share no floor: older units were stored
+  // with only the first floor of a list ("5th & 6 & 7" → "5"), and a list
+  // post (5-7) may be reposted as one of its floors.
+  it.each<[string | null, string | null, boolean]>([
+    ['5', '5-7', true],
+    ['2', '5-7', false],
+    ['Ground', '1', false],
+    ['Ground', 'Ground', true],
+    ['Roof', 'Roof', true],
+    ['Roof', '7', false],
+    ['3', null, true],
+    ['2, 5', '5', true],
+    ['2, 5', '3-4', false],
+    ['3-4', '4-6', true],
+    ['typical', '3', true], // unreadable: no conflict
+  ])('floor %s vs %s → same unit: %s', (a, b, expected) => {
+    expect(isSameUnit(unit({ floor: a }), unit({ floor: b }))).toBe(expected);
+    expect(isSameUnit(unit({ floor: b }), unit({ floor: a }))).toBe(expected);
+  });
+
   it('allows an unknown building or floor on one side', () => {
     expect(isSameUnit(unit({ building: 'V-02', floor: '1' }), unit())).toBe(true);
     expect(isSameUnit(unit(), unit({ building: 'V-02', floor: 'Ground' }))).toBe(true);

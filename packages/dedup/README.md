@@ -15,7 +15,7 @@ Decides when two listings are the same unit, which unit a reply means, and when 
 2. Same developer, when both are known.
 3. Same unit type.
 4. Unit codes: a named unit only matches the same code, and never matches a unit-type offering.
-5. Same bedrooms, when both are known. Same building and same floor, when both name one (a price list repeats the same size and price on several floors and buildings; those are different units). Building labels are compared ignoring case, spaces and dashes.
+5. Same bedrooms, when both are known. Same building when both name one, and overlapping floors when both name them ("5" and "5-7" overlap; older units kept only the first floor of a list) (a price list repeats the same size and price on several floors and buildings; those are different units). Building labels are compared ignoring case, spaces and dashes.
 6. Areas within tolerance: the gap between the two area ranges is at most `DEDUP_AREA_TOLERANCE_PERCENT` (5%) of the larger area, or `DEDUP_AREA_TOLERANCE_M2` (3 m²), whichever is bigger. If neither has an area, prices must be within `DEDUP_PRICE_TOLERANCE_PERCENT` (10%) instead. If only one has an area, they're treated as different.
 
 **Why it is designed this way:** a wrong merge loses information (two real units become one), while a missed duplicate only shows twice (merging two units by hand is planned for the admin console). So the rules say "different" whenever they're unsure. The tolerances are settings, to be tuned on real data.

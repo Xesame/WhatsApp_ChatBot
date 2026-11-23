@@ -483,7 +483,7 @@ A matched project fills in its developer and city; if the message names a differ
 2. same developer, when both are known;
 3. same unit type;
 4. unit codes: a named unit only matches the same code, and never matches a unit-type offering;
-5. same bedrooms, when both are known; same building and same floor, when both name one (a price list repeats the same size and price on several floors and buildings, and those are different units; building labels are compared ignoring case, spaces and dashes, so "V-02" = "v 02");
+5. same bedrooms, when both are known; same building when both name one, and floors that share at least one floor when both name them (a price list repeats the same size and price on several floors and buildings, and those are different units; building labels are compared ignoring case, spaces and dashes, so "V-02" = "v 02");
 6. close areas: the gap between the two area ranges is at most 5% of the larger area (`DEDUP_AREA_TOLERANCE_PERCENT`), or 3 m² (`DEDUP_AREA_TOLERANCE_M2`), whichever is bigger. If neither states an area, prices must be within 10% (`DEDUP_PRICE_TOLERANCE_PERCENT`). If only one states an area: different.
 
 Among several matches, the closest area wins. When unsure, the rules say "different": a missed duplicate shows twice and can be merged in review, but a wrong merge loses a real unit.

@@ -71,12 +71,48 @@ const sameCode = (a: string | null, b: string | null) =>
 const buildingKey = (label: string) => normalizeName(label).replace(/[\s\-–_]+/g, '');
 
 /**
- * True when both sides name a building (or a floor) and the names differ.
- * One side unknown is not a conflict: a repost often leaves the building out.
+ * True when both sides name a building and the names differ. One side
+ * unknown is not a conflict: a repost often leaves the building out.
  */
-const conflicts = (a: string | null, b: string | null, key: (v: string) => string) =>
-  !!a && !!b && key(a) !== key(b);
-const floorKey = (floor: string) => floor.trim().toLowerCase();
+const buildingsConflict = (a: string | null, b: string | null) =>
+  !!a && !!b && buildingKey(a) !== buildingKey(b);
+
+/** The roof, as a floor number above any real floor. */
+const ROOF = Number.POSITIVE_INFINITY;
+
+/**
+ * The floors a stored floor value covers, as [from, to] spans: "Ground" →
+ * [0, 0], "Roof" → the roof, "3" → [3, 3], "5-7" → [5, 7], "2, 5" → [2, 2]
+ * and [5, 5]. Null when the value can't be read (then it never conflicts).
+ */
+function floorSpans(floor: string): [number, number][] | null {
+  const spans: [number, number][] = [];
+  for (const part of floor.split(',')) {
+    const p = part.trim().toLowerCase();
+    const range = /^(\d+)\s*-\s*(\d+)$/.exec(p);
+    if (p === 'ground') spans.push([0, 0]);
+    else if (p === 'roof') spans.push([ROOF, ROOF]);
+    else if (/^\d+$/.test(p)) spans.push([Number(p), Number(p)]);
+    else if (range?.[1] && range[2]) {
+      const [x, y] = [Number(range[1]), Number(range[2])];
+      spans.push([Math.min(x, y), Math.max(x, y)]);
+    } else return null;
+  }
+  return spans.length > 0 ? spans : null;
+}
+
+/**
+ * True when both sides name floors and they share none. Floors that
+ * overlap may be the same unit: units stored before floor lists were read
+ * kept only the first floor ("5th & 6 & 7" → "5"), and a post for floors
+ * 5-7 may be reposted as "5th floor".
+ */
+function floorsConflict(a: string | null, b: string | null): boolean {
+  const x = a ? floorSpans(a) : null;
+  const y = b ? floorSpans(b) : null;
+  if (!x || !y) return false;
+  return !x.some(([xFrom, xTo]) => y.some(([yFrom, yTo]) => xFrom <= yTo && yFrom <= xTo));
+}
 
 export function areasOverlap(a: MatchFields, b: MatchFields, t: Tolerances): boolean {
   if (a.minArea === null || b.minArea === null) return false;
@@ -98,8 +134,9 @@ export function pricesOverlap(a: MatchFields, b: MatchFields, t: Tolerances): bo
  * 4. Unit codes: a named unit only matches the same code; a named unit never
  *    matches a unit-type offering.
  * 5. Same bedrooms when both are known. Same building and same floor when
- *    both sides name one: a price list repeats the same size and price on
- *    several floors and buildings, and those are different units.
+ *    both sides name one (floors: when they share no floor): a price list
+ *    repeats the same size and price on several floors and buildings, and
+ *    those are different units.
  * 6. Area ranges overlap (with tolerance). When neither has an area, the
  *    price ranges must overlap instead. If only one has an area: different.
  */
@@ -118,8 +155,8 @@ export function isSameUnit(
   }
   if (existing.unitType === null || existing.unitType !== incoming.unitType) return false;
   if (existing.unitCode || incoming.unitCode) return sameCode(existing.unitCode, incoming.unitCode);
-  if (conflicts(existing.building, incoming.building, buildingKey)) return false;
-  if (conflicts(existing.floor, incoming.floor, floorKey)) return false;
+  if (buildingsConflict(existing.building, incoming.building)) return false;
+  if (floorsConflict(existing.floor, incoming.floor)) return false;
   if (
     existing.bedrooms !== null &&
     incoming.bedrooms !== null &&
