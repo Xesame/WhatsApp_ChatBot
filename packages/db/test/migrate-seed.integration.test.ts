@@ -96,10 +96,13 @@ describe.skipIf(!adminUrl)('migrations and seed on a clean database', () => {
       { column_name: 'developer', is_nullable: 'YES' },
       { column_name: 'id', is_nullable: 'NO' },
       { column_name: 'known', is_nullable: 'NO' },
+      { column_name: 'method', is_nullable: 'YES' },
       { column_name: 'model', is_nullable: 'NO' },
       { column_name: 'name', is_nullable: 'NO' },
       { column_name: 'name_normalized', is_nullable: 'NO' },
       { column_name: 'prompt_version', is_nullable: 'NO' },
+      { column_name: 'provider', is_nullable: 'YES' },
+      { column_name: 'sources', is_nullable: 'YES' },
       { column_name: 'updated_at', is_nullable: 'NO' },
     ]);
     const indexes = await db().pool.query<{ indexdef: string }>(

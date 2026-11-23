@@ -458,16 +458,22 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
   },
   name_lookups: {
     description:
-      'What the model remembers about a project name we had not seen before. Only a hint on the Review page; never copied into a listing.',
+      'What a live web search says about a project name we had not seen before (which developer, which area). Only a hint on the Review page; never copied into a listing.',
     columns: {
       id: 'Identity primary key.',
       name: 'The name as first written in a message.',
       name_normalized: 'The name in comparable form. Unique: each name is asked about once.',
-      developer: 'The developer the model named, or empty if it was unsure.',
-      city: 'The city or area the model named, or empty if it was unsure.',
-      known: 'Whether the model said it recognises the project.',
-      model: 'Which model gave the answer.',
+      developer: 'The developer the search found, or empty if it did not clearly say.',
+      city: 'The city or area the search found, or empty if it did not clearly say.',
+      known:
+        'Whether the search clearly showed the project exists. False also when no model could search.',
+      model: 'Which model gave the answer (the last one tried when none could search).',
       prompt_version: 'Which version of the lookup prompt was used.',
+      method:
+        '`search` (a live web search) or `memory` (older answers from the model memory, asked again with search).',
+      provider:
+        '`gemini` (Google Search) or `groq` (browser search): who searched. Empty when no model could search.',
+      sources: 'Up to 3 pages the search used, as `[{ url, title }]`.',
       created_at: 'When the row was created.',
       updated_at: 'When the row was last changed.',
     },
