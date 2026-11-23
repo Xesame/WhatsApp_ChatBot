@@ -989,7 +989,7 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
     });
   });
 
-  describe('what Gemini remembers about a waiting project', () => {
+  describe('what a web search found about a waiting project', () => {
     const waiting = () =>
       listing({
         projectId: null,
@@ -1006,6 +1006,9 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
         city: 'New Cairo',
         model: 'gemini-test',
         promptVersion: 'test',
+        method: 'search',
+        provider: 'gemini',
+        sources: [{ url: 'https://example.com/lumia', title: 'example.com' }],
         ...row,
       });
     const actions = async () =>
@@ -1016,17 +1019,23 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
       await testDb.database.pool.query('truncate name_lookups, audit_log');
     });
 
-    it('shows what Gemini remembers for a waiting unit', async () => {
+    it('shows what the search found for a waiting unit, with who searched and the sources', async () => {
       const { unit } = await waiting();
       expect((await unitView(testDb.database.db, unit.id))?.learning.lookup).toBeNull();
       await remember();
       expect((await unitView(testDb.database.db, unit.id))?.learning.lookup).toEqual({
         developer: 'Emaar Misr',
         city: 'New Cairo',
+        provider: 'gemini',
+        sources: [{ url: 'https://example.com/lumia', title: 'example.com' }],
       });
       // "Not sure" is not an answer to show.
       await testDb.database.pool.query('truncate name_lookups');
-      await remember({ known: false, developer: null, city: null });
+      await remember({ known: false, developer: null, city: null, provider: null });
+      expect((await unitView(testDb.database.db, unit.id))?.learning.lookup).toBeNull();
+      // Answers from Gemini's memory are no longer trusted: not shown.
+      await testDb.database.pool.query('truncate name_lookups');
+      await remember({ method: 'memory', provider: null, sources: null });
       expect((await unitView(testDb.database.db, unit.id))?.learning.lookup).toBeNull();
     });
 

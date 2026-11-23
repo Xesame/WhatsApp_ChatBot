@@ -315,7 +315,7 @@ function ReviewItem({
     developer: useEntities('developer').data,
     city: useEntities('city').data,
   };
-  /** The id (as text) of the developer / area Gemini named, when we already have it. */
+  /** The id (as text) of the developer / area the web search named, when we already have it. */
   const known = (kind: 'developer' | 'city') => {
     const offer = lookupOffer(view.learning.lookup?.[kind] ?? null, lists[kind]);
     return offer?.kind === 'use' ? String(offer.id) : '';
@@ -463,7 +463,7 @@ function ReviewItem({
                             }))
                           }
                           defaults={{
-                            // An empty developer / area starts as the one Gemini named, if we know it.
+                            // An empty developer / area starts as the one the search named, if we know it.
                             developerId: values.developerId || known('developer'),
                             cityId: values.cityId || known('city'),
                           }}

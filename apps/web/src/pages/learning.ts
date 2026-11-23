@@ -80,8 +80,43 @@ export function newEntityOption(
   return isKnown ? null : { label: `+ New ${word} named “${name}”`, name };
 }
 
+/** Who searched, in the words the Review page shows: "Gemini found on Google: ...". */
+export function lookupLabel(provider: 'gemini' | 'groq', answer: string): string {
+  return provider === 'gemini'
+    ? `Gemini found on Google: ${answer}`
+    : `Groq found on the web: ${answer}`;
+}
+
 /**
- * What to offer for the developer / area Gemini remembered: use the one we
+ * The pages a search used, as small links named by their site. Gemini's
+ * links go through a Google redirect, so its site is the `title` Google
+ * gives (a domain such as "example.com"). Only http(s) links, at most 3.
+ */
+export function lookupSourceLinks(
+  sources: { url: string; title: string | null }[],
+): { href: string; label: string }[] {
+  const links: { href: string; label: string }[] = [];
+  for (const source of sources) {
+    let url: URL;
+    try {
+      url = new URL(source.url);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') continue;
+    const site = (host: string) => host.replace(/^www\./, '').toLowerCase();
+    const title = source.title?.trim() ?? '';
+    const titleIsSite = /^[\w-]+(\.[\w-]+)+$/.test(title);
+    const redirect = url.hostname.endsWith('vertexaisearch.cloud.google.com');
+    const label = redirect ? (titleIsSite ? site(title) : 'google.com') : site(url.hostname);
+    links.push({ href: url.href, label });
+    if (links.length === 3) break;
+  }
+  return links;
+}
+
+/**
+ * What to offer for the developer / area the search found: use the one we
  * already have under that name or spelling, or add it as new. Null when
  * there is no answer.
  */
@@ -99,9 +134,9 @@ export function lookupOffer(
 
 /**
  * Which "+ New developer / area named ..." buttons to show when the message
- * wrote a name and Gemini also named one. The same name (ignoring case and
- * extra spaces) gets ONE button, in the written slot, spelled as Gemini
- * spelled it when the message wrote it all in lower or upper case, else as
+ * wrote a name and the search also named one. The same name (ignoring case
+ * and extra spaces) gets ONE button, in the written slot, spelled as the
+ * search spelled it when the message wrote it all in lower or upper case, else as
  * written. Different names keep both buttons.
  */
 export function newNameButtons(

@@ -3,7 +3,9 @@ import type { Entity } from '../src/api.ts';
 import {
   afterReview,
   inlineKeyAction,
+  lookupLabel,
   lookupOffer,
+  lookupSourceLinks,
   newNameButtons,
   newEntityOption,
   recheckMessage,
@@ -156,7 +158,7 @@ describe('Review feedback', () => {
   });
 });
 
-describe('what to do with an answer from Gemini’s memory', () => {
+describe('what to do with an answer from a web search', () => {
   const emaar = {
     id: 5,
     nameEn: 'Emaar Misr',
@@ -204,5 +206,46 @@ describe('one "+ New" button when the written name and Gemini agree', () => {
     });
     expect(newNameButtons(undefined, 'Emaar')).toEqual({ written: null, lookup: 'Emaar' });
     expect(newNameButtons('Emaar', null)).toEqual({ written: 'Emaar', lookup: null });
+  });
+});
+
+describe('where a search answer came from', () => {
+  it('names who searched and how', () => {
+    expect(lookupLabel('gemini', 'Emaar Misr')).toBe('Gemini found on Google: Emaar Misr');
+    expect(lookupLabel('groq', 'New Cairo')).toBe('Groq found on the web: New Cairo');
+  });
+
+  it('shows each source by its site, at most 3', () => {
+    expect(
+      lookupSourceLinks([
+        { url: 'https://www.example.com/lumia?x=1', title: 'Lumia Lagoons | Example' },
+        {
+          url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc',
+          title: 'news.eg',
+        },
+        { url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/def', title: null },
+        { url: 'https://fourth.com', title: null },
+      ]),
+    ).toEqual([
+      { href: 'https://www.example.com/lumia?x=1', label: 'example.com' },
+      {
+        href: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc',
+        label: 'news.eg',
+      },
+      {
+        href: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/def',
+        label: 'google.com',
+      },
+    ]);
+  });
+
+  it('leaves out anything that is not a web link', () => {
+    expect(
+      lookupSourceLinks([
+        { url: 'javascript:alert(1)', title: 'x' },
+        { url: 'not a url', title: null },
+        { url: 'http://site.org/a', title: null },
+      ]),
+    ).toEqual([{ href: 'http://site.org/a', label: 'site.org' }]);
   });
 });

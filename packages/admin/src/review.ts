@@ -110,11 +110,18 @@ export interface UnitView {
     written: WrittenNames;
     suggested: Record<string, Suggestion>;
     /**
-     * What Gemini remembers about the project's name (a hint, checked by the
-     * person): its developer and area. Null when nothing was looked up, or
-     * the model was not sure.
+     * What a live web search found about the project's name (a hint, checked
+     * by the person): its developer and area, who searched (`gemini`: Google
+     * Search, `groq`: browser search) and up to 3 pages it used. Null when
+     * nothing was looked up, the search did not clearly say, or the answer is
+     * an old one from Gemini's memory (no longer trusted).
      */
-    lookup: { developer: string | null; city: string | null } | null;
+    lookup: {
+      developer: string | null;
+      city: string | null;
+      provider: 'gemini' | 'groq';
+      sources: { url: string; title: string | null }[];
+    } | null;
   };
   /**
    * Other listings from the same message still waiting for review, with the
@@ -256,15 +263,24 @@ async function siblingsOf(db: Db, unit: UnitRow, lock = false): Promise<UnitRow[
   return rows.filter((row) => writtenProjectKey(row.extras) === key);
 }
 
-/** Gemini's saved answer for this unit's project name, or null (no answer, or "not sure"). */
+/**
+ * The saved search answer for this unit's project name, or null: no answer,
+ * "not sure", or an old answer from Gemini's memory.
+ */
 async function rememberedNames(db: Db, unit: UnitRow): Promise<UnitView['learning']['lookup']> {
   const found = await lookupFor(db, unit);
   if (!found?.known || (!found.developer && !found.city)) return null;
-  return { developer: found.developer, city: found.city };
+  if (found.method !== 'search' || !found.provider) return null;
+  return {
+    developer: found.developer,
+    city: found.city,
+    provider: found.provider,
+    sources: found.sources ?? [],
+  };
 }
 
 /**
- * Whether a saved developer / area is the one Gemini named: any of its
+ * Whether a saved developer / area is the one the search named: any of its
  * names or spellings, compared the way names are everywhere (same letters
  * whatever the spelling, upper or lower case).
  */
@@ -500,7 +516,7 @@ export async function reviewUnitDetailed(
     }
     if (!saved) throw new NotFoundError(`Unit ${unitId} not found`);
 
-    // Counting how often Gemini's answer is right: once per field per save,
+    // Counting how often the search answer is right: once per field per save,
     // only when the field was empty and an answer is saved for the name.
     // `lookup.used` when the saved developer / area is the answer (by any
     // spelling), `lookup.ignored` when it is a different one.

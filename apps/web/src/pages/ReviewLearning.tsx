@@ -3,7 +3,14 @@ import { useState } from 'react';
 import { api, type Entity, type EntityKind, type UnitView } from '../api.ts';
 import { Button } from '../ui.tsx';
 import { CreateEntity } from './Entities.tsx';
-import { lookupOffer, newNameButtons, rememberKey, spellingsToOffer } from './learning.ts';
+import {
+  lookupLabel,
+  lookupOffer,
+  lookupSourceLinks,
+  newNameButtons,
+  rememberKey,
+  spellingsToOffer,
+} from './learning.ts';
 
 /**
  * The "teach the system" controls on the Review page: next to Project,
@@ -64,12 +71,12 @@ export function LearnControls({
   const chosen = entities?.find((e) => String(e.id) === value);
   const offers = value !== loadedValue ? spellingsToOffer(written, chosen) : [];
   const newName = written[0];
-  // Gemini's answer for an empty developer / area (the project is never looked up).
+  // The web search's answer for an empty developer / area (the project is never looked up).
   const answer = kind === 'project' || value !== '' ? null : (view.learning.lookup?.[kind] ?? null);
   const offer = kind === 'project' ? null : lookupOffer(answer, entities);
-  // One "+ New" button when the written name and Gemini's answer are the same name.
+  // One "+ New" button when the written name and the search's answer are the same name.
   const buttons = newNameButtons(newName, offer?.kind === 'new' ? offer.name : null);
-  // The New project form: a developer / area Gemini named that we do not have
+  // The New project form: a developer / area the search named that we do not have
   // is offered by its name when the message did not write one.
   const lookedUp = view.learning.lookup;
   const offerNew =
@@ -93,7 +100,22 @@ export function LearnControls({
       )}
       {offer && answer && !creating && (
         <div className="text-muted">
-          <p dir="auto">Gemini thinks: {answer} (from memory, check)</p>
+          <p dir="auto">{lookupLabel(lookedUp?.provider ?? 'gemini', answer)}</p>
+          {lookedUp && lookedUp.sources.length > 0 && (
+            <p className="flex flex-wrap gap-x-2">
+              {lookupSourceLinks(lookedUp.sources).map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-ink"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </p>
+          )}
           {offer.kind === 'use' ? (
             <Button
               variant="quiet"
