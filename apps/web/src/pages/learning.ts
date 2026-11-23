@@ -151,6 +151,35 @@ export function afterReview(
   return { message: 'Saved ✓', backToQueue: false };
 }
 
+/**
+ * The other listings from the same message (a price list of 25 lines is 25
+ * listings): Review offers to give them this unit's names in the same save.
+ */
+export const siblingsLabel = (count: number) =>
+  count === 1
+    ? 'Use this project, developer and area for the other listing from this message'
+    : `Use this project, developer and area for the other ${count} listings from this message`;
+
+/**
+ * What to send about the other listings: nothing when there are none or the
+ * first box is unticked, and nothing with "Not a listing" (rejecting one line
+ * says nothing about the others' names). "Approve them too" only goes with
+ * Approve.
+ */
+export function siblingsChoice(
+  state: { count: number; apply: boolean; approve: boolean },
+  action: 'save' | 'approve' | 'reject',
+): { apply: true; approve: boolean } | undefined {
+  if (state.count === 0 || !state.apply || action === 'reject') return undefined;
+  return { apply: true, approve: state.approve && action === 'approve' };
+}
+
+/** The confirmation after a save that also changed other listings, or null. */
+export function siblingsMessage(changed: number | undefined): string | null {
+  if (!changed) return null;
+  return `Updated ${changed} other ${changed === 1 ? 'listing' : 'listings'} from this message`;
+}
+
 /** A short label for a unit that is not waiting for review (empty when it is). */
 export function unitStateLabel(unit: { needsReview: boolean; status: string }): string | null {
   if (unit.status === 'withdrawn') return 'Withdrawn (not a listing)';

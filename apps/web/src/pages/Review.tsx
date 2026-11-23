@@ -25,7 +25,15 @@ import {
   PageTitle,
   Select,
 } from '../ui.tsx';
-import { afterReview, lookupOffer, rememberedSpellings, unitStateLabel } from './learning.ts';
+import {
+  afterReview,
+  lookupOffer,
+  rememberedSpellings,
+  siblingsChoice,
+  siblingsLabel,
+  siblingsMessage,
+  unitStateLabel,
+} from './learning.ts';
 import { planToRow, plansChanged, rowsToPlans, type PlanRow } from './plans.ts';
 import { LearnControls, useEntities } from './ReviewLearning.tsx';
 import { ReviewPlans } from './ReviewPlans.tsx';
@@ -69,6 +77,7 @@ const SECTIONS: { title: string; fields: FieldDef[] }[] = [
       { key: 'bathrooms', label: 'Bathrooms', kind: 'int' },
       { key: 'unitCode', label: 'Unit code', kind: 'text' },
       { key: 'floor', label: 'Floor', kind: 'text' },
+      { key: 'building', label: 'Building', kind: 'text' },
       { key: 'finishingSpecs', label: 'Finishing', kind: { options: FINISHING_SPECS } },
     ],
   },
@@ -147,10 +156,15 @@ export function Review() {
   // unit on screen changes as soon as a decision is saved. It remembers which
   // page (`?unit=` value) it belongs to, so browser back/forward never shows it
   // on the wrong page.
-  const [noticeState, setNotice] = useState<{ text: string; unit: number | undefined } | null>(
-    null,
-  );
-  const notice = noticeState && noticeState.unit === wanted ? noticeState.text : null;
+  // `siblings`: "Updated 24 other listings from this message", when the save
+  // also gave other listings of the message their names.
+  const [noticeState, setNotice] = useState<{
+    text: string;
+    siblings: string | null;
+    unit: number | undefined;
+  } | null>(null);
+  const shown = noticeState && noticeState.unit === wanted ? noticeState : null;
+  const notice = shown?.text ?? null;
   const queue = useQuery({
     queryKey: ['review', afterId, wanted],
     queryFn: async () => {
@@ -206,6 +220,11 @@ export function Review() {
           {notice}
         </Note>
       )}
+      {shown?.siblings && (
+        <Note tone="success" className="mb-4">
+          {shown.siblings}
+        </Note>
+      )}
       {queue.isPending && <Loading />}
       <ErrorNote error={queue.error} />
       {queue.data && !item && (
@@ -228,9 +247,13 @@ export function Review() {
                 }
           }
           onStart={() => setNotice(null)}
-          onDone={(action) => {
+          onDone={(action, siblings) => {
             const next = afterReview(action, Boolean(wanted));
-            setNotice({ text: next.message, unit: next.backToQueue ? undefined : wanted });
+            setNotice({
+              text: next.message,
+              siblings: siblingsMessage(siblings),
+              unit: next.backToQueue ? undefined : wanted,
+            });
             if (next.backToQueue) setParams({});
             // The save may have re-checked other waiting units (fresh queue) and
             // learned a spelling (fresh name lists, so it isn't offered again).
@@ -254,7 +277,8 @@ function ReviewItem({
   /** Moves on to the next unit without deciding (not offered when one unit was opened by link). */
   onSkip?: () => void;
   onStart: () => void;
-  onDone: (action: 'save' | 'approve' | 'reject') => void;
+  /** `siblings`: how many other listings from the message the save changed too. */
+  onDone: (action: 'save' | 'approve' | 'reject', siblings?: number) => void;
 }) {
   const { unit } = view;
   const initial = useMemo(
@@ -296,6 +320,12 @@ function ReviewItem({
     const offer = lookupOffer(view.learning.lookup?.[kind] ?? null, lists[kind]);
     return offer?.kind === 'use' ? String(offer.id) : '';
   };
+  // The other listings from this message: their names follow this one's
+  // unless unticked; approving them too is opt-in.
+  const siblingCount = view.siblings.count;
+  const [applySiblings, setApplySiblings] = useState(true);
+  const [approveSiblings, setApproveSiblings] = useState(false);
+
   /** The ticked spellings to send along with the save. */
   const remembered = () =>
     rememberedSpellings({ values, initial, lists, written: view.learning.written, unticked });
@@ -310,17 +340,22 @@ function ReviewItem({
       const remember = remembered();
       // Plans are sent only when the table was touched.
       const paymentPlans = plansEdited ? rowsToPlans(planRows) : undefined;
-      return api(`/api/admin/units/${unit.id}/review`, {
+      const siblings = siblingsChoice(
+        { count: siblingCount, apply: applySiblings, approve: approveSiblings },
+        action,
+      );
+      return api<{ siblings?: number }>(`/api/admin/units/${unit.id}/review`, {
         method: 'POST',
         body: {
           action,
           changes,
           ...(paymentPlans ? { paymentPlans } : {}),
           ...(remember.length > 0 ? { remember } : {}),
+          ...(siblings ? { siblings } : {}),
         },
       });
     },
-    onSuccess: (_data, action) => onDone(action),
+    onSuccess: (data, action) => onDone(action, data.siblings),
     onError: (e) => setFormError(e instanceof Error ? e.message : String(e)),
   });
   const run = (action: 'save' | 'approve' | 'reject') => {
@@ -455,6 +490,31 @@ function ReviewItem({
         {/* Sticky: Approve is always in reach while scrolling a long form. */}
         <div className="sticky bottom-0 -mx-5 -mb-5 mt-4 space-y-2 rounded-b-card border-t border-line bg-paper px-5 py-3">
           <ErrorNote error={formError} />
+          {siblingCount > 0 && (
+            <div className="space-y-1 text-sm">
+              <label className="flex items-start gap-1.5 text-muted">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-graphite"
+                  checked={applySiblings}
+                  onChange={() => setApplySiblings(!applySiblings)}
+                />
+                <span>{siblingsLabel(siblingCount)}</span>
+              </label>
+              <label
+                className={`flex items-start gap-1.5 text-muted ${applySiblings ? '' : 'opacity-50'}`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-graphite"
+                  disabled={!applySiblings}
+                  checked={approveSiblings}
+                  onChange={() => setApproveSiblings(!approveSiblings)}
+                />
+                <span>Approve them too</span>
+              </label>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Button
               size="lg"

@@ -9,6 +9,9 @@ import {
   recheckMessage,
   rememberedSpellings,
   rememberKey,
+  siblingsChoice,
+  siblingsLabel,
+  siblingsMessage,
   unitStateLabel,
 } from '../src/pages/learning.ts';
 
@@ -89,6 +92,45 @@ describe('keys inside the inline new developer / area box', () => {
   it('Escape cancels and other keys are left alone', () => {
     expect(inlineKeyAction('Escape', 'x', 'y', false)).toBe('cancel');
     expect(inlineKeyAction('a', 'x', 'y', false)).toBeNull();
+  });
+});
+
+describe('the other listings from the same message', () => {
+  it('names how many listings the choice is about', () => {
+    expect(siblingsLabel(24)).toBe(
+      'Use this project, developer and area for the other 24 listings from this message',
+    );
+    expect(siblingsLabel(1)).toBe(
+      'Use this project, developer and area for the other listing from this message',
+    );
+  });
+
+  it('sends the choice only when there are siblings and the first box is ticked', () => {
+    expect(siblingsChoice({ count: 0, apply: true, approve: true }, 'approve')).toBeUndefined();
+    expect(siblingsChoice({ count: 3, apply: false, approve: true }, 'approve')).toBeUndefined();
+    expect(siblingsChoice({ count: 3, apply: true, approve: false }, 'save')).toEqual({
+      apply: true,
+      approve: false,
+    });
+    expect(siblingsChoice({ count: 3, apply: true, approve: true }, 'approve')).toEqual({
+      apply: true,
+      approve: true,
+    });
+  });
+
+  it('"Approve them too" goes only with Approve, and nothing goes with Not a listing', () => {
+    expect(siblingsChoice({ count: 3, apply: true, approve: true }, 'save')).toEqual({
+      apply: true,
+      approve: false,
+    });
+    expect(siblingsChoice({ count: 3, apply: true, approve: true }, 'reject')).toBeUndefined();
+  });
+
+  it('confirms how many were updated', () => {
+    expect(siblingsMessage(24)).toBe('Updated 24 other listings from this message');
+    expect(siblingsMessage(1)).toBe('Updated 1 other listing from this message');
+    expect(siblingsMessage(0)).toBeNull();
+    expect(siblingsMessage(undefined)).toBeNull();
   });
 });
 

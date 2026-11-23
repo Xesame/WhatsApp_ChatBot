@@ -135,6 +135,7 @@ export function Listing() {
         ? null
         : `${i18n.number(n(u, 'outdoorArea') ?? 0)} ${t('common.m2')}`,
     ],
+    [t('field.building'), s(u, 'building')],
     [t('field.floor'), s(u, 'floor')],
     [t('field.unitCode'), s(u, 'unitCode')],
     [t('field.finishing'), s(u, 'finishingSpecs') ? i18n.value(s(u, 'finishingSpecs')) : null],

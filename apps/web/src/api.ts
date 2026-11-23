@@ -112,6 +112,8 @@ export interface UnitView {
     /** What Gemini remembers about the project's name; a hint to check, never saved by itself. */
     lookup: { developer: string | null; city: string | null } | null;
   };
+  /** Other listings from the same message still waiting, with the same project name as written. */
+  siblings: { count: number };
 }
 
 export interface Entity {
