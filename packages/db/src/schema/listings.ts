@@ -121,6 +121,9 @@ export const units = pgTable(
     // Internal columns (never exported).
     status: text('status', { enum: UNIT_STATUSES }).notNull().default('active'),
     priceCurrency: text('price_currency', { enum: CURRENCIES }).notNull().default('EGP'),
+    // The building / block label as written ("V-02", "Building B"). Not a
+    // template column: it keeps units on different buildings apart in dedup.
+    building: text('building'),
     downPaymentAmount: bigint('down_payment_amount', { mode: 'number' }),
     installmentYears: decimal('installment_years'),
     installmentFrequency: text('installment_frequency', { enum: INSTALLMENT_FREQUENCIES }),

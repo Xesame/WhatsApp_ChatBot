@@ -78,6 +78,11 @@ export const unitSchema = z.object({
 
   // --- Internal columns (never exported) ---
   priceCurrency: z.enum(CURRENCIES),
+  /**
+   * Building or block label as written ("V-02", "Building B", "عمارة 5").
+   * Not a template column; it keeps units in different buildings apart.
+   */
+  building: z.string().max(40).nullable(),
   /** Down payment as an amount (minor units, in priceCurrency), when stated. */
   downPaymentAmount: money.nullable(),
   installmentYears: z.number().positive().max(30).nullable(),

@@ -50,6 +50,7 @@ describe.skipIf(!testDatabaseUrl)('payment plans (real Postgres)', () => {
     unitType: 'Apartment',
     unitCode: null,
     floor: null,
+    building: null,
     finishingSpecs: null,
     minArea: 150,
     maxArea: 150,

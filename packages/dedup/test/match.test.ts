@@ -15,6 +15,8 @@ const unit = (overrides: Partial<MatchFields> = {}): MatchFields => ({
   developerId: 2,
   unitType: 'Apartment',
   unitCode: null,
+  floor: null,
+  building: null,
   bedrooms: 3,
   minArea: 150,
   maxArea: 150,
@@ -45,6 +47,31 @@ describe('isSameUnit: what must agree', () => {
   it('allows unknown bedrooms or developer on one side', () => {
     expect(isSameUnit(unit(), unit({ bedrooms: null }))).toBe(true);
     expect(isSameUnit(unit({ developerId: null }), unit())).toBe(true);
+  });
+});
+
+describe('isSameUnit: building and floor', () => {
+  // A price list often repeats the same size and price on several floors or
+  // buildings; those are different units, not reposts of one.
+  it('keeps units in different buildings apart', () => {
+    expect(isSameUnit(unit({ building: 'V-02' }), unit({ building: 'V-03' }))).toBe(false);
+  });
+
+  it('reads building labels loosely (case, spaces, dashes)', () => {
+    expect(isSameUnit(unit({ building: 'V-02' }), unit({ building: 'v 02' }))).toBe(true);
+    expect(isSameUnit(unit({ building: 'Building B' }), unit({ building: 'building-b' }))).toBe(
+      true,
+    );
+  });
+
+  it('keeps units on different floors apart', () => {
+    expect(isSameUnit(unit({ floor: '1' }), unit({ floor: '2' }))).toBe(false);
+    expect(isSameUnit(unit({ floor: '5-7' }), unit({ floor: '5-7' }))).toBe(true);
+  });
+
+  it('allows an unknown building or floor on one side', () => {
+    expect(isSameUnit(unit({ building: 'V-02', floor: '1' }), unit())).toBe(true);
+    expect(isSameUnit(unit(), unit({ building: 'V-02', floor: 'Ground' }))).toBe(true);
   });
 });
 

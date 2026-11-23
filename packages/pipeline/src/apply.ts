@@ -42,6 +42,7 @@ const DESCRIPTIVE_FIELDS = [
   'developerId',
   'cityId',
   'floor',
+  'building',
   'finishingSpecs',
   'minArea',
   'maxArea',

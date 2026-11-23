@@ -45,7 +45,12 @@ export const rawUnitSchema = z.strictObject({
   city: raw('City or area exactly as written'),
   unit_type: z.enum(UNIT_TYPES).nullable(),
   unit_code: raw('Specific unit code/number, only if the message names one unit'),
-  floor: raw('Floor phrase as written, e.g. "أرضي", "الدور الثالث", "1-5"'),
+  floor: raw(
+    'Floor phrase as written, e.g. "أرضي", "الدور الثالث", "1-5", "First Floor"; copied from the floor heading above the unit when there is one',
+  ),
+  building: raw(
+    'Building or block label as written, e.g. "V-02", "Building B", "عمارة 5"; copied from the building heading above the unit when there is one',
+  ),
   finishing: z.enum(FINISHING_SPECS).nullable(),
   bedrooms: raw('Bedrooms phrase as written, e.g. "3 غرف", "3BR"'),
   bathrooms: raw('Bathrooms phrase as written'),

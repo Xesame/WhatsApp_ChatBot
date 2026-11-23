@@ -20,6 +20,7 @@ const blank: RawUnit = {
   unit_type: null,
   unit_code: null,
   floor: null,
+  building: null,
   finishing: null,
   bedrooms: null,
   bathrooms: null,
@@ -109,6 +110,21 @@ describe('normalizeUnit', () => {
       ]),
     );
     expect(unit.needsReview).toBe(true);
+  });
+
+  it('keeps the building label as written, trimmed and short', () => {
+    const text = `${MESSAGE} BUILDING V-02`;
+    expect(normalizeUnit({ ...raw, building: '  V-02 ' }, ctx({ sourceText: text })).building).toBe(
+      'V-02',
+    );
+    expect(
+      normalizeUnit({ ...raw, building: '  ' }, ctx({ sourceText: text })).building,
+    ).toBeNull();
+    expect(normalizeUnit(raw, ctx()).building).toBeNull();
+    // Like every copied field, a building that is not in the message is dropped.
+    expect(
+      normalizeUnit({ ...raw, building: 'V-09' }, ctx({ sourceText: text })).building,
+    ).toBeNull();
   });
 
   it('accepts values written with different digits or spacing than the message', () => {

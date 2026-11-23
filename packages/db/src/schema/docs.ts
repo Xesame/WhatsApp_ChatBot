@@ -187,7 +187,7 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       city_id: 'Template: City (exported as the English name).',
       unit_type: 'Template: Unit Type.',
       unit_code: 'Template: Unit Code, only when the message names a specific unit.',
-      floor: 'Template: Floor, normalized: `Ground`, `Roof`, `3`, or a range `1-5`.',
+      floor: 'Template: Floor, normalized: `Ground`, `Roof`, `3`, a range `1-5`, or a list `2, 5`.',
       finishing_specs: 'Template: Finishing Specs.',
       min_area: 'Template: Min Area (m²). A single size fills Min and Max.',
       max_area: 'Template: Max Area (m²). Empty for "starting from".',
@@ -214,6 +214,8 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       status: '`active`, `stale` (not seen for a while), `sold` or `withdrawn`.',
       price_currency:
         'Currency the prices were stated in (`EGP` or `USD`). The export converts USD to EGP.',
+      building:
+        'Building or block label as written (`V-02`, `Building B`, `عمارة 5`), often from a heading above many units. Units in different buildings are never merged.',
       down_payment_amount:
         'Down payment as an amount (minor units), when the message stated an amount.',
       installment_years: 'Length of the payment plan in years.',

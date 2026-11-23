@@ -26,6 +26,7 @@ describe.skipIf(!testDatabaseUrl)('dedup and price history (real Postgres)', () 
     unitType: 'Apartment',
     unitCode: null,
     floor: null,
+    building: null,
     finishingSpecs: null,
     minArea: 150,
     maxArea: 150,

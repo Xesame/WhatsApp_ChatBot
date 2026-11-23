@@ -113,6 +113,7 @@ const COPIED_FIELDS = [
   'city',
   'unit_code',
   'floor',
+  'building',
   'bedrooms',
   'bathrooms',
   'area',
@@ -374,6 +375,8 @@ export function normalizeUnit(input: RawUnit, ctx: NormalizeContext): Unit {
     unitType: raw.unit_type,
     unitCode: raw.unit_code?.trim() || null,
     floor: parseFloor(raw.floor),
+    // Kept as written (only trimmed); 40 characters is plenty for a label.
+    building: raw.building?.trim().slice(0, 40) || null,
     finishingSpecs: raw.finishing,
     minArea,
     maxArea: maxArea ?? (area.startingFrom ? null : minArea),

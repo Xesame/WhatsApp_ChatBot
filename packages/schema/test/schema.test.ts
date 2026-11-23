@@ -63,6 +63,7 @@ export const sampleUnit = (overrides: Partial<Unit> = {}): Unit => ({
   unitType: 'Apartment',
   unitCode: null,
   floor: null,
+  building: null,
   finishingSpecs: 'Semi-finished',
   minArea: 120,
   maxArea: 180,

@@ -307,6 +307,7 @@ describe.skipIf(!testDatabaseUrl)('re-checking waiting units (real Postgres)', (
       unit_type: 'Apartment',
       unit_code: null,
       floor: null,
+      building: null,
       finishing: null,
       bedrooms: null,
       bathrooms: null,

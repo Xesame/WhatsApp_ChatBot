@@ -257,6 +257,7 @@ describe.skipIf(!testDatabaseUrl)('name lookups (real Postgres and pg-boss, fake
       unit_type: null,
       unit_code: null,
       floor: null,
+      building: null,
       finishing: null,
       bedrooms: null,
       bathrooms: null,

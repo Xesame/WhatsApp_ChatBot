@@ -38,6 +38,7 @@ const blank: RawUnit = {
   unit_type: null,
   unit_code: null,
   floor: null,
+  building: null,
   finishing: null,
   bedrooms: null,
   bathrooms: null,
