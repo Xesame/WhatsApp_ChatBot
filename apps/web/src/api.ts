@@ -170,6 +170,17 @@ export interface FailedJob {
   retries: number;
 }
 
+/** A sample message pasted on the "Test a message" page. */
+export interface TestMessage {
+  id: number;
+  text: string | null;
+  posterType: 'developer' | 'broker' | null;
+  status: 'pending' | 'processing' | 'processed' | 'skipped' | 'failed';
+  error: string | null;
+  pastedAt: string;
+  units: { id: number; unitType: string | null; needsReview: boolean; status: string }[];
+}
+
 export interface Settings {
   usdEgpRate: number | null;
   usdEgpRateFallback: number | null;

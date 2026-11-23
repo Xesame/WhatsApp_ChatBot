@@ -26,3 +26,18 @@ export {
 export { getSetting, setSetting, SETTINGS, usdToEgpRate, type SettingKey } from './settings.ts';
 export { failedJobs, retryJob, stats, type FailedJob, type Stats } from './stats.ts';
 export { connectionStatus, type ConnectionView } from './whatsapp.ts';
+export {
+  pasteTestMessage,
+  readTestMessageAgain,
+  TEST_GROUP_NAME,
+  TEST_SENDER_HASH,
+  testGroupName,
+  testMessage,
+  testMessages,
+  testMessageSchema,
+  testMessageWaId,
+  type PosterType,
+  type TestMessage,
+  type TestMessageInput,
+  type TestMessageUnit,
+} from './test-messages.ts';

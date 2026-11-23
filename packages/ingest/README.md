@@ -2,11 +2,12 @@
 
 Stores what capture receives: messages, media files, groups, and queues each stored message for the worker. It has no WhatsApp code in it, so it is tested against a real database without a phone.
 
-| File              | What it does                                                                                                                              |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/ingestor.ts` | `Ingestor`: saves parsed messages, downloads their media, queues `preprocess` jobs exactly once, and catches up after a restart (`sweep`) |
-| `src/files.ts`    | Streams a media file to disk while hashing it; stores it at a path made from its hash                                                     |
-| `src/groups.ts`   | Group list sync, watch/unwatch, source type, and the in-memory watched-groups cache                                                       |
+| File              | What it does                                                                                                                                                                                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/ingestor.ts` | `Ingestor`: saves parsed messages, downloads their media, queues `preprocess` jobs exactly once, and catches up after a restart (`sweep`)                                                                                                                  |
+| `src/files.ts`    | Streams a media file to disk while hashing it; stores it at a path made from its hash                                                                                                                                                                      |
+| `src/groups.ts`   | Group list sync, watch/unwatch, source type, and the in-memory watched-groups cache                                                                                                                                                                        |
+| `src/import.ts`   | `importSamples` (the worker's `import` command), built on `importGroup` (the watched group imported messages go into) and `saveImportedMessage` (save and queue one message in one transaction), which the admin console's "Test a message" page also uses |
 
 **Guarantees and why**
 

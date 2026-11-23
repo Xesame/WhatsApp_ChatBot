@@ -22,4 +22,12 @@ export {
   parseSamples,
   type SampleMessage,
 } from './chat-export.ts';
-export { importSamples, type ImportOptions, type ImportResult } from './import.ts';
+export {
+  importGroup,
+  importGroupJid,
+  importSamples,
+  saveImportedMessage,
+  type ImportedFile,
+  type ImportOptions,
+  type ImportResult,
+} from './import.ts';

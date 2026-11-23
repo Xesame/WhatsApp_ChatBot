@@ -14,6 +14,7 @@ import { Overview } from './pages/Overview.tsx';
 import { Review } from './pages/Review.tsx';
 import { SetPassword } from './pages/SetPassword.tsx';
 import { Settings } from './pages/Settings.tsx';
+import { TestMessagePage } from './pages/TestMessage.tsx';
 import { WhatsApp } from './pages/WhatsApp.tsx';
 
 // Two apps in one: the firm dashboard under /app (Arabic or English) and the
@@ -38,6 +39,7 @@ export function App() {
           <Route path="review" element={<Review />} />
           <Route path="names" element={<Entities />} />
           <Route path="jobs" element={<Jobs />} />
+          <Route path="test-message" element={<TestMessagePage />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
