@@ -261,6 +261,68 @@ describe.skipIf(!testDatabaseUrl)('admin API (real Postgres, real Better Auth)',
     ).toBe(404);
   });
 
+  it('review can approve the other listings from the same message too', async () => {
+    const { db } = testDb.database;
+    const [group] = await db.select().from(waGroups);
+    const [message] = await db
+      .insert(messages)
+      .values({
+        groupId: group?.id ?? 0,
+        waMessageId: 'M-list',
+        senderHash: 'h',
+        sentAt: new Date(),
+        text: 'Price list',
+        status: 'processed',
+      })
+      .returning();
+    const made = await db
+      .insert(units)
+      .values(
+        [150, 175].map((minArea) => ({
+          unitType: 'Apartment' as const,
+          minArea,
+          confidence: 0.5,
+          needsReview: true,
+          reviewReasons: ['No price'],
+          firstSeenAt: new Date(),
+          lastSeenAt: new Date(),
+        })),
+      )
+      .returning();
+    for (const unit of made) {
+      await db
+        .insert(unitSources)
+        .values({ unitId: unit.id, messageId: message?.id ?? 0, role: 'listing' });
+    }
+    const url = `/api/admin/units/${String(made[0]?.id)}/review`;
+    const view = await app.inject({
+      url: `/api/admin/units/${String(made[0]?.id)}`,
+      headers: as(cookie),
+    });
+    expect(view.json()).toMatchObject({ siblings: { count: 1 } });
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url,
+      headers: as(cookie),
+      payload: { action: 'approve', siblings: { apply: 'yes' } },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const approved = await app.inject({
+      method: 'POST',
+      url,
+      headers: as(cookie),
+      payload: { action: 'approve', siblings: { apply: true, approve: true } },
+    });
+    expect(approved.json()).toMatchObject({ needsReview: false, siblings: 1 });
+    const [other] = await db
+      .select()
+      .from(units)
+      .where(eq(units.id, made[1]?.id ?? 0));
+    expect(other?.needsReview).toBe(false);
+  });
+
   it('never serves files outside the media folder', async () => {
     const { db } = testDb.database;
     const [message] = await db.select().from(messages);

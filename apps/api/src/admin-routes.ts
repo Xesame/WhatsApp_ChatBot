@@ -11,7 +11,7 @@ import {
   renameEntity,
   retryJob,
   reviewQueue,
-  reviewUnit,
+  reviewUnitDetailed,
   setSetting,
   stats,
   unitView,
@@ -244,11 +244,14 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
           remember: z
             .array(z.object({ kind: z.enum(['city', 'developer', 'project']), alias: name }))
             .optional(),
+          // "Use this project ... for the other listings from this message" and
+          // "Approve them too" (approve only counts with action approve).
+          siblings: z.object({ apply: z.boolean(), approve: z.boolean() }).strict().optional(),
         }),
       },
     },
     async (request) => {
-      const unit = await reviewUnit(
+      const { unit, siblings } = await reviewUnitDetailed(
         database,
         request.params.id,
         request.body,
@@ -260,9 +263,13 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
           ...Object.keys(request.body.changes ?? {}),
           ...(request.body.paymentPlans ? ['paymentPlans'] : []),
         ],
+        ...(siblings > 0 ? { siblings } : {}),
       });
+      // `siblings`: how many other listings from the message were changed too.
       // A remembered spelling may also fix other waiting units.
-      return request.body.remember?.length ? { ...unit, recheck: await recheck() } : unit;
+      return request.body.remember?.length
+        ? { ...unit, siblings, recheck: await recheck() }
+        : { ...unit, siblings };
     },
   );
 
