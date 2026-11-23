@@ -39,6 +39,8 @@ export const MAX_SOURCES = 3;
 /** What one search response says: the answer text, whether it searched, and its sources. */
 export interface SearchReading {
   text: string | null;
+  /** The answer stopped at the output limit (Gemini MAX_TOKENS, Groq finish_reason "length"). */
+  cutOff: boolean;
   searched: boolean;
   sources: SearchSource[];
   inputTokens: number | null;
@@ -80,6 +82,7 @@ export function geminiSearchRequest(
 interface GeminiResponse {
   candidates?: {
     content?: { parts?: { text?: string }[] };
+    finishReason?: string;
     groundingMetadata?: {
       webSearchQueries?: string[];
       groundingChunks?: { web?: { uri?: string; title?: string } }[];
@@ -101,6 +104,7 @@ export function readGeminiSearch(json: unknown): SearchReading {
   );
   return {
     text,
+    cutOff: candidate?.finishReason === 'MAX_TOKENS',
     searched,
     sources: keepSources(sources),
     inputTokens: response.usageMetadata?.promptTokenCount ?? null,
@@ -121,6 +125,7 @@ interface GroqTool {
 
 interface GroqResponse {
   choices?: {
+    finish_reason?: string | null;
     message?: {
       content?: string | null;
       executed_tools?: GroqTool[];
@@ -157,6 +162,7 @@ export function readGroqSearch(json: unknown): SearchReading {
   );
   return {
     text: message?.content ?? null,
+    cutOff: response.choices?.[0]?.finish_reason === 'length',
     searched: searches.length > 0,
     sources: keepSources(listed.length > 0 ? listed : cited.length > 0 ? cited : written),
     inputTokens: response.usage?.prompt_tokens ?? null,

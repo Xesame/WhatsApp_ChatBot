@@ -127,6 +127,34 @@ describe('LlmClient.callSearch', () => {
     expect(result.attempts[0]).toMatchObject({ status: 'ok', inputTokens: 50, outputTokens: 20 });
   });
 
+  it('moves on to Groq when Gemini stopped at its output limit', async () => {
+    const cut = geminiGrounded(ANSWER);
+    (cut.body.candidates[0] as Record<string, unknown>).finishReason = 'MAX_TOKENS';
+    const { fetchFn, requests } = fakeFetch([
+      cut,
+      groqAnswer(ANSWER, [groqSearch([{ url: 'https://example.com', title: 'x' }])]),
+    ]);
+    const result = await client(fetchFn).callSearch(models, call);
+    expect(result.searched?.provider).toBe('groq');
+    expect(result.attempts[0]).toMatchObject({
+      status: 'error',
+      error: 'answer cut off (output limit)',
+    });
+    expect(requests[1]?.body).toMatchObject({
+      max_completion_tokens: 16384,
+      reasoning_effort: 'low',
+    });
+  });
+
+  it('gives no answer when Groq stopped at its output limit', async () => {
+    const cut = groqAnswer(ANSWER, [groqSearch([{ url: 'https://example.com', title: 'x' }])]);
+    (cut.body.choices[0] as Record<string, unknown>).finish_reason = 'length';
+    const { fetchFn } = fakeFetch([{ status: 429, body: {} }, cut]);
+    const result = await client(fetchFn).callSearch(models, call);
+    expect(result.data).toBeNull();
+    expect(result.attempts[1]?.error).toBe('answer cut off (output limit)');
+  });
+
   it('keeps at most 3 sources', async () => {
     const { fetchFn } = fakeFetch([geminiGrounded(ANSWER, 6)]);
     const result = await client(fetchFn).callSearch(models, call);

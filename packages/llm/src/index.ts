@@ -17,7 +17,9 @@ export {
 export {
   apiKeysFrom,
   costOf,
+  DEFAULT_MAX_OUTPUT_TOKENS,
   modelLabel,
+  outputSettings,
   parseModelList,
   PRICES_USD_PER_MILLION,
   PROVIDERS,

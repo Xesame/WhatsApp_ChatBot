@@ -284,3 +284,91 @@ describe('providers: Gemini → Groq → OpenRouter', () => {
     expect(requests.map((r) => r.body.model)).toEqual(['openai/gpt-oss-120b']);
   });
 });
+
+describe('answers cut off by the output limit', () => {
+  const chain = parseModelList(
+    'gemini:gemini-flash-latest,groq:openai/gpt-oss-120b,openrouter:openrouter/free',
+  );
+  const keys = { gemini: 'g-key', groq: 'q-key', openrouter: 'o-key' };
+  const make = (fetchFn: typeof fetch) =>
+    new LlmClient({
+      apiKeys: keys,
+      requestsPerMinute: 100,
+      timeoutMs: 1000,
+      freeTier: true,
+      fetch: fetchFn,
+    });
+  const cutOff = (content: string) => ({
+    status: 200,
+    body: {
+      choices: [{ message: { content }, finish_reason: 'length' }],
+      usage: { prompt_tokens: 100, completion_tokens: 3072 },
+    },
+  });
+
+  it('treats a Groq answer stopped at the limit as failed and moves on', async () => {
+    const { fetchFn, requests } = fakeFetch([
+      { status: 429, body: {} },
+      // Valid JSON by chance, but cut off: never a result.
+      cutOff('{"intent":"listing"}'),
+      completion('{"intent":"listing"}'),
+    ]);
+    const result = await make(fetchFn).callJson(chain, call);
+    expect(result.data).toEqual({ intent: 'listing' });
+    expect(requests.map((r) => r.body.model)).toEqual([
+      'gemini-flash-latest',
+      'openai/gpt-oss-120b',
+      'openrouter/free',
+    ]);
+    expect(result.attempts[1]).toMatchObject({
+      status: 'error',
+      error: 'answer cut off (output limit)',
+      rawOutput: '{"intent":"listing"}',
+    });
+  });
+
+  it('does the same for plain-text answers', async () => {
+    const { fetchFn } = fakeFetch([cutOff('half a transcript'), completion('whole transcript')]);
+    const result = await make(fetchFn).callText(chain, { promptVersion: 't', messages: [] });
+    expect(result.text).toBe('whole transcript');
+    expect(result.attempts[0]?.status).toBe('error');
+  });
+
+  it('moves on after a request that is too large (413), without retrying it', async () => {
+    const { fetchFn, requests } = fakeFetch([
+      { status: 413, body: { error: { message: 'Request too large' } } },
+      completion('{"intent":"listing"}'),
+    ]);
+    const result = await make(fetchFn).callJson(chain, call);
+    expect(result.data).toEqual({ intent: 'listing' });
+    expect(requests.map((r) => r.body.model)).toEqual([
+      'gemini-flash-latest',
+      'openai/gpt-oss-120b',
+    ]);
+  });
+
+  it('sends an output limit, and low reasoning effort to gpt-oss models', async () => {
+    const { fetchFn, requests } = fakeFetch([
+      { status: 429, body: {} },
+      { status: 500, body: {} },
+      completion('{"intent":"listing"}'),
+    ]);
+    await make(fetchFn).callJson(chain, call);
+    expect(requests[0]?.body.max_completion_tokens).toBeUndefined();
+    expect(requests[1]?.body).toMatchObject({
+      max_completion_tokens: 16384,
+      reasoning_effort: 'low',
+    });
+    expect(requests[2]?.body.max_completion_tokens).toBe(16384);
+    expect(requests[2]?.body.reasoning_effort).toBeUndefined();
+  });
+
+  it('takes a per-call output limit', async () => {
+    const { fetchFn, requests } = fakeFetch([completion('{"intent":"listing"}')]);
+    await make(fetchFn).callJson(parseModelList('groq:openai/gpt-oss-120b'), {
+      ...call,
+      maxOutputTokens: 2000,
+    });
+    expect(requests[0]?.body.max_completion_tokens).toBe(2000);
+  });
+});

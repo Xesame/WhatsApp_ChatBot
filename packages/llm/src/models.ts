@@ -15,6 +15,12 @@ interface Provider {
   keyVariable: string;
   /** Extra request fields this provider needs. */
   extraBody?: Record<string, unknown>;
+  /**
+   * Send an explicit output limit (`max_completion_tokens`). Without one,
+   * Groq stops gpt-oss answers at 3,072 tokens, which cut long price lists
+   * short. Gemini's own limit is already large, so it gets none.
+   */
+  limitOutput?: boolean;
 }
 
 export const PROVIDERS = {
@@ -23,16 +29,25 @@ export const PROVIDERS = {
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     keyVariable: 'GEMINI_API_KEY',
   },
-  groq: { baseUrl: 'https://api.groq.com/openai/v1', keyVariable: 'GROQ_API_KEY' },
+  groq: {
+    baseUrl: 'https://api.groq.com/openai/v1',
+    keyVariable: 'GROQ_API_KEY',
+    limitOutput: true,
+  },
   openrouter: {
     baseUrl: 'https://openrouter.ai/api/v1',
     keyVariable: 'OPENROUTER_API_KEY',
     // Only route to models that honour response_format; some models
     // otherwise ignore the JSON schema silently.
     extraBody: { provider: { require_parameters: true } },
+    limitOutput: true,
   },
   // Paid since late October 2026; kept so it can be switched back on.
-  cerebras: { baseUrl: 'https://api.cerebras.ai/v1', keyVariable: 'CEREBRAS_API_KEY' },
+  cerebras: {
+    baseUrl: 'https://api.cerebras.ai/v1',
+    keyVariable: 'CEREBRAS_API_KEY',
+    limitOutput: true,
+  },
 } as const satisfies Record<string, Provider>;
 
 export type ProviderName = keyof typeof PROVIDERS;
@@ -40,6 +55,26 @@ export type ProviderName = keyof typeof PROVIDERS;
 export interface ModelRef {
   provider: ProviderName;
   model: string;
+}
+
+/** The output limit sent when a call does not set its own (long price lists need room). */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 16_384;
+
+/**
+ * Output settings for one request: an explicit output limit for providers
+ * that need one, and low reasoning effort for gpt-oss models (their
+ * reasoning tokens count against the same limit).
+ */
+export function outputSettings(
+  ref: ModelRef,
+  maxOutputTokens: number = DEFAULT_MAX_OUTPUT_TOKENS,
+): Record<string, unknown> {
+  const provider: Provider = PROVIDERS[ref.provider];
+  if (!provider.limitOutput) return {};
+  return {
+    max_completion_tokens: maxOutputTokens,
+    ...(ref.model.includes('gpt-oss') ? { reasoning_effort: 'low' } : {}),
+  };
 }
 
 export const modelLabel = (ref: ModelRef) => `${ref.provider}:${ref.model}`;

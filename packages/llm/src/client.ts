@@ -1,5 +1,12 @@
 import { containsPersonalData } from './privacy.ts';
-import { costOf, modelLabel, PROVIDERS, type ModelRef, type ProviderName } from './models.ts';
+import {
+  costOf,
+  modelLabel,
+  outputSettings,
+  PROVIDERS,
+  type ModelRef,
+  type ProviderName,
+} from './models.ts';
 import { RateLimiter } from './rate-limit.ts';
 import {
   canSearch,
@@ -45,6 +52,8 @@ function forRecord(body: Record<string, unknown>): Record<string, unknown> {
 export interface TextCall {
   promptVersion: string;
   messages: ChatMessage[];
+  /** Output limit for providers that need one (default DEFAULT_MAX_OUTPUT_TOKENS). */
+  maxOutputTokens?: number;
 }
 
 export type AttemptStatus = 'ok' | 'invalid' | 'error' | 'rate_limited' | 'timeout';
@@ -70,6 +79,8 @@ export interface JsonCall<T> {
   messages: ChatMessage[];
   schemaName: string;
   jsonSchema: Record<string, unknown>;
+  /** Output limit for providers that need one (default DEFAULT_MAX_OUTPUT_TOKENS). */
+  maxOutputTokens?: number;
   /** Checks the model's JSON; returns an error message to send back, or the data. */
   validate: (data: unknown) => { ok: true; data: T } | { ok: false; error: string };
 }
@@ -78,6 +89,8 @@ export interface JsonCall<T> {
 export interface SearchCall<T> {
   promptVersion: string;
   messages: ChatMessage[];
+  /** Output limit for providers that need one (default DEFAULT_MAX_OUTPUT_TOKENS). */
+  maxOutputTokens?: number;
   /** Checks the model's JSON; returns the data or what is wrong with it. */
   validate: (data: unknown) => { ok: true; data: T } | { ok: false; error: string };
 }
@@ -112,7 +125,7 @@ class HttpError extends Error {
 }
 
 interface CompletionResponse {
-  choices?: { message?: { content?: string | null } }[];
+  choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
@@ -161,7 +174,7 @@ export class LlmClient {
       if (!this.options.apiKeys[ref.provider]) continue;
       let messages = call.messages;
       for (let retry = 0; retry < 2; retry++) {
-        const attempt = await this.request(ref, call.promptVersion, messages, format);
+        const attempt = await this.request(ref, call, messages, format);
         attempts.push(attempt);
         if (attempt.status !== 'ok' && attempt.status !== 'invalid') break; // next model
         const checked = this.check(attempt, call);
@@ -193,7 +206,7 @@ export class LlmClient {
     const attempts: Attempt[] = [];
     for (const ref of models) {
       if (!this.options.apiKeys[ref.provider]) continue;
-      const attempt = await this.request(ref, call.promptVersion, call.messages, undefined);
+      const attempt = await this.request(ref, call, call.messages, undefined);
       attempts.push(attempt);
       const text = attempt.rawOutput?.trim();
       if (attempt.status === 'ok' && text) return { text, attempts };
@@ -263,7 +276,10 @@ export class LlmClient {
       call.promptVersion,
       `${PROVIDERS[provider].baseUrl}/chat/completions`,
       { authorization: `Bearer ${key}` },
-      groqSearchRequest(ref.model, call.messages),
+      {
+        ...groqSearchRequest(ref.model, call.messages),
+        ...outputSettings(ref, call.maxOutputTokens),
+      },
       (json) => readGroqSearch(json),
     );
   }
@@ -292,7 +308,7 @@ export class LlmClient {
 
   private async request(
     ref: ModelRef,
-    promptVersion: string,
+    call: { promptVersion: string; maxOutputTokens?: number },
     messages: ChatMessage[],
     responseFormat: Record<string, unknown> | undefined,
   ): Promise<Attempt> {
@@ -303,11 +319,12 @@ export class LlmClient {
       model: ref.model,
       messages,
       temperature: 0,
+      ...outputSettings(ref, call.maxOutputTokens),
       ...(responseFormat ? { response_format: responseFormat } : {}),
     };
     const { attempt } = await this.exchange(
       ref,
-      promptVersion,
+      call.promptVersion,
       `${provider.baseUrl}/chat/completions`,
       { authorization: `Bearer ${this.options.apiKeys[ref.provider] ?? ''}` },
       body,
@@ -315,6 +332,7 @@ export class LlmClient {
         const response = json as CompletionResponse;
         return {
           text: response.choices?.[0]?.message?.content ?? null,
+          cutOff: response.choices?.[0]?.finish_reason === 'length',
           inputTokens: response.usage?.prompt_tokens ?? null,
           outputTokens: response.usage?.completion_tokens ?? null,
         };
@@ -358,19 +376,24 @@ export class LlmClient {
       if (!response.ok) throw new HttpError(response.status, text);
       const reading = read(JSON.parse(text));
       const { inputTokens, outputTokens } = reading;
-      return {
-        attempt: {
-          ...base,
-          rawOutput: reading.text,
-          inputTokens,
-          outputTokens,
-          costUsd: costOf(ref, inputTokens ?? 0, outputTokens ?? 0, this.options.freeTier),
-          latencyMs: this.now() - started,
-          status: 'ok',
-          error: null,
-        },
-        reading,
+      const done = {
+        ...base,
+        rawOutput: reading.text,
+        inputTokens,
+        outputTokens,
+        costUsd: costOf(ref, inputTokens ?? 0, outputTokens ?? 0, this.options.freeTier),
+        latencyMs: this.now() - started,
       };
+      // An answer stopped at the output limit is incomplete (a long price
+      // list loses its last units, though the JSON may still parse): it is
+      // a failed attempt, like an HTTP error, and the next model is tried.
+      if (reading.cutOff) {
+        return {
+          attempt: { ...done, status: 'error', error: 'answer cut off (output limit)' },
+          reading: null,
+        };
+      }
+      return { attempt: { ...done, status: 'ok', error: null }, reading };
     } catch (error) {
       const latencyMs = this.now() - started;
       const message = error instanceof Error ? error.message : String(error);
@@ -390,6 +413,8 @@ export class LlmClient {
 
 interface ReadResult {
   text: string | null;
+  /** The answer stopped at the output limit. */
+  cutOff?: boolean;
   inputTokens: number | null;
   outputTokens: number | null;
 }
