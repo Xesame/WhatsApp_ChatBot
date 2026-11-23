@@ -3,6 +3,7 @@ import {
   messages,
   waGroups,
   type Database,
+  type Db,
   type GROUP_SOURCE_TYPES,
   type MEDIA_KINDS,
 } from '@reb/db';
@@ -17,6 +18,109 @@ import type { SampleMessage } from './chat-export.ts';
 import { storeStream } from './files.ts';
 
 type Kind = (typeof MEDIA_KINDS)[number];
+type SourceType = (typeof GROUP_SOURCE_TYPES)[number];
+
+/** A file already stored under MEDIA_DIR, to attach to an imported message. */
+export interface ImportedFile {
+  kind: Kind;
+  mime: string;
+  name: string;
+  sha256: string;
+  sizeBytes: number;
+  path: string;
+}
+
+/**
+ * The watched group imported messages go into, created on first use. Its ID
+ * on WhatsApp is made up from the name (`import-<name>@g.us`), so importing
+ * into the same name again reuses the group.
+ */
+export async function importGroup(
+  db: Db,
+  groupName: string,
+  sourceType: SourceType | null,
+): Promise<{ id: number; jid: string }> {
+  const jid = importGroupJid(groupName);
+  const [group] = await db
+    .insert(waGroups)
+    .values({ jid, name: groupName, watched: true, sourceType })
+    .onConflictDoUpdate({
+      target: waGroups.jid,
+      set: { name: groupName, watched: true, sourceType },
+    })
+    .returning({ id: waGroups.id });
+  if (!group) throw new Error('Could not create the import group');
+  return { id: group.id, jid };
+}
+
+export function importGroupJid(groupName: string): string {
+  const slug =
+    groupName
+      .toLowerCase()
+      .replace(/[^a-z0-9؀-ۿ]+/g, '-')
+      .replace(/^-|-$/g, '') || 'samples';
+  return `import-${slug}@g.us`;
+}
+
+/**
+ * Saves one imported message (and its stored file) and queues it for the
+ * pipeline in the same transaction, like capture does. Returns the new
+ * message's ID, or null when that WhatsApp ID was already in the group
+ * (nothing is saved or queued twice).
+ */
+export async function saveImportedMessage(
+  database: Database,
+  boss: PgBoss,
+  message: {
+    groupId: number;
+    waMessageId: string;
+    senderHash: string;
+    sentAt: Date;
+    text: string | null;
+    file: ImportedFile | null;
+  },
+): Promise<number | null> {
+  const { file, sentAt } = message;
+  return database.transaction(async (tx, client) => {
+    const [row] = await tx
+      .insert(messages)
+      .values({
+        groupId: message.groupId,
+        waMessageId: message.waMessageId,
+        senderHash: message.senderHash,
+        sentAt,
+        text: message.text,
+        mediaType: file?.kind ?? 'none',
+        enqueuedAt: new Date(),
+      })
+      .onConflictDoNothing()
+      .returning({ id: messages.id });
+    if (!row) return null;
+    if (file) {
+      await tx.insert(mediaFiles).values({
+        messageId: row.id,
+        kind: file.kind,
+        mimeType: file.mime,
+        fileName: file.name,
+        sizeBytes: file.sizeBytes,
+        sha256: file.sha256,
+        path: file.path,
+        status: 'downloaded',
+        attempts: 1,
+        downloadedAt: new Date(),
+        mediaRef: { imported: true },
+      });
+    }
+    await tx
+      .update(waGroups)
+      .set({
+        lastMessageAt: sql`greatest(${waGroups.lastMessageAt}, ${sentAt.toISOString()}::timestamptz)`,
+      })
+      .where(eq(waGroups.id, message.groupId));
+    await enqueueInTransaction(boss, client, 'preprocess', { messageId: row.id });
+    return row.id;
+  });
+}
 const TYPES: Record<string, { kind: Kind; mime: string }> = {
   jpg: { kind: 'image', mime: 'image/jpeg' },
   jpeg: { kind: 'image', mime: 'image/jpeg' },
@@ -40,7 +144,7 @@ const TYPES: Record<string, { kind: Kind; mime: string }> = {
 export interface ImportOptions {
   /** Name shown on the Groups page; messages go into a watched group of this name. */
   groupName: string;
-  sourceType: (typeof GROUP_SOURCE_TYPES)[number] | null;
+  sourceType: SourceType | null;
   /** SENDER_HASH_SALT: senders are stored only as a salted hash, as in capture. */
   salt: string;
   mediaDir: string;
@@ -72,22 +176,8 @@ export async function importSamples(
   samples: SampleMessage[],
   options: ImportOptions,
 ): Promise<ImportResult> {
-  const { db } = database;
-  const slug =
-    options.groupName
-      .toLowerCase()
-      .replace(/[^a-z0-9؀-ۿ]+/g, '-')
-      .replace(/^-|-$/g, '') || 'samples';
-  const jid = `import-${slug}@g.us`;
-  const [group] = await db
-    .insert(waGroups)
-    .values({ jid, name: options.groupName, watched: true, sourceType: options.sourceType })
-    .onConflictDoUpdate({
-      target: waGroups.jid,
-      set: { name: options.groupName, watched: true, sourceType: options.sourceType },
-    })
-    .returning({ id: waGroups.id });
-  if (!group) throw new Error('Could not create the import group');
+  const group = await importGroup(database.db, options.groupName, options.sourceType);
+  const { jid } = group;
 
   const newest = Math.max(...samples.map((s) => s.sentAt.getTime()));
   const shift =
@@ -118,14 +208,7 @@ export async function importSamples(
     if (sample.mediaOmitted) result.mediaOmitted++;
 
     // store the attached file first, so the message is queued with it
-    let file: {
-      kind: Kind;
-      mime: string;
-      name: string;
-      sha256: string;
-      sizeBytes: number;
-      path: string;
-    } | null = null;
+    let file: ImportedFile | null = null;
     if (sample.attachment) {
       const name = basename(sample.attachment);
       const full = join(options.filesDir, name);
@@ -142,45 +225,15 @@ export async function importSamples(
       }
     }
 
-    const saved = await database.transaction(async (tx, client) => {
-      const [row] = await tx
-        .insert(messages)
-        .values({
-          groupId: group.id,
-          waMessageId,
-          senderHash: hashSender(options.salt, `import:${sample.sender}`),
-          sentAt,
-          text: sample.text || null,
-          mediaType: file?.kind ?? 'none',
-          enqueuedAt: new Date(),
-        })
-        .onConflictDoNothing()
-        .returning({ id: messages.id });
-      if (!row) return false;
-      if (file) {
-        await tx.insert(mediaFiles).values({
-          messageId: row.id,
-          kind: file.kind,
-          mimeType: file.mime,
-          fileName: file.name,
-          sizeBytes: file.sizeBytes,
-          sha256: file.sha256,
-          path: file.path,
-          status: 'downloaded',
-          attempts: 1,
-          downloadedAt: new Date(),
-          mediaRef: { imported: true },
-        });
-      }
-      await tx
-        .update(waGroups)
-        .set({
-          lastMessageAt: sql`greatest(${waGroups.lastMessageAt}, ${sentAt.toISOString()}::timestamptz)`,
-        })
-        .where(eq(waGroups.id, group.id));
-      await enqueueInTransaction(boss, client, 'preprocess', { messageId: row.id });
-      return true;
-    });
+    const saved =
+      (await saveImportedMessage(database, boss, {
+        groupId: group.id,
+        waMessageId,
+        senderHash: hashSender(options.salt, `import:${sample.sender}`),
+        sentAt,
+        text: sample.text || null,
+        file,
+      })) !== null;
     if (saved) {
       result.saved++;
       if (file) result.withFiles++;
