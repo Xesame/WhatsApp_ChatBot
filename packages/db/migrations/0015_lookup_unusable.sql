@@ -1,0 +1,1 @@
+ALTER TABLE "name_lookups" ADD COLUMN "unusable" boolean DEFAULT false NOT NULL;

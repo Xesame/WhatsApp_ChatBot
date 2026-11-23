@@ -473,6 +473,8 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       provider:
         '`gemini` (Google Search) or `groq` (browser search): who searched. Empty on rows from memory.',
       sources: 'Up to 3 pages the search used, as `[{ url, title }]`.',
+      unusable:
+        'A search ran but its answer could not be read; kept as "not sure" and asked again after one day instead of 30.',
       created_at: 'When the row was created.',
       updated_at: 'When the row was last changed.',
     },

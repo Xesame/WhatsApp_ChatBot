@@ -191,6 +191,7 @@ erDiagram
     text method
     text provider
     jsonb sources
+    boolean unusable
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
@@ -660,6 +661,7 @@ What a live web search says about a project name we had not seen before (which d
 | `method` | text | yes |  | `search` (a live web search) or `memory` (older answers from the model memory, asked again with search). |
 | `provider` | text | yes |  | `gemini` (Google Search) or `groq` (browser search): who searched. Empty on rows from memory. |
 | `sources` | jsonb | yes |  | Up to 3 pages the search used, as `[{ url, title }]`. |
+| `unusable` | boolean | no |  | A search ran but its answer could not be read; kept as "not sure" and asked again after one day instead of 30. |
 | `created_at` | timestamp with time zone | no |  | When the row was created. |
 | `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
 

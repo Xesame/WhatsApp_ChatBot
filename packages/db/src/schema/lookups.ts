@@ -61,6 +61,11 @@ export const nameLookups = pgTable(
     provider: text('provider', { enum: LOOKUP_PROVIDERS }),
     /** Up to 3 pages the search used: `[{ url, title }]`. */
     sources: jsonb('sources').$type<LookupSource[]>(),
+    /**
+     * A search ran but its answer could not be read (not the JSON asked
+     * for). Saved as "not sure", and asked again after one day, not 30.
+     */
+    unusable: boolean('unusable').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
