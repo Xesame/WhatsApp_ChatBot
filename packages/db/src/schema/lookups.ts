@@ -34,7 +34,7 @@ const inList = (values: readonly string[]) =>
  *
  * One row per name, however many messages mention it, so we search once.
  * `known = false` with empty developer and city means the search did not
- * clearly say (or no model could search); that is stored too, so we do not
+ * clearly say; that is stored too, so we do not
  * ask on every message, and asked again after 30 days. The answer is only
  * a hint for the person reviewing: it is never copied into a listing.
  */
@@ -57,7 +57,7 @@ export const nameLookups = pgTable(
     promptVersion: text('prompt_version').notNull(),
     /** `search` or `memory` (rows from before lookups searched the web). */
     method: text('method', { enum: LOOKUP_METHODS }),
-    /** `gemini` or `groq`: who ran the search. Null when nobody could search. */
+    /** `gemini` or `groq`: who ran the search (null on rows from memory). */
     provider: text('provider', { enum: LOOKUP_PROVIDERS }),
     /** Up to 3 pages the search used: `[{ url, title }]`. */
     sources: jsonb('sources').$type<LookupSource[]>(),

@@ -4,7 +4,7 @@ import { normalizeName } from '@reb/normalize';
 import type { PgBoss } from '@reb/queue';
 import { lookupResultSchema, type LookupResult } from '@reb/schema';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { PipelineDeps } from './steps.ts';
+import { RetryableError, type PipelineDeps } from './steps.ts';
 
 /**
  * Names from a live web search.
@@ -19,14 +19,14 @@ import type { PipelineDeps } from './steps.ts';
  * - From a search, never from memory. Gemini with Google Search first; if
  *   Gemini cannot search (quota, not allowed on the free tier, an error, or
  *   an answer that shows no search was run), Groq with its browser search.
- *   If neither searched, "no answer" is stored. A model is never asked
- *   without search. Models: LLM_LOOKUP_MODELS.
+ *   If neither searched, nothing is saved and the job is retried later by
+ *   the queue. A model is never asked without search. Models: LLM_LOOKUP_MODELS.
  * - Only names go to the model: the project as written and the developer as
  *   written, if any. Never message text, sender names or phone numbers
  *   (rule 3).
  * - Extraction first: the worker runs queues side by side under one shared
  *   rate limit, so a lookup waits while messages are still being extracted.
- * - "Not sure" and "no answer" rows are kept too (so we do not ask on every
+ * - "Not sure" answers (a search ran but did not clearly say) are kept too (so we do not ask on every
  *   message) and asked again after 30 days, since new projects become known.
  *   Older answers from Gemini's memory (`method = 'memory'`) are no longer
  *   trusted: they count as stale and are asked again with search.
@@ -258,25 +258,28 @@ export async function runLookup(deps: PipelineDeps, job: LookupJob): Promise<'do
   });
   // Lookup calls are not added to extraction_runs: that table needs a
   // message and only allows classify, extract and transcribe.
-  if (!result.data) {
-    deps.logger.info(
-      { name: job.name, tried: result.attempts.map((a) => `${modelLabel(a)}: ${a.error}`) },
-      'Name lookup: no model could search; saved as no answer, asked again in 30 days',
+  // No model got to search (quota, server error, timeout, an answer without
+  // a search, or not the JSON asked for): nothing is saved, and the job is
+  // retried soon by the queue (its usual retries, then Failed jobs). Only
+  // a search that ran but did not clearly say is saved as "not sure".
+  if (!result.data || !result.searched) {
+    const tried = result.attempts.map((a) => `${modelLabel(a)}: ${a.error ?? a.status}`);
+    throw new RetryableError(
+      `Name lookup for "${job.name}": no model could search (${tried.join('; ') || 'no model tried'})`,
     );
   }
 
   const clean = (value: string | null) => (value?.trim() ? value.trim() : null);
-  // "Not sure", or no search at all, is stored with no names.
-  const known = result.data?.known ?? false;
-  const last = result.attempts.at(-1);
+  // "Not sure" is stored with no names, whatever else the model said.
+  const known = result.data.known;
   const answer = {
     known,
-    developer: known ? clean(result.data?.developer ?? null) : null,
-    city: known ? clean(result.data?.city ?? null) : null,
-    model: result.searched ? modelLabel(result.searched) : last ? modelLabel(last) : 'none',
+    developer: known ? clean(result.data.developer) : null,
+    city: known ? clean(result.data.city) : null,
+    model: modelLabel(result.searched),
     promptVersion: lookupPrompt.VERSION,
     method: 'search' as const,
-    provider: result.searched?.provider ?? null,
+    provider: result.searched.provider,
     sources: result.sources,
   };
   await db

@@ -16,6 +16,7 @@ import {
   queueLookups,
   recheckWaitingUnits,
   redoLookups,
+  RetryableError,
   runLookup,
   type PipelineDeps,
 } from '../src/index.ts';
@@ -258,23 +259,37 @@ describe.skipIf(!testDatabaseUrl)('name lookups (real Postgres and pg-boss, fake
     }
   });
 
-  it('stores "no answer" when no model searched, and never asks without search', async () => {
+  it('saves nothing and lets the job retry when no model got to search', async () => {
     const model = fakeModel({ lookup: ANSWER, geminiSearch: 'no-search', groqSearch: 'no-search' });
-    expect(await runLookup(deps(model.llm), { name: 'Lumia Lagoons', developer: null })).toBe(
+    await expect(
+      runLookup(deps(model.llm), { name: 'Lumia Lagoons', developer: null }),
+    ).rejects.toBeInstanceOf(RetryableError);
+    // Never asked without search.
+    expect(model.bodies).toHaveLength(2);
+    expect(model.bodies.every((b) => 'tools' in (JSON.parse(b) as object))).toBe(true);
+    expect(await lookupRows()).toEqual([]);
+
+    // Both failing (quota, server errors) is the same: no row, retried soon.
+    const failing = fakeModel({ fail: true });
+    await expect(
+      runLookup(deps(failing.llm), { name: 'Lumia Lagoons', developer: null }),
+    ).rejects.toBeInstanceOf(RetryableError);
+    expect(await lookupRows()).toEqual([]);
+
+    // The retry searches again and saves the answer.
+    const working = fakeModel({ lookup: ANSWER });
+    expect(await runLookup(deps(working.llm), { name: 'Lumia Lagoons', developer: null })).toBe(
       'done',
     );
-    expect(model.bodies.every((b) => 'tools' in (JSON.parse(b) as object))).toBe(true);
-    expect(await lookupRows()).toMatchObject([
-      { known: false, developer: null, city: null, method: 'search', provider: null, sources: [] },
-    ]);
+    expect(await lookupRows()).toMatchObject([{ known: true, provider: 'gemini' }]);
+  });
 
-    // Both failing (quota) is stored the same way; asked again after 30 days.
-    await testDb.database.pool.query('truncate name_lookups');
-    const failing = fakeModel({ fail: true });
-    await runLookup(deps(failing.llm), { name: 'Lumia Lagoons', developer: null });
-    expect(await lookupRows()).toMatchObject([{ known: false, provider: null }]);
-    await runLookup(deps(failing.llm), { name: 'Lumia Lagoons', developer: null });
-    expect(failing.bodies).toHaveLength(2);
+  it('saves "not sure" when a search ran but did not clearly say', async () => {
+    const unsure = fakeModel({ lookup: { known: false, developer: null, city: null } });
+    await runLookup(deps(unsure.llm), { name: 'Lumia Lagoons', developer: null });
+    expect(await lookupRows()).toMatchObject([
+      { known: false, developer: null, city: null, method: 'search', provider: 'gemini' },
+    ]);
   });
 
   it('skips lookups when no search model has a key', async () => {

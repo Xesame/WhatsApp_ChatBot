@@ -465,14 +465,13 @@ export const tableDocs: Record<string, { description: string; columns: Record<st
       name_normalized: 'The name in comparable form. Unique: each name is asked about once.',
       developer: 'The developer the search found, or empty if it did not clearly say.',
       city: 'The city or area the search found, or empty if it did not clearly say.',
-      known:
-        'Whether the search clearly showed the project exists. False also when no model could search.',
-      model: 'Which model gave the answer (the last one tried when none could search).',
+      known: 'Whether the search clearly showed the project exists.',
+      model: 'Which model gave the answer.',
       prompt_version: 'Which version of the lookup prompt was used.',
       method:
         '`search` (a live web search) or `memory` (older answers from the model memory, asked again with search).',
       provider:
-        '`gemini` (Google Search) or `groq` (browser search): who searched. Empty when no model could search.',
+        '`gemini` (Google Search) or `groq` (browser search): who searched. Empty on rows from memory.',
       sources: 'Up to 3 pages the search used, as `[{ url, title }]`.',
       created_at: 'When the row was created.',
       updated_at: 'When the row was last changed.',

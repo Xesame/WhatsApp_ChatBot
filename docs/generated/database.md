@@ -654,11 +654,11 @@ What a live web search says about a project name we had not seen before (which d
 | `name_normalized` | text | no |  | The name in comparable form. Unique: each name is asked about once. |
 | `developer` | text | yes |  | The developer the search found, or empty if it did not clearly say. |
 | `city` | text | yes |  | The city or area the search found, or empty if it did not clearly say. |
-| `known` | boolean | no |  | Whether the search clearly showed the project exists. False also when no model could search. |
-| `model` | text | no |  | Which model gave the answer (the last one tried when none could search). |
+| `known` | boolean | no |  | Whether the search clearly showed the project exists. |
+| `model` | text | no |  | Which model gave the answer. |
 | `prompt_version` | text | no |  | Which version of the lookup prompt was used. |
 | `method` | text | yes |  | `search` (a live web search) or `memory` (older answers from the model memory, asked again with search). |
-| `provider` | text | yes |  | `gemini` (Google Search) or `groq` (browser search): who searched. Empty when no model could search. |
+| `provider` | text | yes |  | `gemini` (Google Search) or `groq` (browser search): who searched. Empty on rows from memory. |
 | `sources` | jsonb | yes |  | Up to 3 pages the search used, as `[{ url, title }]`. |
 | `created_at` | timestamp with time zone | no |  | When the row was created. |
 | `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
