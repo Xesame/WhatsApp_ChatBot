@@ -1,33 +1,41 @@
-import { nameLookups, units, type Db } from '@reb/db';
-import { lookupPrompt, modelLabel } from '@reb/llm';
+import { nameLookups, units, type Db, type LookupSource } from '@reb/db';
+import { canSearch, lookupPrompt, modelLabel, parseModelList, type ModelRef } from '@reb/llm';
 import { normalizeName } from '@reb/normalize';
 import type { PgBoss } from '@reb/queue';
-import { jsonSchemaFor, lookupResultSchema, type LookupResult } from '@reb/schema';
-import { and, eq, inArray, or, sql } from 'drizzle-orm';
-import { RetryableError, type PipelineDeps } from './steps.ts';
+import { lookupResultSchema, type LookupResult } from '@reb/schema';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import type { PipelineDeps } from './steps.ts';
 
 /**
- * Names from Gemini's memory.
+ * Names from a live web search.
  *
  * When a unit's project name was written but its developer or city/area is
- * missing, we ask a Gemini model once what it remembers about that project
- * (which developer builds it, where it is). The answer is kept in
- * `name_lookups`, one row per name however many units mention it, and shown
- * on the Review page as a hint ("Gemini thinks ..."). It is never copied
- * into a unit: Hassan decides.
+ * missing, we search the web once for that project (which developer builds
+ * it, where it is). The answer is kept in `name_lookups`, one row per name
+ * however many units mention it, and shown on the Review page as a hint
+ * ("Gemini found on Google: ..."). It is never copied into a unit: Hassan
+ * decides.
  *
+ * - From a search, never from memory. Gemini with Google Search first; if
+ *   Gemini cannot search (quota, not allowed on the free tier, an error, or
+ *   an answer that shows no search was run), Groq with its browser search.
+ *   If neither searched, "no answer" is stored. A model is never asked
+ *   without search. Models: LLM_LOOKUP_MODELS.
  * - Only names go to the model: the project as written and the developer as
  *   written, if any. Never message text, sender names or phone numbers
  *   (rule 3).
- * - Gemini only, because the hint is labelled "Gemini thinks" and a weak
- *   free model's guess would be kept for good.
  * - Extraction first: the worker runs queues side by side under one shared
  *   rate limit, so a lookup waits while messages are still being extracted.
- * - "Not sure" answers are kept too (so we do not ask on every message) and
- *   asked again after 30 days, since new projects become known.
+ * - "Not sure" and "no answer" rows are kept too (so we do not ask on every
+ *   message) and asked again after 30 days, since new projects become known.
+ *   Older answers from Gemini's memory (`method = 'memory'`) are no longer
+ *   trusted: they count as stale and are asked again with search.
  * - Safe to run again (rule 6): a job whose name already has a fresh answer
  *   does nothing, and saving the answer overwrites the same row.
  */
+
+/** Used when the worker was not given lookup models (tests, scripts). */
+export const DEFAULT_LOOKUP_MODELS = 'gemini:gemini-flash-latest,groq:openai/gpt-oss-120b';
 
 /** How long a "not sure" answer is trusted before we ask again. */
 export const UNKNOWN_RETRY_DAYS = 30;
@@ -74,11 +82,17 @@ export function needsLookup(unit: LookupUnit): LookupJob | null {
   };
 }
 
-/** An answer that still counts: any known answer, or a "not sure" one under 30 days old. */
+/**
+ * An answer that still counts: one from a web search that is either known,
+ * or "not sure" and under 30 days old. Answers from memory never count.
+ */
 const fresh = () =>
-  or(
-    eq(nameLookups.known, true),
-    sql`${nameLookups.updatedAt} > now() - make_interval(days => ${UNKNOWN_RETRY_DAYS})`,
+  and(
+    eq(nameLookups.method, 'search'),
+    or(
+      eq(nameLookups.known, true),
+      sql`${nameLookups.updatedAt} > now() - make_interval(days => ${UNKNOWN_RETRY_DAYS})`,
+    ),
   );
 
 /** The lookup job's key (the name in its comparable form): one waiting job per name. */
@@ -141,6 +155,27 @@ export async function queueLookups(db: Db, boss: PgBoss, unitIds: number[]): Pro
   return queued;
 }
 
+/**
+ * `lookup --redo-memory`: queues a search for every name a waiting unit
+ * needs whose answer no longer counts: from Gemini's memory, "not sure" for
+ * over 30 days, or never asked. Same rules as `queueLookups`, so it is safe
+ * to run again: names already answered by search, or already waiting, are
+ * skipped. The jobs run at the worker's pace, under its rate limit.
+ * Returns how many jobs were added.
+ */
+export async function redoLookups(db: Db, boss: PgBoss): Promise<number> {
+  const rows = await db
+    .select({ id: units.id })
+    .from(units)
+    .where(or(isNull(units.developerId), isNull(units.cityId)));
+  const ids = rows.map((r) => r.id);
+  let queued = 0;
+  for (let i = 0; i < ids.length; i += 500) {
+    queued += await queueLookups(db, boss, ids.slice(i, i + 500));
+  }
+  return queued;
+}
+
 /** Puts a lookup back in the queue to try again in a minute (extraction was busy). */
 export async function queueLookupLater(boss: PgBoss, job: LookupJob): Promise<void> {
   await boss.send('lookup', job, {
@@ -159,7 +194,21 @@ async function extractionBusy(db: Db): Promise<boolean> {
 }
 
 /** Said once per worker run, not on every job. */
-let warnedNoGemini = false;
+let warnedNoSearch = false;
+
+/**
+ * The answer as read from a search: the three fields. Anything else the
+ * model added is dropped (search answers cannot use a strict JSON schema).
+ */
+const searchAnswerSchema = lookupResultSchema.strip();
+
+/** One saved answer, as the Review page reads it. */
+export type SavedLookup = LookupResult & {
+  name: string;
+  method: 'memory' | 'search' | null;
+  provider: 'gemini' | 'groq' | null;
+  sources: LookupSource[] | null;
+};
 
 /**
  * Runs one lookup job. Returns 'waiting' when extraction is busy (the worker
@@ -170,12 +219,13 @@ export async function runLookup(deps: PipelineDeps, job: LookupJob): Promise<'do
   const normalized = normalizeName(job.name);
   if (!normalized) return 'done';
 
-  const gemini = deps.models.extract.filter((m) => m.provider === 'gemini');
-  if (!deps.llm.canUse(gemini)) {
-    if (!warnedNoGemini) {
-      warnedNoGemini = true;
+  const models: ModelRef[] = deps.models.lookup ?? parseModelList(DEFAULT_LOOKUP_MODELS);
+  const searchers = models.filter((m) => canSearch(m.provider));
+  if (!deps.llm.canUse(searchers)) {
+    if (!warnedNoSearch) {
+      warnedNoSearch = true;
       deps.logger.warn(
-        'No Gemini model in LLM_EXTRACT_MODELS (or no GEMINI_API_KEY): name lookups are skipped',
+        'No search model in LLM_LOOKUP_MODELS (gemini or groq, with its API key): name lookups are skipped',
       );
     }
     return 'done';
@@ -190,7 +240,7 @@ export async function runLookup(deps: PipelineDeps, job: LookupJob): Promise<'do
 
   if (await extractionBusy(db)) return 'waiting';
 
-  const result = await deps.llm.callJson<LookupResult>(gemini, {
+  const result = await deps.llm.callSearch<LookupResult>(searchers, {
     promptVersion: lookupPrompt.VERSION,
     messages: [
       { role: 'system', content: lookupPrompt.SYSTEM },
@@ -199,10 +249,8 @@ export async function runLookup(deps: PipelineDeps, job: LookupJob): Promise<'do
         content: lookupPrompt.userPrompt({ project: job.name, developer: job.developer }),
       },
     ],
-    schemaName: 'lookup',
-    jsonSchema: jsonSchemaFor(lookupResultSchema),
     validate: (data) => {
-      const parsed = lookupResultSchema.safeParse(data);
+      const parsed = searchAnswerSchema.safeParse(data);
       return parsed.success
         ? { ok: true as const, data: parsed.data }
         : { ok: false as const, error: parsed.error.issues.map((i) => i.message).join('; ') };
@@ -210,21 +258,26 @@ export async function runLookup(deps: PipelineDeps, job: LookupJob): Promise<'do
   });
   // Lookup calls are not added to extraction_runs: that table needs a
   // message and only allows classify, extract and transcribe.
-  const answered = result.attempts.findLast((a) => a.status === 'ok');
-  if (!result.data || !answered) {
-    const reason = result.attempts.at(-1)?.error ?? 'no model available';
-    throw new RetryableError(`Name lookup failed for "${job.name}": ${reason}`);
+  if (!result.data) {
+    deps.logger.info(
+      { name: job.name, tried: result.attempts.map((a) => `${modelLabel(a)}: ${a.error}`) },
+      'Name lookup: no model could search; saved as no answer, asked again in 30 days',
+    );
   }
 
   const clean = (value: string | null) => (value?.trim() ? value.trim() : null);
-  // "Not sure" is stored with no names, whatever else the model said.
-  const known = result.data.known;
+  // "Not sure", or no search at all, is stored with no names.
+  const known = result.data?.known ?? false;
+  const last = result.attempts.at(-1);
   const answer = {
     known,
-    developer: known ? clean(result.data.developer) : null,
-    city: known ? clean(result.data.city) : null,
-    model: modelLabel(answered),
+    developer: known ? clean(result.data?.developer ?? null) : null,
+    city: known ? clean(result.data?.city ?? null) : null,
+    model: result.searched ? modelLabel(result.searched) : last ? modelLabel(last) : 'none',
     promptVersion: lookupPrompt.VERSION,
+    method: 'search' as const,
+    provider: result.searched?.provider ?? null,
+    sources: result.sources,
   };
   await db
     .insert(nameLookups)
@@ -236,11 +289,11 @@ export async function runLookup(deps: PipelineDeps, job: LookupJob): Promise<'do
   return 'done';
 }
 
-/** The saved lookup answer for this unit's project name, if there is one (for Review). */
-export async function lookupFor(
-  db: Db,
-  unit: LookupUnit,
-): Promise<(LookupResult & { name: string }) | null> {
+/**
+ * The saved lookup answer for this unit's project name, if there is one
+ * (for Review, which shows only answers from a search).
+ */
+export async function lookupFor(db: Db, unit: LookupUnit): Promise<SavedLookup | null> {
   const job = needsLookup(unit);
   if (!job) return null;
   const [row] = await db
@@ -249,6 +302,9 @@ export async function lookupFor(
       known: nameLookups.known,
       developer: nameLookups.developer,
       city: nameLookups.city,
+      method: nameLookups.method,
+      provider: nameLookups.provider,
+      sources: nameLookups.sources,
     })
     .from(nameLookups)
     .where(eq(nameLookups.nameNormalized, normalizeName(job.name)));

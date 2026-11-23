@@ -211,6 +211,15 @@ export const envSchema = z.object({
       usedBy: 'worker',
       examples: ['gemini:gemini-flash-latest,gemini:gemini-flash-lite-latest'],
     }),
+  LLM_LOOKUP_MODELS: z
+    .string()
+    .default('gemini:gemini-flash-latest,groq:openai/gpt-oss-120b')
+    .meta({
+      description:
+        "Models that look up an unknown project's developer and area with a live web search, as `provider:model`, in fallback order. Only `gemini` (Google Search) and `groq` (browser search, e.g. `openai/gpt-oss-120b`) can search; other providers and models without an API key are skipped. An answer without a search is never used.",
+      usedBy: 'worker',
+      examples: ['gemini:gemini-flash-latest,groq:openai/gpt-oss-120b'],
+    }),
   LLM_REQUESTS_PER_MINUTE: z.coerce
     .number()
     .int()

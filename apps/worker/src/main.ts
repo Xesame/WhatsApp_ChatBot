@@ -34,6 +34,7 @@ await runService('worker', async ({ config, logger, database }) => {
   const models = {
     classify: parseModelList(config.LLM_CLASSIFY_MODELS),
     extract: parseModelList(config.LLM_EXTRACT_MODELS),
+    lookup: parseModelList(config.LLM_LOOKUP_MODELS),
   };
   const tolerances = {
     areaFraction: config.DEDUP_AREA_TOLERANCE_PERCENT / 100,
@@ -80,9 +81,10 @@ await runService('worker', async ({ config, logger, database }) => {
   });
   await boss.schedule('lifecycle', '17 3 * * *', {}, { tz: 'Africa/Cairo' });
 
-  // Names from Gemini's memory: one question per unknown project name. It
-  // waits (a minute at a time) while messages are being extracted, and does
-  // nothing without a Gemini model.
+  // Names from a live web search (Gemini with Google Search, then Groq's
+  // browser search): one search per unknown project name. It waits (a
+  // minute at a time) while messages are being extracted, and does nothing
+  // without a search model that has an API key.
   await handle('lookup', async (data) => {
     if ((await runLookup(deps, data)) === 'waiting') await queueLookupLater(boss, data);
   });

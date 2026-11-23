@@ -48,7 +48,8 @@ export interface PipelineDeps {
   tolerances: Tolerances;
   boss: PgBoss;
   llm: LlmClient;
-  models: { classify: ModelRef[]; extract: ModelRef[] };
+  /** `lookup`: the web-search models for name lookups (LLM_LOOKUP_MODELS; a default when left out). */
+  models: { classify: ModelRef[]; extract: ModelRef[]; lookup?: ModelRef[] };
   logger: Logger;
 }
 

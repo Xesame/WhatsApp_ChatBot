@@ -15,6 +15,7 @@ import {
   needsLookup,
   queueLookups,
   recheckWaitingUnits,
+  redoLookups,
   runLookup,
   type PipelineDeps,
 } from '../src/index.ts';
@@ -76,11 +77,18 @@ describe.skipIf(!testDatabaseUrl)('name lookups (real Postgres and pg-boss, fake
   const SENDER = 'a'.repeat(64);
   const ANSWER = { known: true, developer: 'Dubai Misr', city: 'R8' };
 
-  const deps = (llm: LlmClient, extract = 'gemini:gemini-flash-latest'): PipelineDeps => ({
+  const deps = (
+    llm: LlmClient,
+    lookup = 'gemini:gemini-flash-latest,groq:openai/gpt-oss-120b',
+  ): PipelineDeps => ({
     database: testDb.database,
     boss,
     llm,
-    models: { classify: parseModelList(extract), extract: parseModelList(extract) },
+    models: {
+      classify: parseModelList('gemini:gemini-flash-latest'),
+      extract: parseModelList('gemini:gemini-flash-latest'),
+      lookup: parseModelList(lookup),
+    },
     logger,
     tolerances: DEFAULT_TOLERANCES,
     media: {
@@ -187,10 +195,19 @@ describe.skipIf(!testDatabaseUrl)('name lookups (real Postgres and pg-boss, fake
       developer: 'Dubai Misr',
       city: 'R8',
       model: 'gemini:gemini-flash-latest',
+      method: 'search',
+      provider: 'gemini',
+      sources: [
+        { url: 'https://vertexaisearch.cloud.google.com/r/1', title: 'a.com' },
+        { url: 'https://vertexaisearch.cloud.google.com/r/2', title: 'b.eg' },
+      ],
     });
     expect(await lookupFor(testDb.database.db, first)).toEqual({
       name: 'Lumia Lagoons',
       ...ANSWER,
+      method: 'search',
+      provider: 'gemini',
+      sources: rows[0]?.sources,
     });
 
     // A second unit with the same name (another spelling of case) reuses the answer.
@@ -214,28 +231,103 @@ describe.skipIf(!testDatabaseUrl)('name lookups (real Postgres and pg-boss, fake
     expect(request).not.toContain(MESSAGE_TEXT);
     expect(request).not.toContain('لوميا');
     expect(request).not.toContain(SENDER);
+    expect(request).not.toMatch(/01\d{9}/);
+    expect(JSON.parse(request)).toMatchObject({ tools: [{ google_search: {} }] });
   });
 
-  it('uses Gemini models only', async () => {
-    const both = fakeModel({ lookup: ANSWER });
-    await runLookup(deps(both.llm, 'groq:openai/gpt-oss-120b,gemini:gemini-flash-latest'), {
-      name: 'Lumia Lagoons',
-      developer: null,
-    });
-    expect(both.bodies.map((b) => (JSON.parse(b) as { model: string }).model)).toEqual([
-      'gemini-flash-latest',
+  it('asks Groq with browser search when Gemini cannot search', async () => {
+    for (const geminiSearch of ['rate-limited', 'no-search'] as const) {
+      await testDb.database.pool.query('truncate name_lookups');
+      const model = fakeModel({ lookup: ANSWER, geminiSearch });
+      await runLookup(deps(model.llm), { name: 'Lumia Lagoons', developer: null });
+      expect(model.bodies).toHaveLength(2);
+      expect(JSON.parse(model.bodies[1] ?? '')).toMatchObject({
+        model: 'openai/gpt-oss-120b',
+        tools: [{ type: 'browser_search' }],
+      });
+      expect(await lookupRows()).toMatchObject([
+        {
+          known: true,
+          developer: 'Dubai Misr',
+          model: 'groq:openai/gpt-oss-120b',
+          method: 'search',
+          provider: 'groq',
+          sources: [{ url: 'https://news.example.com/p', title: 'News' }],
+        },
+      ]);
+    }
+  });
+
+  it('stores "no answer" when no model searched, and never asks without search', async () => {
+    const model = fakeModel({ lookup: ANSWER, geminiSearch: 'no-search', groqSearch: 'no-search' });
+    expect(await runLookup(deps(model.llm), { name: 'Lumia Lagoons', developer: null })).toBe(
+      'done',
+    );
+    expect(model.bodies.every((b) => 'tools' in (JSON.parse(b) as object))).toBe(true);
+    expect(await lookupRows()).toMatchObject([
+      { known: false, developer: null, city: null, method: 'search', provider: null, sources: [] },
     ]);
 
+    // Both failing (quota) is stored the same way; asked again after 30 days.
     await testDb.database.pool.query('truncate name_lookups');
-    const groqOnly = fakeModel({ lookup: ANSWER });
+    const failing = fakeModel({ fail: true });
+    await runLookup(deps(failing.llm), { name: 'Lumia Lagoons', developer: null });
+    expect(await lookupRows()).toMatchObject([{ known: false, provider: null }]);
+    await runLookup(deps(failing.llm), { name: 'Lumia Lagoons', developer: null });
+    expect(failing.bodies).toHaveLength(2);
+  });
+
+  it('skips lookups when no search model has a key', async () => {
+    const model = fakeModel({ lookup: ANSWER });
     expect(
-      await runLookup(deps(groqOnly.llm, 'groq:openai/gpt-oss-120b'), {
+      await runLookup(deps(model.llm, 'openrouter:openrouter/free'), {
         name: 'Lumia Lagoons',
         developer: null,
       }),
     ).toBe('done');
-    expect(groqOnly.bodies).toEqual([]);
+    expect(model.bodies).toEqual([]);
     expect(await lookupRows()).toEqual([]);
+  });
+
+  it('asks again with search about answers from memory', async () => {
+    const unit = await waitingUnit();
+    await testDb.database.pool.query(
+      `insert into name_lookups (name, name_normalized, developer, city, known, model, prompt_version, method)
+       values ('Lumia Lagoons', 'lumia lagoons', 'Old Guess', null, true, 'gemini:x', 'lookup-old', 'memory')`,
+    );
+    expect(await lookupFor(testDb.database.db, unit)).toMatchObject({ method: 'memory' });
+    expect(await queueLookups(testDb.database.db, boss, [unit.id])).toBe(1);
+    const model = fakeModel({ lookup: ANSWER });
+    await runLookup(deps(model.llm), { name: 'Lumia Lagoons', developer: null });
+    expect(await lookupRows()).toMatchObject([
+      { known: true, developer: 'Dubai Misr', method: 'search', provider: 'gemini' },
+    ]);
+  });
+
+  it('redoes memory and stale "not sure" answers once (lookup --redo-memory)', async () => {
+    await waitingUnit('Memory Name');
+    await waitingUnit('Unsure Name');
+    await waitingUnit('Searched Name');
+    await waitingUnit('Recent Unsure');
+    await waitingUnit('Memory Name'); // a second unit, same name: one job
+    await testDb.database.pool.query(
+      `insert into name_lookups (name, name_normalized, known, model, prompt_version, method, provider, updated_at)
+       values ('Memory Name', 'memory name', true, 'm', 'v', 'memory', null, now()),
+              ('Unsure Name', 'unsure name', false, 'm', 'v', 'search', null, now() - interval '31 days'),
+              ('Searched Name', 'searched name', true, 'm', 'v', 'search', 'gemini', now()),
+              ('Recent Unsure', 'recent unsure', false, 'm', 'v', 'search', null, now())`,
+    );
+    expect(await redoLookups(testDb.database.db, boss)).toBe(2);
+    expect((await lookupJobs()).map((j) => j.name).sort()).toEqual(['Memory Name', 'Unsure Name']);
+    // Running it again while the jobs wait adds nothing.
+    expect(await redoLookups(testDb.database.db, boss)).toBe(0);
+
+    // Once answered with search, there is nothing left to redo.
+    const model = fakeModel({ lookup: ANSWER });
+    for (const job of await lookupJobs()) await runLookup(deps(model.llm), job);
+    await testDb.database.pool.query(`delete from pgboss.job`);
+    expect(await redoLookups(testDb.database.db, boss)).toBe(0);
+    expect(model.bodies).toHaveLength(2);
   });
 
   it('waits while messages are being extracted', async () => {

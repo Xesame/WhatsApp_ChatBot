@@ -2,7 +2,7 @@ import { usdToEgpRate } from '@reb/admin';
 import { loadConfigOrExit } from '@reb/config';
 import { createDatabase, MESSAGE_STATUSES } from '@reb/db';
 import { importSamples, parseSamples } from '@reb/ingest';
-import { exportUnits, reprocess, type ReprocessFilter } from '@reb/pipeline';
+import { exportUnits, redoLookups, reprocess, type ReprocessFilter } from '@reb/pipeline';
 import { startQueue } from '@reb/queue';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
@@ -17,7 +17,10 @@ const usage = `Usage:
   import <file.txt> [--group <name>] [--type developer|broker] [--keep-dates]
       Feed sample messages through the pipeline without WhatsApp: a WhatsApp "Export chat"
       file (attached files in the same folder) or a plain file with messages separated by ---.
-      Times move forward so the newest message is now, unless --keep-dates.`;
+      Times move forward so the newest message is now, unless --keep-dates.
+  lookup --redo-memory
+      Search the web again for project names whose saved developer / area came from Gemini's
+      memory (before lookups searched), or was "not sure" for over 30 days. Safe to run twice.`;
 
 const [command, ...rest] = process.argv.slice(2);
 const { values, positionals } = parseArgs({
@@ -33,10 +36,11 @@ const { values, positionals } = parseArgs({
     all: { type: 'boolean' },
     type: { type: 'string' },
     'keep-dates': { type: 'boolean' },
+    'redo-memory': { type: 'boolean' },
   },
   allowPositionals: true,
 });
-if (command !== 'reprocess' && command !== 'export' && command !== 'import') {
+if (!['reprocess', 'export', 'import', 'lookup'].includes(command ?? '')) {
   console.log(usage);
   process.exit(command ? 1 : 0);
 }
@@ -72,6 +76,17 @@ try {
     const count = await reprocess(database, boss, filter);
     await boss.stop({ graceful: true });
     console.log(`Queued ${count} message(s) for processing.`);
+  } else if (command === 'lookup') {
+    if (!values['redo-memory']) throw new Error('lookup needs --redo-memory');
+    const boss = await startQueue(config.DATABASE_URL, {
+      supervise: false,
+      onError: () => undefined,
+    });
+    const count = await redoLookups(database.db, boss);
+    await boss.stop({ graceful: true });
+    console.log(
+      `Queued ${count} name(s) to search again. The worker searches them one by one, after messages waiting for extraction.`,
+    );
   } else if (command === 'import') {
     const file = positionals.at(0);
     if (!file) throw new Error('import needs a file: import <file.txt>');
