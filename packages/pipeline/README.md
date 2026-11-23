@@ -2,14 +2,15 @@
 
 The processing steps the worker runs for each message, plus reprocessing and export.
 
-| File               | What it does                                                                                                      |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `src/steps.ts`     | `preprocess`, `classify`, `extract` jobs; `runClassification` / `runExtraction`, shared with `pnpm eval`          |
-| `src/context.ts`   | Builds what the model reads: the message, plus the message it replies to (or the original, for an edit), scrubbed |
-| `src/prefilter.ts` | Free keyword check before any model call                                                                          |
-| `src/entities.ts`  | Name → canonical city / developer / project (exact, contained, fuzzy)                                             |
-| `src/admin.ts`     | `reprocess()` (send messages through again) and `exportUnits()` (Excel)                                           |
-| `src/recheck.ts`   | `recheckWaitingUnits()`: after a name is learned, fixes waiting units in place (never ones Hassan reviewed)       |
+| File               | What it does                                                                                                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/steps.ts`     | `preprocess`, `classify`, `extract` jobs; `runClassification` / `runExtraction`, shared with `pnpm eval`                                                                    |
+| `src/context.ts`   | Builds what the model reads: the message, plus the message it replies to (or the original, for an edit), scrubbed                                                           |
+| `src/prefilter.ts` | Free keyword check before any model call                                                                                                                                    |
+| `src/entities.ts`  | Name → canonical city / developer / project (exact, contained, fuzzy)                                                                                                       |
+| `src/admin.ts`     | `reprocess()` (send messages through again) and `exportUnits()` (Excel)                                                                                                     |
+| `src/lookup.ts`    | Name lookups: a live web search for an unknown project's developer and area (`queueLookups`, `runLookup`, `redoLookups` for `lookup --redo-memory`, `lookupFor` for Review) |
+| `src/recheck.ts`   | `recheckWaitingUnits()`: after a name is learned, fixes waiting units in place (never ones Hassan reviewed)                                                                 |
 
 **Flow**
 
@@ -34,3 +35,4 @@ preprocess ──► classify ──► extract ──► units
 - **The model reads, code decides.** `runExtraction` gets raw phrases from the model, then matches names (`entities.ts`) and normalizes every field (`@reb/normalize`): numbers, currencies, the no-invention check, confidence and review reasons.
 - **Re-check in place.** When Hassan adds a project, a spelling, or merges or renames an entry, the API runs `recheckWaitingUnits()` right after the change is saved and shows the counts ("Re-checked N waiting units, M cleared"). It matches each waiting unit's names again as the broker wrote them and recomputes its names, review reasons and confidence exactly as a fresh extraction would; the unit keeps its id and is never merged into another unit. Units Hassan touched in Review are skipped (checked again with the row locked). Units flagged on arrival are included even once cleared, so removing a learned spelling puts them back in the queue. Older units without `extras.written` get their names read back from `extras.unmatched` and the quoted names in their reasons. It is synchronous rather than a queue job: a few hundred units at most, no model calls. Running it twice changes nothing.
 - **Media waits for Phase 3.** Images, PDFs and videos are marked `skipped` with the reason "Media extraction arrives in Phase 3"; `reprocess --status skipped` sends them through again once it exists. Voice notes are not processed (decided with Hassan).
+- **Name lookups search, never remember.** `runLookup()` asks the `LLM_LOOKUP_MODELS` (Gemini with Google Search, then Groq browser search) about the project name only, and stores the answer with who searched and up to 3 sources. If nobody could search it stores "no answer", asked again after 30 days like "not sure". Older answers from Gemini's memory (`method = 'memory'`) count as stale, so they are searched again the next time a unit needs them, or all at once with `lookup --redo-memory`. The answer is only a hint in Review, never written into a unit.

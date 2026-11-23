@@ -2,13 +2,14 @@
 
 The model client and the prompts.
 
-| File                                        | What it does                                                                                                                                         |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/client.ts`                             | `LlmClient.callJson()`: sends a strict JSON-schema request, validates the answer, retries once with the error, and falls back to the next model      |
-| `src/models.ts`                             | Providers (Gemini, Groq, OpenRouter, Cerebras: all OpenAI-compatible), the `provider:model` list format, `apiKeysFrom()`; prices for the cost column |
-| `src/rate-limit.ts`                         | Keeps each model under its requests-per-minute limit by waiting, not failing                                                                         |
-| `src/privacy.ts`                            | `scrubPersonalData()`: replaces phone numbers, e-mails and @mentions with `[phone]`, `[email]`, `[mention]`                                          |
-| `prompts/classify.ts`, `prompts/extract.ts` | The prompts, each with a `VERSION` string                                                                                                            |
+| File                                                                                      | What it does                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/client.ts`                                                                           | `LlmClient.callJson()`: sends a strict JSON-schema request, validates the answer, retries once with the error, and falls back to the next model                                                                   |
+| `src/models.ts`                                                                           | Providers (Gemini, Groq, OpenRouter, Cerebras: all OpenAI-compatible), the `provider:model` list format, `apiKeysFrom()`; prices for the cost column                                                              |
+| `src/search.ts`                                                                           | `LlmClient.callSearch()` helpers: questions answered from a live web search (Gemini's own endpoint with Google Search; Groq with `browser_search`), proof that a search ran, up to 3 sources, `parseJsonAnswer()` |
+| `src/rate-limit.ts`                                                                       | Keeps each model under its requests-per-minute limit by waiting, not failing                                                                                                                                      |
+| `src/privacy.ts`                                                                          | `scrubPersonalData()`: replaces phone numbers, e-mails and @mentions with `[phone]`, `[email]`, `[mention]`                                                                                                       |
+| `prompts/classify.ts`, `prompts/extract.ts`, `prompts/lookup.ts`, `prompts/transcribe.ts` | The prompts, each with a `VERSION` string                                                                                                                                                                         |
 
 **Why it is designed this way**
 
@@ -19,3 +20,4 @@ The model client and the prompts.
 - **Privacy, twice.** Text is scrubbed before it is put into a prompt, and the client refuses to send any request that still contains a phone number or e-mail. Sender names and numbers are never stored, so they cannot be sent. Personal names typed inside a post (a signature) are not detectable and are not removed.
 - **Every call is recorded.** Each attempt (request without the API key, raw answer, tokens, cost, latency, status) is returned for `extraction_runs`.
 - **Prompt versions.** Changing a prompt means changing its `VERSION` (e.g. `extract-2026-10-27.1`) and running `pnpm eval` before deploying.
+- **Web-search lookups never use memory.** `callSearch()` (project-name lookups) sends each model the request with its provider's search tool on: Gemini through its own `generateContent` endpoint with `google_search` (the OpenAI-compatible endpoint cannot turn search on), Groq through chat completions with `browser_search`. An answer counts only with proof that a search ran (Gemini `groundingMetadata`, Groq `executed_tools`); otherwise the next model is tried, and with none left the result is no answer. It never falls back to a call without search. Search calls cannot use JSON mode, so `parseJsonAnswer()` strips code fences and reads the first JSON object. Sources come only from what the provider returned (at most 3), never invented. Other providers are skipped.

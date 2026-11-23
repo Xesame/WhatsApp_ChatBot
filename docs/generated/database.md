@@ -188,6 +188,9 @@ erDiagram
     boolean known
     text model
     text prompt_version
+    text method
+    text provider
+    jsonb sources
     timestamp_with_time_zone created_at
     timestamp_with_time_zone updated_at
   }
@@ -642,24 +645,29 @@ Raw messages from watched groups, stored once and never changed by processing ex
 
 ## `name_lookups`
 
-What the model remembers about a project name we had not seen before. Only a hint on the Review page; never copied into a listing.
+What a live web search says about a project name we had not seen before (which developer, which area). Only a hint on the Review page; never copied into a listing.
 
 | Column | Type | Nullable | Keys | Meaning |
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | primary key | Identity primary key. |
 | `name` | text | no |  | The name as first written in a message. |
 | `name_normalized` | text | no |  | The name in comparable form. Unique: each name is asked about once. |
-| `developer` | text | yes |  | The developer the model named, or empty if it was unsure. |
-| `city` | text | yes |  | The city or area the model named, or empty if it was unsure. |
-| `known` | boolean | no |  | Whether the model said it recognises the project. |
-| `model` | text | no |  | Which model gave the answer. |
+| `developer` | text | yes |  | The developer the search found, or empty if it did not clearly say. |
+| `city` | text | yes |  | The city or area the search found, or empty if it did not clearly say. |
+| `known` | boolean | no |  | Whether the search clearly showed the project exists. False also when no model could search. |
+| `model` | text | no |  | Which model gave the answer (the last one tried when none could search). |
 | `prompt_version` | text | no |  | Which version of the lookup prompt was used. |
+| `method` | text | yes |  | `search` (a live web search) or `memory` (older answers from the model memory, asked again with search). |
+| `provider` | text | yes |  | `gemini` (Google Search) or `groq` (browser search): who searched. Empty when no model could search. |
+| `sources` | jsonb | yes |  | Up to 3 pages the search used, as `[{ url, title }]`. |
 | `created_at` | timestamp with time zone | no |  | When the row was created. |
 | `updated_at` | timestamp with time zone | no |  | When the row was last changed. |
 
 **Indexes and constraints**
 
 - Unique index `name_lookups_name_normalized_key` on (name_normalized)
+- Check `name_lookups_method_check`
+- Check `name_lookups_provider_check`
 
 ## `projects`
 
