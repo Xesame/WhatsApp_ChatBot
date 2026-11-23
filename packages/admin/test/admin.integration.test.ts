@@ -380,6 +380,40 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
       expect(await unitById(third?.id ?? 0)).toMatchObject({ reviewReasons: ['No bedrooms'] });
     });
 
+    it('picks the first listing message by time, then the oldest message, when times tie', async () => {
+      const { db } = testDb.database;
+      const {
+        message,
+        units: [first, second],
+      } = await priceList([{}, {}]);
+      // A later message lists the second unit too, with the same timestamp as its
+      // first source (one transaction stamps every row with the same time).
+      const [later] = await db
+        .insert(messages)
+        .values({
+          groupId,
+          waMessageId: `W${Math.random()}`,
+          senderHash: 's'.repeat(64),
+          sentAt: new Date('2026-11-21T10:00:00Z'),
+          text: 'repost',
+          status: 'processed',
+        })
+        .returning();
+      const stamp = new Date('2026-11-20T10:00:00Z');
+      await db.delete(unitSources).where(eq(unitSources.unitId, second?.id ?? 0));
+      // The later message's row goes in first, so table order alone would pick it.
+      await db.insert(unitSources).values([
+        { unitId: second?.id ?? 0, messageId: later?.id ?? 0, role: 'listing', createdAt: stamp },
+        { unitId: second?.id ?? 0, messageId: message.id, role: 'listing', createdAt: stamp },
+      ]);
+      await db
+        .update(unitSources)
+        .set({ createdAt: stamp })
+        .where(eq(unitSources.unitId, first?.id ?? 0));
+      expect((await unitView(db, first?.id ?? 0))?.siblings).toEqual({ count: 1 });
+      expect((await unitView(db, second?.id ?? 0))?.siblings).toEqual({ count: 1 });
+    });
+
     it('a Save passes on only the names the reviewer changed; Approve passes on all of them', async () => {
       // The pipeline guessed the project for the first line only (not confirmed by anyone).
       const {

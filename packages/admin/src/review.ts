@@ -192,13 +192,18 @@ export async function unitView(db: Db, unitId: number): Promise<UnitView | null>
   };
 }
 
-/** The message a unit was first listed in (its oldest `listing` source), or null. */
+/**
+ * The message a unit was first listed in (its oldest `listing` source), or
+ * null. unit_sources has no id column, and rows written in one transaction
+ * share a time, so equal times fall back to the oldest message id; the same
+ * order is used everywhere "first listing" is read.
+ */
 async function listingMessageOf(db: Db, unitId: number): Promise<number | null> {
   const [source] = await db
     .select({ messageId: unitSources.messageId })
     .from(unitSources)
     .where(and(eq(unitSources.unitId, unitId), eq(unitSources.role, 'listing')))
-    .orderBy(asc(unitSources.createdAt))
+    .orderBy(asc(unitSources.createdAt), asc(unitSources.messageId))
     .limit(1);
   return source?.messageId ?? null;
 }
@@ -233,7 +238,7 @@ async function siblingsOf(db: Db, unit: UnitRow, lock = false): Promise<UnitRow[
   // that was only reposted here belongs to another message's list.
   const firstListing = sql`(select ${unitSources.messageId} from ${unitSources}
     where ${unitSources.unitId} = ${units.id} and ${unitSources.role} = 'listing'
-    order by ${unitSources.createdAt} asc limit 1)`;
+    order by ${unitSources.createdAt} asc, ${unitSources.messageId} asc limit 1)`;
   const query = db
     .select()
     .from(units)
@@ -376,7 +381,7 @@ export async function reviewUnitDetailed(
       .select({ messageId: unitSources.messageId })
       .from(unitSources)
       .where(and(eq(unitSources.unitId, unitId), eq(unitSources.role, 'listing')))
-      .orderBy(asc(unitSources.createdAt))
+      .orderBy(asc(unitSources.createdAt), asc(unitSources.messageId))
       .limit(1);
 
     // Plans: compared with the current ones, so resending the same list is a no-op.
