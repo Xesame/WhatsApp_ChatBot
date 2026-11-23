@@ -1,6 +1,17 @@
 import { containsPersonalData } from './privacy.ts';
 import { costOf, modelLabel, PROVIDERS, type ModelRef, type ProviderName } from './models.ts';
 import { RateLimiter } from './rate-limit.ts';
+import {
+  canSearch,
+  geminiSearchRequest,
+  groqSearchRequest,
+  parseJsonAnswer,
+  readGeminiSearch,
+  readGroqSearch,
+  type SearchProvider,
+  type SearchReading,
+  type SearchSource,
+} from './search.ts';
 
 /** One part of a message: text, or an image (Phase 3, vision). */
 export type ContentPart =
@@ -61,6 +72,24 @@ export interface JsonCall<T> {
   jsonSchema: Record<string, unknown>;
   /** Checks the model's JSON; returns an error message to send back, or the data. */
   validate: (data: unknown) => { ok: true; data: T } | { ok: false; error: string };
+}
+
+/** A question answered from a live web search (no JSON mode: the prompt asks for JSON). */
+export interface SearchCall<T> {
+  promptVersion: string;
+  messages: ChatMessage[];
+  /** Checks the model's JSON; returns the data or what is wrong with it. */
+  validate: (data: unknown) => { ok: true; data: T } | { ok: false; error: string };
+}
+
+export interface SearchResult<T> {
+  /** The answer, or null when no model searched and answered. */
+  data: T | null;
+  /** Which model searched for the answer (null without an answer). */
+  searched: { provider: SearchProvider; model: string } | null;
+  /** Up to 3 pages the search used. */
+  sources: SearchSource[];
+  attempts: Attempt[];
 }
 
 export interface LlmClientOptions {
@@ -176,6 +205,69 @@ export class LlmClient {
     return { text: null, attempts };
   }
 
+  /**
+   * An answer from a live web search: each model in order is asked with its
+   * provider's search tool switched on (Gemini: Google Search; Groq:
+   * browser_search). An answer that shows no search was run, or is not the
+   * JSON asked for, does not count and the next model is tried. Never falls
+   * back to asking without search. Providers that cannot search, and models
+   * without an API key, are skipped.
+   */
+  async callSearch<T>(models: ModelRef[], call: SearchCall<T>): Promise<SearchResult<T>> {
+    this.refusePersonalData(call.messages);
+    const attempts: Attempt[] = [];
+    for (const ref of models) {
+      if (!this.options.apiKeys[ref.provider] || !canSearch(ref.provider)) continue;
+      const { attempt, reading } = await this.search(ref, ref.provider, call);
+      attempts.push(attempt);
+      if (attempt.status !== 'ok' || !reading) continue;
+      if (!reading.searched) {
+        attempt.status = 'invalid';
+        attempt.error = 'no web search';
+        continue;
+      }
+      const parsed = parseJsonAnswer(reading.text ?? '');
+      const checked =
+        parsed === undefined
+          ? { ok: false as const, error: 'not valid JSON' }
+          : call.validate(parsed);
+      if (!checked.ok) {
+        attempt.status = 'invalid';
+        attempt.error = checked.error;
+        continue;
+      }
+      return {
+        data: checked.data,
+        searched: { provider: ref.provider, model: ref.model },
+        sources: reading.sources,
+        attempts,
+      };
+    }
+    return { data: null, searched: null, sources: [], attempts };
+  }
+
+  private async search<T>(
+    ref: ModelRef,
+    provider: SearchProvider,
+    call: SearchCall<T>,
+  ): Promise<{ attempt: Attempt; reading: SearchReading | null }> {
+    const key = this.options.apiKeys[provider] ?? '';
+    if (provider === 'gemini') {
+      const { url, body } = geminiSearchRequest(ref.model, call.messages);
+      return this.exchange(ref, call.promptVersion, url, { 'x-goog-api-key': key }, body, (json) =>
+        readGeminiSearch(json),
+      );
+    }
+    return this.exchange(
+      ref,
+      call.promptVersion,
+      `${PROVIDERS[provider].baseUrl}/chat/completions`,
+      { authorization: `Bearer ${key}` },
+      groqSearchRequest(ref.model, call.messages),
+      (json) => readGroqSearch(json),
+    );
+  }
+
   /** Text parts must be scrubbed; images are sent as they are (approved by Hassan). */
   private refusePersonalData(messages: ChatMessage[]): void {
     for (const message of messages) {
@@ -213,6 +305,36 @@ export class LlmClient {
       temperature: 0,
       ...(responseFormat ? { response_format: responseFormat } : {}),
     };
+    const { attempt } = await this.exchange(
+      ref,
+      promptVersion,
+      `${provider.baseUrl}/chat/completions`,
+      { authorization: `Bearer ${this.options.apiKeys[ref.provider] ?? ''}` },
+      body,
+      (json) => {
+        const response = json as CompletionResponse;
+        return {
+          text: response.choices?.[0]?.message?.content ?? null,
+          inputTokens: response.usage?.prompt_tokens ?? null,
+          outputTokens: response.usage?.completion_tokens ?? null,
+        };
+      },
+    );
+    return attempt;
+  }
+
+  /**
+   * One HTTP request to one model, waiting for a free slot under the rate
+   * limit first. Rate limits, timeouts and errors become the attempt's status.
+   */
+  private async exchange<R extends ReadResult>(
+    ref: ModelRef,
+    promptVersion: string,
+    url: string,
+    headers: Record<string, string>,
+    body: Record<string, unknown>,
+    read: (json: unknown) => R,
+  ): Promise<{ attempt: Attempt; reading: R | null }> {
     const base: Omit<Attempt, 'status' | 'error' | 'latencyMs' | 'rawOutput'> = {
       provider: ref.provider,
       model: ref.model,
@@ -226,29 +348,28 @@ export class LlmClient {
     await this.limiter.acquire(modelLabel(ref));
     const started = this.now();
     try {
-      const response = await this.fetchFn(`${PROVIDERS[ref.provider].baseUrl}/chat/completions`, {
+      const response = await this.fetchFn(url, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${this.options.apiKeys[ref.provider] ?? ''}`,
-        },
+        headers: { 'content-type': 'application/json', ...headers },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(this.options.timeoutMs),
       });
       const text = await response.text();
       if (!response.ok) throw new HttpError(response.status, text);
-      const json = JSON.parse(text) as CompletionResponse;
-      const inputTokens = json.usage?.prompt_tokens ?? null;
-      const outputTokens = json.usage?.completion_tokens ?? null;
+      const reading = read(JSON.parse(text));
+      const { inputTokens, outputTokens } = reading;
       return {
-        ...base,
-        rawOutput: json.choices?.[0]?.message?.content ?? null,
-        inputTokens,
-        outputTokens,
-        costUsd: costOf(ref, inputTokens ?? 0, outputTokens ?? 0, this.options.freeTier),
-        latencyMs: this.now() - started,
-        status: 'ok',
-        error: null,
+        attempt: {
+          ...base,
+          rawOutput: reading.text,
+          inputTokens,
+          outputTokens,
+          costUsd: costOf(ref, inputTokens ?? 0, outputTokens ?? 0, this.options.freeTier),
+          latencyMs: this.now() - started,
+          status: 'ok',
+          error: null,
+        },
+        reading,
       };
     } catch (error) {
       const latencyMs = this.now() - started;
@@ -259,9 +380,18 @@ export class LlmClient {
           : error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
             ? 'timeout'
             : 'error';
-      return { ...base, rawOutput: null, latencyMs, status, error: message };
+      return {
+        attempt: { ...base, rawOutput: null, latencyMs, status, error: message },
+        reading: null,
+      };
     }
   }
+}
+
+interface ReadResult {
+  text: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
 }
 
 /** Some models wrap JSON in ```json fences even when asked not to. */

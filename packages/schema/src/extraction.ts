@@ -99,14 +99,14 @@ export const classificationSchema = z.strictObject({
 });
 
 /**
- * The model's answer when asked what it remembers about a project name
- * (the "names from Gemini's memory" lookup). Only names go in and out.
- * `known: false` with two nulls means "I am not sure".
+ * The model's answer after a web search for a project name (the name
+ * lookups). Only names go in and out. `known: false` with two nulls means
+ * "the search did not clearly say".
  */
 export const lookupResultSchema = z.strictObject({
-  known: z.boolean().describe('true only if you are confident this project exists in Egypt'),
-  developer: z.string().nullable().describe('Developer that builds it, or null if unsure'),
-  city: z.string().nullable().describe('City or area it is in, or null if unsure'),
+  known: z.boolean().describe('true only if the search results clearly show this project exists'),
+  developer: z.string().nullable().describe('Developer that builds it, or null if not clear'),
+  city: z.string().nullable().describe('City or area it is in, or null if not clear'),
 });
 
 export type RawPaymentPlan = z.infer<typeof rawPaymentPlanSchema>;

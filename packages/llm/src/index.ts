@@ -11,6 +11,8 @@ export {
   type TextCall,
   type JsonCall,
   type LlmClientOptions,
+  type SearchCall,
+  type SearchResult,
 } from './client.ts';
 export {
   apiKeysFrom,
@@ -24,3 +26,11 @@ export {
 } from './models.ts';
 export { containsPersonalData, scrubPersonalData } from './privacy.ts';
 export { RateLimiter } from './rate-limit.ts';
+export {
+  canSearch,
+  MAX_SOURCES,
+  parseJsonAnswer,
+  SEARCH_PROVIDERS,
+  type SearchProvider,
+  type SearchSource,
+} from './search.ts';
