@@ -83,7 +83,11 @@ export const rawUnitSchema = z.strictObject({
 });
 
 export const extractionResultSchema = z.strictObject({
-  units: z.array(rawUnitSchema).describe('One entry per unit type or named unit offered'),
+  units: z
+    .array(rawUnitSchema)
+    .describe(
+      'One entry per unit type or named unit offered, or per priced line in a list of units',
+    ),
 });
 
 export const classificationSchema = z.strictObject({
