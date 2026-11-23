@@ -1,7 +1,7 @@
 import { nameLookups, units, type Db, type LookupSource } from '@reb/db';
 import { canSearch, lookupPrompt, modelLabel, parseModelList, type ModelRef } from '@reb/llm';
 import { normalizeName } from '@reb/normalize';
-import type { PgBoss } from '@reb/queue';
+import { queueSettings, type PgBoss } from '@reb/queue';
 import { lookupResultSchema, type LookupResult } from '@reb/schema';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { RetryableError, type PipelineDeps } from './steps.ts';
@@ -39,6 +39,13 @@ export const DEFAULT_LOOKUP_MODELS = 'gemini:gemini-flash-latest,groq:openai/gpt
 
 /** How long a "not sure" answer is trusted before we ask again. */
 export const UNKNOWN_RETRY_DAYS = 30;
+/** How long an unreadable search answer is trusted before we ask again (days). */
+export const UNUSABLE_RETRY_DAYS = 1;
+/**
+ * Most runs one name's lookup gets in all: its retries plus every time it
+ * was queued again while extraction was busy. Then it goes to Failed jobs.
+ */
+export const LOOKUP_MAX_ATTEMPTS = 20;
 /** How long a lookup waits before trying again while extraction is busy (seconds). */
 export const LOOKUP_WAIT_SECONDS = 60;
 
@@ -52,6 +59,8 @@ interface LookupUnit {
 export interface LookupJob {
   name: string;
   developer: string | null;
+  /** Runs already used by earlier jobs for this name (see LOOKUP_MAX_ATTEMPTS). */
+  attempt?: number;
 }
 
 const firstName = (value: unknown): string | null => {
@@ -84,14 +93,22 @@ export function needsLookup(unit: LookupUnit): LookupJob | null {
 
 /**
  * An answer that still counts: one from a web search that is either known,
- * or "not sure" and under 30 days old. Answers from memory never count.
+ * "not sure" and under 30 days old, or unreadable and under 1 day old.
+ * Answers from memory never count.
  */
 const fresh = () =>
   and(
     eq(nameLookups.method, 'search'),
     or(
       eq(nameLookups.known, true),
-      sql`${nameLookups.updatedAt} > now() - make_interval(days => ${UNKNOWN_RETRY_DAYS})`,
+      and(
+        eq(nameLookups.unusable, false),
+        sql`${nameLookups.updatedAt} > now() - make_interval(days => ${UNKNOWN_RETRY_DAYS})`,
+      ),
+      and(
+        eq(nameLookups.unusable, true),
+        sql`${nameLookups.updatedAt} > now() - make_interval(days => ${UNUSABLE_RETRY_DAYS})`,
+      ),
     ),
   );
 
@@ -167,7 +184,13 @@ export async function redoLookups(db: Db, boss: PgBoss): Promise<number> {
   const rows = await db
     .select({ id: units.id })
     .from(units)
-    .where(or(isNull(units.developerId), isNull(units.cityId)));
+    .where(
+      and(
+        or(isNull(units.developerId), isNull(units.cityId)),
+        eq(units.needsReview, true),
+        inArray(units.status, ['active', 'stale']),
+      ),
+    );
   const ids = rows.map((r) => r.id);
   let queued = 0;
   for (let i = 0; i < ids.length; i += 500) {
@@ -176,12 +199,35 @@ export async function redoLookups(db: Db, boss: PgBoss): Promise<number> {
   return queued;
 }
 
-/** Puts a lookup back in the queue to try again in a minute (extraction was busy). */
-export async function queueLookupLater(boss: PgBoss, job: LookupJob): Promise<void> {
-  await boss.send('lookup', job, {
-    singletonKey: keyOf(normalizeName(job.name)),
-    startAfter: LOOKUP_WAIT_SECONDS,
-  });
+/**
+ * Puts a lookup back in the queue to try again in a minute (extraction was
+ * busy). The new job is a fresh job to the queue, so it carries the runs
+ * used so far (`attempt`: earlier jobs, plus this job's `retryCount`
+ * failed tries and this run) and gets only the retries left within
+ * LOOKUP_MAX_ATTEMPTS. With none left it throws, and the current job ends
+ * in Failed jobs as usual.
+ */
+export async function queueLookupLater(
+  boss: PgBoss,
+  job: LookupJob,
+  retryCount: number,
+): Promise<void> {
+  const attempt = (job.attempt ?? 0) + retryCount + 1;
+  const runsLeft = LOOKUP_MAX_ATTEMPTS - attempt;
+  if (runsLeft <= 0) {
+    throw new Error(
+      `Name lookup for "${job.name}" gave up after ${LOOKUP_MAX_ATTEMPTS} attempts (extraction kept it waiting)`,
+    );
+  }
+  await boss.send(
+    'lookup',
+    { name: job.name, developer: job.developer, attempt },
+    {
+      singletonKey: keyOf(normalizeName(job.name)),
+      startAfter: LOOKUP_WAIT_SECONDS,
+      retryLimit: Math.min(queueSettings.lookup.retryLimit, runsLeft - 1),
+    },
+  );
 }
 
 /** True while messages are waiting for, or in the middle of, extraction. */
@@ -262,6 +308,30 @@ export async function runLookup(deps: PipelineDeps, job: LookupJob): Promise<'do
   // a search, or not the JSON asked for): nothing is saved, and the job is
   // retried soon by the queue (its usual retries, then Failed jobs). Only
   // a search that ran but did not clearly say is saved as "not sure".
+  // A search ran, but its answer could not be read: saved as "not sure"
+  // with who searched, and asked again after a day (not 30, not at once:
+  // a retry right away would likely spend the quota on the same result).
+  if (!result.data && result.unusable) {
+    const answer = {
+      known: false,
+      developer: null,
+      city: null,
+      model: modelLabel(result.unusable),
+      promptVersion: lookupPrompt.VERSION,
+      method: 'search' as const,
+      provider: result.unusable.provider,
+      sources: [],
+      unusable: true,
+    };
+    await db
+      .insert(nameLookups)
+      .values({ name: job.name, nameNormalized: normalized, ...answer })
+      .onConflictDoUpdate({
+        target: nameLookups.nameNormalized,
+        set: { ...answer, updatedAt: new Date() },
+      });
+    return 'done';
+  }
   if (!result.data || !result.searched) {
     const tried = result.attempts.map((a) => `${modelLabel(a)}: ${a.error ?? a.status}`);
     throw new RetryableError(
@@ -281,6 +351,7 @@ export async function runLookup(deps: PipelineDeps, job: LookupJob): Promise<'do
     method: 'search' as const,
     provider: result.searched.provider,
     sources: result.sources,
+    unusable: false,
   };
   await db
     .insert(nameLookups)

@@ -14,6 +14,8 @@ import {
   lookupFor,
   needsLookup,
   queueLookups,
+  LOOKUP_MAX_ATTEMPTS,
+  queueLookupLater,
   recheckWaitingUnits,
   redoLookups,
   RetryableError,
@@ -284,6 +286,82 @@ describe.skipIf(!testDatabaseUrl)('name lookups (real Postgres and pg-boss, fake
     expect(await lookupRows()).toMatchObject([{ known: true, provider: 'gemini' }]);
   });
 
+  it('saves an unreadable search answer as "not sure" for one day only', async () => {
+    const unit = await waitingUnit();
+    const model = fakeModel({
+      lookup: ANSWER,
+      geminiSearch: 'bad-json',
+      groqSearch: 'rate-limited',
+    });
+    expect(await runLookup(deps(model.llm), { name: 'Lumia Lagoons', developer: null })).toBe(
+      'done',
+    );
+    expect(await lookupRows()).toMatchObject([
+      {
+        known: false,
+        developer: null,
+        city: null,
+        method: 'search',
+        provider: 'gemini',
+        unusable: true,
+      },
+    ]);
+    // Fresh for a day: not asked again yet.
+    expect(await queueLookups(testDb.database.db, boss, [unit.id])).toBe(0);
+    await ageRow(2);
+    expect(await queueLookups(testDb.database.db, boss, [unit.id])).toBe(1);
+    // A good answer later clears the mark.
+    const good = fakeModel({ lookup: ANSWER });
+    await runLookup(deps(good.llm), { name: 'Lumia Lagoons', developer: null });
+    expect(await lookupRows()).toMatchObject([{ known: true, unusable: false }]);
+  });
+
+  it('gives a lookup at most 20 runs in total, however often it waits', async () => {
+    const jobRows = async () =>
+      (
+        await testDb.database.pool.query<{
+          data: { name: string; attempt?: number };
+          retry_limit: number;
+        }>(`select data, retry_limit from pgboss.job where name = 'lookup' order by created_on`)
+      ).rows;
+    // A first job that waited after 3 failed tries: its runs so far count.
+    await queueLookupLater(boss, { name: 'Lumia Lagoons', developer: null }, 3);
+    expect(await jobRows()).toMatchObject([
+      { data: { name: 'Lumia Lagoons', attempt: 4 }, retry_limit: 8 },
+    ]);
+    await testDb.database.pool.query(`delete from pgboss.job`);
+    // Near the end of the budget, the new job gets only the runs left.
+    await queueLookupLater(boss, { name: 'Lumia Lagoons', developer: null, attempt: 17 }, 0);
+    expect(await jobRows()).toMatchObject([{ data: { attempt: 18 }, retry_limit: 1 }]);
+    await testDb.database.pool.query(`delete from pgboss.job`);
+    // Budget used up: no new job, the current one fails.
+    await expect(
+      queueLookupLater(
+        boss,
+        { name: 'Lumia Lagoons', developer: null, attempt: LOOKUP_MAX_ATTEMPTS - 1 },
+        0,
+      ),
+    ).rejects.toThrow(/gave up after 20/);
+    expect(await jobRows()).toEqual([]);
+  });
+
+  it('retries a lookup with growing waits, 8 times (also on an existing queue)', async () => {
+    const settings = async () =>
+      (
+        await testDb.database.pool.query<{ retry_limit: number; retry_backoff: boolean }>(
+          `select retry_limit, retry_backoff from pgboss.queue where name = 'lookup'`,
+        )
+      ).rows[0];
+    expect(await settings()).toEqual({ retry_limit: 8, retry_backoff: true });
+    // A database made with the old settings is brought up to date at start.
+    await testDb.database.pool.query(
+      `update pgboss.queue set retry_limit = 20, retry_backoff = false where name = 'lookup'`,
+    );
+    const again = await startQueue(testDb.url, { supervise: false, onError: () => undefined });
+    await again.stop({ graceful: false });
+    expect(await settings()).toEqual({ retry_limit: 8, retry_backoff: true });
+  });
+
   it('saves "not sure" when a search ran but did not clearly say', async () => {
     const unsure = fakeModel({ lookup: { known: false, developer: null, city: null } });
     await runLookup(deps(unsure.llm), { name: 'Lumia Lagoons', developer: null });
@@ -331,6 +409,18 @@ describe.skipIf(!testDatabaseUrl)('name lookups (real Postgres and pg-boss, fake
               ('Unsure Name', 'unsure name', false, 'm', 'v', 'search', null, now() - interval '31 days'),
               ('Searched Name', 'searched name', true, 'm', 'v', 'search', 'gemini', now()),
               ('Recent Unsure', 'recent unsure', false, 'm', 'v', 'search', null, now())`,
+    );
+    // A unit nobody needs to review (approved) or that is sold: its name is not redone.
+    const approved = await waitingUnit('Approved Name');
+    const sold = await waitingUnit('Sold Name');
+    await testDb.database.pool.query(`update units set needs_review = false where id = $1`, [
+      approved.id,
+    ]);
+    await testDb.database.pool.query(`update units set status = 'sold' where id = $1`, [sold.id]);
+    await testDb.database.pool.query(
+      `insert into name_lookups (name, name_normalized, known, model, prompt_version, method)
+       values ('Approved Name', 'approved name', true, 'm', 'v', 'memory'),
+              ('Sold Name', 'sold name', true, 'm', 'v', 'memory')`,
     );
     expect(await redoLookups(testDb.database.db, boss)).toBe(2);
     expect((await lookupJobs()).map((j) => j.name).sort()).toEqual(['Memory Name', 'Unsure Name']);

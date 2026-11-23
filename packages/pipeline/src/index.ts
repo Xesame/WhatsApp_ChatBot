@@ -28,6 +28,7 @@ export { exportUnits, reprocess, type ReprocessFilter } from './admin.ts';
 export { applyExtraction, markStale, retract, type ApplyInput, type ApplyResult } from './apply.ts';
 export {
   DEFAULT_LOOKUP_MODELS,
+  LOOKUP_MAX_ATTEMPTS,
   LOOKUP_WAIT_SECONDS,
   lookupFor,
   needsLookup,
@@ -36,6 +37,7 @@ export {
   redoLookups,
   runLookup,
   UNKNOWN_RETRY_DAYS,
+  UNUSABLE_RETRY_DAYS,
   type LookupJob,
   type SavedLookup,
 } from './lookup.ts';

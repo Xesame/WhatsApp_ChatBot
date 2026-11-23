@@ -55,7 +55,7 @@ await runService('worker', async ({ config, logger, database }) => {
     queue: Q,
     run: (
       data: ReturnType<typeof parsePayload<Q>>,
-      job: { lastAttempt: boolean },
+      job: { lastAttempt: boolean; retryCount: number },
     ) => Promise<unknown>,
   ) =>
     boss.work(queue, { batchSize: 1, localConcurrency: 2 }, async ([job]) => {
@@ -63,6 +63,7 @@ await runService('worker', async ({ config, logger, database }) => {
       try {
         await run(parsePayload(queue, job.data), {
           lastAttempt: job.retryCount >= queueSettings[queue].retryLimit,
+          retryCount: job.retryCount,
         });
       } catch (error) {
         if (error instanceof RetryableError)
@@ -85,8 +86,9 @@ await runService('worker', async ({ config, logger, database }) => {
   // browser search): one search per unknown project name. It waits (a
   // minute at a time) while messages are being extracted, and does nothing
   // without a search model that has an API key.
-  await handle('lookup', async (data) => {
-    if ((await runLookup(deps, data)) === 'waiting') await queueLookupLater(boss, data);
+  await handle('lookup', async (data, job) => {
+    if ((await runLookup(deps, data)) === 'waiting')
+      await queueLookupLater(boss, data, job.retryCount);
   });
 
   // Without a model API key, messages wait in the classify queue (kept 60

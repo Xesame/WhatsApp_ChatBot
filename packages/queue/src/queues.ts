@@ -20,11 +20,17 @@ export const jobPayloads = {
     intent: z.enum(['listing', 'price_update', 'sold']),
   }),
   /**
-   * Ask the model what it remembers about a project name nobody has seen
-   * before. Only the name (and the developer, if the message gave one) is
-   * sent: never message text, sender names or phone numbers.
+   * Search the web for a project name nobody has seen before. Only the name
+   * (and the developer, if the message gave one) is sent: never message
+   * text, sender names or phone numbers. `attempt`: runs already used by
+   * earlier jobs for this name (a lookup that waits is queued again as a
+   * new job), so the total stays within LOOKUP_MAX_ATTEMPTS.
    */
-  lookup: z.object({ name: z.string().min(1).max(200), developer: z.string().max(200).nullable() }),
+  lookup: z.object({
+    name: z.string().min(1).max(200),
+    developer: z.string().max(200).nullable(),
+    attempt: z.number().int().min(0).optional(),
+  }),
   /** Daily: mark units not seen for STALE_AFTER_DAYS as stale. */
   lifecycle: z.object({}),
 } as const;
@@ -60,9 +66,10 @@ export const queueSettings: Record<
   // fallback list, so wait longer before trying again (rate limits, outages).
   classify: { retryLimit: 6, retryDelay: 60, retryBackoff: true, retentionSeconds: 60 * 24 * 3600 },
   extract: { retryLimit: 6, retryDelay: 60, retryBackoff: true, retentionSeconds: 60 * 24 * 3600 },
-  // A lookup is a nice-to-have hint on the Review page, so it keeps trying
-  // gently at a steady pace (about 20 minutes in total) instead of backing off.
-  lookup: { retryLimit: 20, retryDelay: 60, retryBackoff: false, retentionSeconds: 30 * 24 * 3600 },
+  // A lookup fails only when no model got to search (quota, outage): wait
+  // longer each time (about 1, 2, 4, 8 ... minutes) so the free quota is
+  // not burned, 8 retries in all.
+  lookup: { retryLimit: 8, retryDelay: 60, retryBackoff: true, retentionSeconds: 30 * 24 * 3600 },
   lifecycle: {
     retryLimit: 3,
     retryDelay: 300,

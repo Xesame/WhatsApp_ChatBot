@@ -7,8 +7,8 @@ export function fakeModel(replies: {
   /** Answer to name lookups (a web search: Gemini generateContent or Groq browser_search). */
   lookup?: unknown;
   /** How each search provider replies to a lookup (default: searched, with two sources). */
-  geminiSearch?: 'searched' | 'no-search' | 'rate-limited';
-  groqSearch?: 'searched' | 'no-search' | 'rate-limited';
+  geminiSearch?: 'searched' | 'no-search' | 'rate-limited' | 'bad-json';
+  groqSearch?: 'searched' | 'no-search' | 'rate-limited' | 'bad-json';
   /** Plain-text answer to image transcription requests. */
   transcription?: string;
   fail?: boolean;
@@ -59,7 +59,9 @@ export function fakeModel(replies: {
           JSON.stringify({
             candidates: [
               {
-                content: { parts: [{ text: fenced }] },
+                content: {
+                  parts: [{ text: replies.geminiSearch === 'bad-json' ? '{"known": tr' : fenced }],
+                },
                 ...(replies.geminiSearch === 'no-search'
                   ? {}
                   : {
@@ -93,7 +95,7 @@ export function fakeModel(replies: {
             choices: [
               {
                 message: {
-                  content: answer,
+                  content: replies.groqSearch === 'bad-json' ? 'no JSON here' : answer,
                   executed_tools:
                     replies.groqSearch === 'no-search'
                       ? []

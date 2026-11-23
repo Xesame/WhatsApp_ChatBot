@@ -28,6 +28,10 @@ export async function startQueue(
   for (const name of Object.keys(queueSettings) as QueueName[]) {
     if (!(await boss.getQueue(name))) {
       await boss.createQueue(name, queueSettings[name]);
+    } else {
+      // An existing queue keeps the settings it was created with, so bring
+      // it up to date when queueSettings change (safe to repeat).
+      await boss.updateQueue(name, queueSettings[name]);
     }
   }
   return boss;
