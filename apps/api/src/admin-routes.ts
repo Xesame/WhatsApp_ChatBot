@@ -7,6 +7,8 @@ import {
   getSetting,
   listEntities,
   mergeEntities,
+  pasteTestMessage,
+  readTestMessageAgain,
   removeAlias,
   renameEntity,
   retryJob,
@@ -14,6 +16,9 @@ import {
   reviewUnitDetailed,
   setSetting,
   stats,
+  testMessage,
+  testMessages,
+  testMessageSchema,
   unitView,
   usdToEgpRate,
 } from '@reb/admin';
@@ -430,6 +435,71 @@ export const adminRoutes: FastifyPluginCallback<AdminOptions & { database: Datab
     async (request) => {
       await retryJob(options.boss, request.params.queue, request.params.jobId);
       await log(request, 'job.retry', `job:${request.params.queue}:${request.params.jobId}`);
+      return { ok: true };
+    },
+  );
+
+  // Test a message: paste a sample message and watch the pipeline read it
+
+  api.post(
+    '/test-messages',
+    {
+      schema: {
+        tags: ['Operations'],
+        summary:
+          'Save a pasted sample message into the "Test messages" group and queue it to be read (pasting the same text again reads it again)',
+        body: testMessageSchema,
+      },
+    },
+    async (request, reply) => {
+      const result = await pasteTestMessage(database, options.boss, request.body);
+      await log(request, 'test_message.paste', `message:${result.messageId}`, {
+        posterType: request.body.posterType,
+        again: result.again,
+      });
+      return reply.code(201).send(result);
+    },
+  );
+
+  api.get(
+    '/test-messages',
+    {
+      schema: {
+        tags: ['Operations'],
+        summary: 'The last 10 test messages, newest first, with their status and listings',
+      },
+    },
+    () => testMessages(db, { limit: 10 }),
+  );
+
+  api.get(
+    '/test-messages/:id',
+    {
+      schema: {
+        tags: ['Operations'],
+        summary: 'One test message with its status and the listings it made',
+        params: z.object({ id }),
+      },
+    },
+    async (request, reply) =>
+      (await testMessage(db, request.params.id)) ??
+      reply.code(404).send({ error: 'Test message not found' }),
+  );
+
+  api.post(
+    '/test-messages/:id/read-again',
+    {
+      schema: {
+        tags: ['Operations'],
+        summary: 'Queue a test message to be read again',
+        params: z.object({ id }),
+      },
+    },
+    async (request, reply) => {
+      if (!(await readTestMessageAgain(database, options.boss, request.params.id))) {
+        return reply.code(404).send({ error: 'Test message not found' });
+      }
+      await log(request, 'test_message.read_again', `message:${request.params.id}`);
       return { ok: true };
     },
   );

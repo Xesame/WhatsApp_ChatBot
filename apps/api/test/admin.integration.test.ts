@@ -29,6 +29,7 @@ describe.skipIf(!testDatabaseUrl)('admin API (real Postgres, real Better Auth)',
   let mediaDir: string;
   let cookie = '';
   const retried: string[] = [];
+  const sent: { queue: string; data: unknown }[] = [];
 
   const as = (c: string) => ({ cookie: c, origin: PUBLIC_URL });
   const signIn = (email: string, password: string, ip = '10.1.1.1') =>
@@ -55,6 +56,10 @@ describe.skipIf(!testDatabaseUrl)('admin API (real Postgres, real Better Auth)',
         auth: createAuth(testDb.database.db, { secret: 'y'.repeat(32), baseUrl: PUBLIC_URL }),
         boss: {
           retry: (queue: string, id: string) => retried.push(`${queue}/${id}`),
+          send: (queue: string, data: unknown) => {
+            sent.push({ queue, data });
+            return Promise.resolve('job-id');
+          },
         } as unknown as PgBoss,
         mediaDir,
         publicUrl: PUBLIC_URL,
@@ -79,6 +84,7 @@ describe.skipIf(!testDatabaseUrl)('admin API (real Postgres, real Better Auth)',
       '/api/admin/groups',
       '/api/admin/media/1',
       '/api/admin/export.xlsx',
+      '/api/admin/test-messages',
     ]) {
       expect((await app.inject({ url })).statusCode, url).toBe(401);
     }
@@ -432,6 +438,58 @@ describe.skipIf(!testDatabaseUrl)('admin API (real Postgres, real Better Auth)',
     } finally {
       await boss.stop({ graceful: false });
     }
+  });
+
+  it('test a message: paste text, see its status and listings, read it again', async () => {
+    const post = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/admin/test-messages',
+        headers: { ...as(cookie), 'content-type': 'application/json' },
+        payload,
+      });
+    expect((await post({ text: '   ' })).statusCode).toBe(400);
+    expect((await post({ text: 'x'.repeat(20_001) })).statusCode).toBe(400);
+    expect((await post({ text: 'a', posterType: 'agent' })).statusCode).toBe(400);
+
+    sent.length = 0;
+    const created = await post({ text: 'شقة 3 غرف ميفيدا 9.8 مليون', posterType: 'developer' });
+    expect(created.statusCode).toBe(201);
+    const { messageId, again } = created.json<{ messageId: number; again: boolean }>();
+    expect(again).toBe(false);
+    expect(sent).toEqual([{ queue: 'preprocess', data: { messageId } }]);
+
+    const one = await app.inject({
+      url: `/api/admin/test-messages/${messageId}`,
+      headers: as(cookie),
+    });
+    expect(one.json()).toMatchObject({
+      id: messageId,
+      status: 'pending',
+      posterType: 'developer',
+      units: [],
+    });
+    const list = await app.inject({ url: '/api/admin/test-messages', headers: as(cookie) });
+    expect(list.json<{ id: number }[]>().map((m) => m.id)).toContain(messageId);
+
+    const again2 = await app.inject({
+      method: 'POST',
+      url: `/api/admin/test-messages/${messageId}/read-again`,
+      headers: as(cookie),
+    });
+    expect(again2.statusCode).toBe(200);
+    expect(sent).toHaveLength(2);
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/api/admin/test-messages/999999/read-again',
+      headers: as(cookie),
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const logged = await testDb.database.db.select().from(auditLog);
+    expect(logged.map((r) => r.action)).toEqual(
+      expect.arrayContaining(['test_message.paste', 'test_message.read_again']),
+    );
   });
 
   it('signs out', async () => {

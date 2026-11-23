@@ -174,6 +174,35 @@ Run a failed job again
 | path | `queue` | string | yes |
 | path | `jobId` | string (uuid) | yes |
 
+### `POST /api/admin/test-messages`
+
+Save a pasted sample message into the "Test messages" group and queue it to be read (pasting the same text again reads it again)
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| body | `text` | string | yes |
+| body | `posterType` | `"developer"` / `"broker"` | no |
+
+### `GET /api/admin/test-messages`
+
+The last 10 test messages, newest first, with their status and listings
+
+### `GET /api/admin/test-messages/{id}`
+
+One test message with its status and the listings it made
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+
+### `POST /api/admin/test-messages/{id}/read-again`
+
+Queue a test message to be read again
+
+| In | Name | Type | Required |
+| --- | --- | --- | --- |
+| path | `id` | integer (1–…) | yes |
+
 ## Settings
 
 ### `GET /api/admin/settings`
