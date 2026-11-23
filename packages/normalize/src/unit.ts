@@ -216,6 +216,22 @@ export function isNameReason(reason: string): boolean {
 }
 
 /**
+ * Which names a name reason is about, so setting those names can clear it
+ * (Review's "use this project for the other listings from this message").
+ * The two clash reasons ("Developer X does not build Y", "Project Y is not
+ * in Z") are about the project as well: choosing a project settles them.
+ * Not a name reason: [].
+ */
+export function nameReasonFields(reason: string): ('developer' | 'project' | 'city')[] {
+  if (!isNameReason(reason)) return [];
+  if (/^Developer ".*" does not build /.test(reason)) return ['developer', 'project'];
+  if (/^Project ".*" is not in ".*"; used the project's city$/.test(reason))
+    return ['city', 'project'];
+  const field = /^(developer|project|city) "/.exec(reason)?.[1];
+  return field ? [field as 'developer' | 'project' | 'city'] : [];
+}
+
+/**
  * Step 9: confidence is how much of what matters was found, and how surely.
  * Plain arithmetic in code, never the model (rule 4).
  */

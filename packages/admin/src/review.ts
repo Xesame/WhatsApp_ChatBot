@@ -15,10 +15,16 @@ import {
   type Db,
 } from '@reb/db';
 import { PRICE_FIELDS, snapshotOf } from '@reb/dedup';
-import { columnsFromPlan, normalizeName, type Suggestion, type WrittenNames } from '@reb/normalize';
+import {
+  columnsFromPlan,
+  nameReasonFields,
+  normalizeName,
+  type Suggestion,
+  type WrittenNames,
+} from '@reb/normalize';
 import { currentPlans, lookupFor } from '@reb/pipeline';
 import { editablePlansSchema, isEmptyPlan, unitSchema, type PaymentPlan } from '@reb/schema';
-import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { audit } from './audit.ts';
 import { addAlias, type EntityKind } from './entities.ts';
@@ -40,6 +46,7 @@ export const editableUnitSchema = unitSchema
     unitType: true,
     unitCode: true,
     floor: true,
+    building: true,
     finishingSpecs: true,
     minArea: true,
     maxArea: true,
@@ -109,6 +116,12 @@ export interface UnitView {
      */
     lookup: { developer: string | null; city: string | null } | null;
   };
+  /**
+   * Other listings from the same message still waiting for review, with the
+   * same project name as written: the ones "use this project for the other
+   * listings" would change.
+   */
+  siblings: { count: number };
 }
 
 async function nameOf(
@@ -175,7 +188,67 @@ export async function unitView(db: Db, unitId: number): Promise<UnitView | null>
     prices,
     plans: await currentPlans(db, unitId),
     learning: { ...learningOf(unit.extras), lookup: await rememberedNames(db, unit) },
+    siblings: { count: (await siblingsOf(db, unit)).length },
   };
+}
+
+/** The message a unit was first listed in (its oldest `listing` source), or null. */
+async function listingMessageOf(db: Db, unitId: number): Promise<number | null> {
+  const [source] = await db
+    .select({ messageId: unitSources.messageId })
+    .from(unitSources)
+    .where(and(eq(unitSources.unitId, unitId), eq(unitSources.role, 'listing')))
+    .orderBy(asc(unitSources.createdAt))
+    .limit(1);
+  return source?.messageId ?? null;
+}
+
+/**
+ * The project name as the message wrote it, for comparing: every written
+ * spelling, normalised the usual way (case, spaces, Arabic letter forms).
+ * No written name at all gives "", so two units without one count as the
+ * same.
+ */
+export function writtenProjectKey(extras: unknown): string {
+  const written = (extras ?? {}) as { written?: Partial<WrittenNames> };
+  return (written.written?.project ?? [])
+    .map((name) => normalizeName(name))
+    .filter(Boolean)
+    .sort()
+    .join('|');
+}
+
+/**
+ * A unit's "siblings": the other units first listed in the same message,
+ * still waiting for review (active or stale), whose project name as written
+ * is the same. One post often lists many units (a price list of 25 lines);
+ * they share the project, developer and area. A post can also mix projects
+ * (two compounds in one list), so only units with the same written project
+ * name count. `lock` locks the rows for an update in the same transaction.
+ */
+async function siblingsOf(db: Db, unit: UnitRow, lock = false): Promise<UnitRow[]> {
+  const messageId = await listingMessageOf(db, unit.id);
+  if (messageId === null) return [];
+  // The sibling's own oldest listing source must be this message: a unit
+  // that was only reposted here belongs to another message's list.
+  const firstListing = sql`(select ${unitSources.messageId} from ${unitSources}
+    where ${unitSources.unitId} = ${units.id} and ${unitSources.role} = 'listing'
+    order by ${unitSources.createdAt} asc limit 1)`;
+  const query = db
+    .select()
+    .from(units)
+    .where(
+      and(
+        ne(units.id, unit.id),
+        eq(units.needsReview, true),
+        inArray(units.status, ['active', 'stale']),
+        sql`${firstListing} = ${messageId}`,
+      ),
+    )
+    .orderBy(asc(units.id));
+  const rows = lock ? await query.for('update') : await query;
+  const key = writtenProjectKey(unit.extras);
+  return rows.filter((row) => writtenProjectKey(row.extras) === key);
 }
 
 /** Gemini's saved answer for this unit's project name, or null (no answer, or "not sure"). */
@@ -243,20 +316,49 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 export async function reviewUnit(
   database: Database,
   unitId: number,
-  input: {
-    action: ReviewAction;
-    changes?: unknown;
-    /**
-     * The unit's payment plans as the reviewer left them. Left out = untouched.
-     * Sent and different = stored as the newest source (see `currentPlans`).
-     */
-    paymentPlans?: unknown;
-    /** Spellings the reviewer ticked "remember": added to the unit's entity after the changes. */
-    remember?: { kind: EntityKind; alias: string }[];
-  },
+  input: ReviewInput,
   reviewerId: string | null,
   ipAddress?: string,
 ): Promise<UnitRow> {
+  return (await reviewUnitDetailed(database, unitId, input, reviewerId, ipAddress)).unit;
+}
+
+export interface ReviewInput {
+  action: ReviewAction;
+  changes?: unknown;
+  /**
+   * The unit's payment plans as the reviewer left them. Left out = untouched.
+   * Sent and different = stored as the newest source (see `currentPlans`).
+   */
+  paymentPlans?: unknown;
+  /** Spellings the reviewer ticked "remember": added to the unit's entity after the changes. */
+  remember?: { kind: EntityKind; alias: string }[];
+  /**
+   * The other listings from the same message (see `siblingsOf`). `apply`:
+   * give them this unit's project, developer and area. `approve`: approve
+   * them too; only honoured when this unit is approved.
+   */
+  siblings?: { apply: boolean; approve: boolean };
+}
+
+/** The names a review can pass on to the other listings of a message. */
+const SIBLING_FIELDS = [
+  ['developerId', 'developer'],
+  ['projectId', 'project'],
+  ['cityId', 'city'],
+] as const;
+
+/**
+ * Like `reviewUnit`, and also says how many other listings from the same
+ * message were changed (0 unless `input.siblings.apply`).
+ */
+export async function reviewUnitDetailed(
+  database: Database,
+  unitId: number,
+  input: ReviewInput,
+  reviewerId: string | null,
+  ipAddress?: string,
+): Promise<{ unit: UnitRow; siblings: number }> {
   const asked = editableUnitSchema.parse(input.changes ?? {});
   // Order is the order sent; positions are renumbered so they can't clash.
   // A row left completely empty ("+ Add plan" with nothing typed) is not a plan.
@@ -427,8 +529,71 @@ export async function reviewUnit(
       if (entityId === null || !normalizeName(alias)) continue;
       await addAlias(tx, kind, entityId, alias, { source: 'review', reviewUnitId: unitId });
     }
-    return saved;
+
+    // The other listings from this message. Rejecting a unit says nothing
+    // about its siblings' names, so only a save or an approve passes them on.
+    let siblings = 0;
+    if (input.siblings?.apply && input.action !== 'reject' && source) {
+      const approve = input.siblings.approve && input.action === 'approve';
+      for (const sibling of await siblingsOf(tx, saved, true)) {
+        if (await passNamesOn(tx, saved, sibling, source.messageId, approve, reviewerId)) {
+          siblings += 1;
+        }
+      }
+    }
+    return { unit: saved, siblings };
   });
+}
+
+/**
+ * Gives one sibling the reviewed unit's names, recorded as review
+ * corrections so the name re-check leaves it alone afterwards. Only the
+ * names change (never prices, areas or plans): each name the reviewed unit
+ * has and the sibling lacks or has differently. The sibling's name reasons
+ * for those names go; with no reason left it no longer waits for review.
+ * `approve` approves it outright, like the reviewed unit. Returns whether
+ * anything changed, so running the same review twice changes nothing more.
+ */
+async function passNamesOn(
+  tx: Db,
+  reviewed: UnitRow,
+  sibling: UnitRow,
+  messageId: number,
+  approve: boolean,
+  reviewerId: string | null,
+): Promise<boolean> {
+  const update: Partial<typeof units.$inferInsert> = {};
+  const corrections: (typeof reviewCorrections.$inferInsert)[] = [];
+  const settled = new Set<string>();
+  for (const [field, kind] of SIBLING_FIELDS) {
+    const value = reviewed[field];
+    if (value === null || value === sibling[field]) continue;
+    update[field] = value;
+    settled.add(kind);
+    corrections.push({
+      unitId: sibling.id,
+      messageId,
+      action: 'edit',
+      field,
+      before: sibling[field],
+      after: value,
+      reviewerId,
+    });
+  }
+  if (approve) {
+    Object.assign(update, { needsReview: false, reviewReasons: [], confidence: 1 });
+    corrections.push({ unitId: sibling.id, messageId, action: 'approve', reviewerId });
+  } else if (settled.size > 0) {
+    const reasons = sibling.reviewReasons.filter(
+      (reason) => !nameReasonFields(reason).some((kind) => settled.has(kind)),
+    );
+    update.reviewReasons = reasons;
+    if (reasons.length === 0) update.needsReview = false;
+  }
+  if (corrections.length === 0) return false;
+  await tx.insert(reviewCorrections).values(corrections);
+  await tx.update(units).set(update).where(eq(units.id, sibling.id));
+  return true;
 }
 
 export class NotFoundError extends Error {

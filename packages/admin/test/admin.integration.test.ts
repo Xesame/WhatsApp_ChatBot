@@ -32,6 +32,7 @@ import {
   reviewCases,
   reviewQueue,
   reviewUnit,
+  reviewUnitDetailed,
   setSetting,
   stats,
   unitView,
@@ -196,6 +197,183 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
       await expect(
         reviewUnit(testDb.database, 999_999, { action: 'approve' }, null),
       ).rejects.toThrow(/not found/);
+    });
+  });
+
+  describe('other listings from the same message (siblings)', () => {
+    const NAME_REASON = 'project "Villatique" is not in the known list';
+    /** One price list message with many units, as the pipeline leaves it: one unit per line. */
+    const priceList = async (unitsWanted: Partial<typeof units.$inferInsert>[]) => {
+      const { db } = testDb.database;
+      const [message] = await db
+        .insert(messages)
+        .values({
+          groupId,
+          waMessageId: `W${Math.random()}`,
+          senderHash: 's'.repeat(64),
+          sentAt: new Date('2026-11-20T10:00:00Z'),
+          text: 'DEFAF LAST UPDATE - Villatique\nFirst Floor\n175m - 7,901,250',
+          status: 'processed',
+        })
+        .returning();
+      if (!message) throw new Error('insert failed');
+      const made = [];
+      for (const [i, over] of unitsWanted.entries()) {
+        const [unit] = await db
+          .insert(units)
+          .values({
+            unitType: 'Apartment',
+            minArea: 175,
+            maxArea: 175,
+            minPrice: 790_125_000 + i,
+            maxPrice: 790_125_000 + i,
+            priceCurrency: 'EGP',
+            confidence: 0.5,
+            needsReview: true,
+            reviewReasons: [NAME_REASON],
+            extras: { written: { developer: [], project: ['Villatique'], city: [] } },
+            firstSeenAt: message.sentAt,
+            lastSeenAt: message.sentAt,
+            ...over,
+          })
+          .returning();
+        if (!unit) throw new Error('insert failed');
+        await db
+          .insert(unitSources)
+          .values({ unitId: unit.id, messageId: message.id, role: 'listing' });
+        made.push(unit);
+      }
+      return { message, units: made };
+    };
+    const names = () => ({
+      projectId: mivida.id,
+      developerId: mivida.developerId,
+      cityId: mivida.cityId,
+    });
+    const unitById = async (id: number) => {
+      const [row] = await testDb.database.db.select().from(units).where(eq(units.id, id));
+      return row;
+    };
+
+    it('counts only waiting siblings with the same project name as written', async () => {
+      const {
+        units: [first],
+      } = await priceList([
+        {},
+        {},
+        // Same name, other spelling of spaces and case: still the same written name.
+        { extras: { written: { developer: [], project: [' villatique '], city: [] } } },
+        { extras: { written: { developer: [], project: ['Taj City'], city: [] } } },
+        { needsReview: false },
+        { status: 'withdrawn' },
+      ]);
+      const view = await unitView(testDb.database.db, first?.id ?? 0);
+      expect(view?.siblings).toEqual({ count: 2 });
+      // A listing alone in its message has none.
+      const alone = await listing();
+      expect((await unitView(testDb.database.db, alone.unit.id))?.siblings).toEqual({ count: 0 });
+    });
+
+    it('gives the names to waiting siblings, records each change, and trims their name reasons', async () => {
+      const {
+        message,
+        units: [first, plain, withOtherReason, otherName, approved],
+      } = await priceList([
+        {},
+        {},
+        { reviewReasons: [NAME_REASON, 'No bedrooms'] },
+        { extras: { written: { developer: [], project: ['Taj City'], city: [] } } },
+        { needsReview: false, reviewReasons: [] },
+      ]);
+      const result = await reviewUnitDetailed(
+        testDb.database,
+        first?.id ?? 0,
+        { action: 'save', changes: names(), siblings: { apply: true, approve: false } },
+        null,
+      );
+      expect(result.siblings).toBe(2);
+      expect(result.unit).toMatchObject(names());
+
+      const sibling = await unitById(plain?.id ?? 0);
+      expect(sibling).toMatchObject({ ...names(), needsReview: false, reviewReasons: [] });
+      expect(sibling?.minPrice).toBe(plain?.minPrice); // nothing else touched
+      expect(sibling?.confidence).toBe(0.5);
+      const kept = await unitById(withOtherReason?.id ?? 0);
+      expect(kept).toMatchObject({ ...names(), needsReview: true, reviewReasons: ['No bedrooms'] });
+
+      // A different project name as written, and an already approved unit: untouched.
+      expect(await unitById(otherName?.id ?? 0)).toMatchObject({
+        projectId: null,
+        needsReview: true,
+      });
+      expect(await unitById(approved?.id ?? 0)).toMatchObject({ projectId: null });
+
+      const corrections = await testDb.database.db
+        .select()
+        .from(reviewCorrections)
+        .where(eq(reviewCorrections.unitId, plain?.id ?? 0))
+        .orderBy(asc(reviewCorrections.id));
+      expect(corrections.map((c) => [c.action, c.field, c.before, c.after, c.messageId])).toEqual([
+        ['edit', 'developerId', null, mivida.developerId, message.id],
+        ['edit', 'projectId', null, mivida.id, message.id],
+        ['edit', 'cityId', null, mivida.cityId, message.id],
+      ]);
+    });
+
+    it('approves the siblings too when asked, only with Approve', async () => {
+      const {
+        units: [first, second],
+      } = await priceList([{}, { reviewReasons: [NAME_REASON, 'No bedrooms'] }]);
+      // "Approve them too" with a plain save is ignored.
+      await reviewUnitDetailed(
+        testDb.database,
+        first?.id ?? 0,
+        { action: 'save', changes: names(), siblings: { apply: true, approve: true } },
+        null,
+      );
+      expect(await unitById(second?.id ?? 0)).toMatchObject({ needsReview: true });
+
+      const result = await reviewUnitDetailed(
+        testDb.database,
+        first?.id ?? 0,
+        { action: 'approve', siblings: { apply: true, approve: true } },
+        null,
+      );
+      expect(result.siblings).toBe(1);
+      expect(await unitById(second?.id ?? 0)).toMatchObject({
+        needsReview: false,
+        reviewReasons: [],
+        confidence: 1,
+      });
+      const actions = await testDb.database.db
+        .select({ action: reviewCorrections.action })
+        .from(reviewCorrections)
+        .where(eq(reviewCorrections.unitId, second?.id ?? 0));
+      expect(actions.map((a) => a.action)).toContain('approve');
+    });
+
+    it('leaves siblings alone unless asked, and doing it twice changes nothing more', async () => {
+      const {
+        units: [first, second, third],
+      } = await priceList([{}, {}, { reviewReasons: [NAME_REASON, 'No bedrooms'] }]);
+      await reviewUnit(testDb.database, first?.id ?? 0, { action: 'save', changes: names() }, null);
+      expect(await unitById(second?.id ?? 0)).toMatchObject({ projectId: null });
+
+      const input = {
+        action: 'save' as const,
+        changes: names(),
+        siblings: { apply: true, approve: false },
+      };
+      expect(
+        (await reviewUnitDetailed(testDb.database, first?.id ?? 0, input, null)).siblings,
+      ).toBe(2);
+      const count = async () => (await testDb.database.db.select().from(reviewCorrections)).length;
+      const before = await count();
+      expect(
+        (await reviewUnitDetailed(testDb.database, first?.id ?? 0, input, null)).siblings,
+      ).toBe(0);
+      expect(await count()).toBe(before);
+      expect(await unitById(third?.id ?? 0)).toMatchObject({ reviewReasons: ['No bedrooms'] });
     });
   });
 

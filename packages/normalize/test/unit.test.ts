@@ -4,6 +4,7 @@ import {
   appearsIn,
   isLearnedPriceReason,
   isNameReason,
+  nameReasonFields,
   MILLIONS_ASSUMED_REASON,
   normalizeUnit,
   PRICE_RANGE_FACTOR,
@@ -291,6 +292,23 @@ describe('names', () => {
     }
     expect(isNameReason('No area')).toBe(false);
     expect(isNameReason('Price per m² (4132 EGP) looks wrong')).toBe(false);
+  });
+
+  it('says which names a name reason is about', () => {
+    expect(nameReasonFields('project "X" is not in the known list')).toEqual(['project']);
+    expect(nameReasonFields('city "Y" matched "Z" by similarity (0.80)')).toEqual(['city']);
+    expect(nameReasonFields('developer "A" is not in the known list (closest: B, 0.5)')).toEqual([
+      'developer',
+    ]);
+    // The clash reasons are about the project too: another project ends them.
+    expect(
+      nameReasonFields(`Developer "A" does not build "B"; used the project's developer`),
+    ).toEqual(['developer', 'project']);
+    expect(nameReasonFields(`Project "B" is not in "C"; used the project's city`)).toEqual([
+      'city',
+      'project',
+    ]);
+    expect(nameReasonFields('No area')).toEqual([]);
   });
 
   it('scores confidence like before', () => {
