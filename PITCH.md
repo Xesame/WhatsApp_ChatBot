@@ -98,6 +98,7 @@ Access is protected by a password login with attempt limits, and every sign-in a
 Every time the operator checks a flagged listing, the system gets smarter:
 
 - **It remembers spellings.** If a broker writes a project name in a way the system did not recognise, one tick teaches it. The same spelling is understood in every later post, and other listings that were waiting only because of that name clear on their own.
+- **One correction fixes a whole price list.** A price list with 25 units becomes 25 listings, and one correction in review fixes the project, developer and area of all of them (approving them too is one more tick). Units the list places on different floors or in different buildings stay separate listings.
 - **It suggests instead of guessing.** A name that is only a rough match is not attached to the wrong project; the console shows "closest: X" and the operator confirms it once.
 - **It learns what normal prices look like.** Once a few units of a project have been approved, a new listing priced far above or below the project's usual price per m² is held for a check.
 - **It suggests who builds a new project.** When a post names a project the system does not know yet, it asks Google's Gemini AI what it remembers about it (only the project name is sent, never the message) and shows "Gemini thinks: ... (from memory, check)" next to the developer and area. The operator confirms with one click, or adds the new name; nothing is filled in without a person's click.

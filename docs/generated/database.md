@@ -313,6 +313,7 @@ erDiagram
     text notes
     text status
     text price_currency
+    text building
     bigint down_payment_amount
     numeric(12,_2) installment_years
     text installment_frequency
@@ -847,7 +848,7 @@ One row per unit offering: the 26 Primary Units template columns, then internal 
 | `city_id` | integer | yes | → cities.id | Template: City (exported as the English name). |
 | `unit_type` | text | yes |  | Template: Unit Type. |
 | `unit_code` | text | yes |  | Template: Unit Code, only when the message names a specific unit. |
-| `floor` | text | yes |  | Template: Floor, normalized: `Ground`, `Roof`, `3`, or a range `1-5`. |
+| `floor` | text | yes |  | Template: Floor, normalized: `Ground`, `Roof`, `3`, a range `1-5`, or a list `2, 5`. |
 | `finishing_specs` | text | yes |  | Template: Finishing Specs. |
 | `min_area` | numeric(12, 2) | yes |  | Template: Min Area (m²). A single size fills Min and Max. |
 | `max_area` | numeric(12, 2) | yes |  | Template: Max Area (m²). Empty for "starting from". |
@@ -869,6 +870,7 @@ One row per unit offering: the 26 Primary Units template columns, then internal 
 | `notes` | text | yes |  | Template: Notes. Short English note; the export adds "Ready to move" and USD conversion notes. |
 | `status` | text | no |  | `active`, `stale` (not seen for a while), `sold` or `withdrawn`. |
 | `price_currency` | text | no |  | Currency the prices were stated in (`EGP` or `USD`). The export converts USD to EGP. |
+| `building` | text | yes |  | Building or block label as written (`V-02`, `Building B`, `عمارة 5`), often from a heading above many units. Units in different buildings are never merged. |
 | `down_payment_amount` | bigint | yes |  | Down payment as an amount (minor units), when the message stated an amount. |
 | `installment_years` | numeric(12, 2) | yes |  | Length of the payment plan in years. |
 | `installment_frequency` | text | yes |  | `monthly`, `quarterly`, `semi-annual` or `annual`. |

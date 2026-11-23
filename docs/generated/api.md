@@ -79,6 +79,7 @@ Correct fields, approve, or reject a unit. Corrections are kept for the accuracy
 | body | `changes` | object | no |
 | body | `paymentPlans` | list of any | no |
 | body | `remember` | list of object | no |
+| body | `siblings` | object | no |
 
 ### `GET /api/admin/media/{id}`
 
