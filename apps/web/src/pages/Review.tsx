@@ -499,7 +499,13 @@ function ReviewItem({
                   checked={applySiblings}
                   onChange={() => setApplySiblings(!applySiblings)}
                 />
-                <span>{siblingsLabel(siblingCount)}</span>
+                <span>
+                  {siblingsLabel(siblingCount)}
+                  {/* Save passes on only the names changed here; Approve confirms all of them. */}
+                  <span className="block text-xs">
+                    With Save only, just the names you changed are passed on.
+                  </span>
+                </span>
               </label>
               <label
                 className={`flex items-start gap-1.5 text-muted ${applySiblings ? '' : 'opacity-50'}`}

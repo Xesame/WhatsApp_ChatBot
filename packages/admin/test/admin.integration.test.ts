@@ -359,21 +359,68 @@ describe.skipIf(!testDatabaseUrl)('admin (real Postgres)', () => {
       await reviewUnit(testDb.database, first?.id ?? 0, { action: 'save', changes: names() }, null);
       expect(await unitById(second?.id ?? 0)).toMatchObject({ projectId: null });
 
+      // The names are already saved on the unit; Approve confirms and passes them on.
       const input = {
-        action: 'save' as const,
-        changes: names(),
+        action: 'approve' as const,
         siblings: { apply: true, approve: false },
       };
       expect(
         (await reviewUnitDetailed(testDb.database, first?.id ?? 0, input, null)).siblings,
       ).toBe(2);
-      const count = async () => (await testDb.database.db.select().from(reviewCorrections)).length;
+      // The siblings' corrections only (the reviewed unit gets a new approve row each time).
+      const count = async () =>
+        (await testDb.database.db.select().from(reviewCorrections)).filter(
+          (c) => c.unitId !== first?.id,
+        ).length;
       const before = await count();
       expect(
         (await reviewUnitDetailed(testDb.database, first?.id ?? 0, input, null)).siblings,
       ).toBe(0);
       expect(await count()).toBe(before);
       expect(await unitById(third?.id ?? 0)).toMatchObject({ reviewReasons: ['No bedrooms'] });
+    });
+
+    it('a Save passes on only the names the reviewer changed; Approve passes on all of them', async () => {
+      // The pipeline guessed the project for the first line only (not confirmed by anyone).
+      const {
+        units: [first, second],
+      } = await priceList([{ projectId: mivida.id }, {}]);
+      const apply = { apply: true, approve: false };
+
+      // A Save that changes no name changes no sibling.
+      const untouched = await reviewUnitDetailed(
+        testDb.database,
+        first?.id ?? 0,
+        { action: 'save', changes: { bedrooms: 3 }, siblings: apply },
+        null,
+      );
+      expect(untouched.siblings).toBe(0);
+      expect(await unitById(second?.id ?? 0)).toMatchObject({ projectId: null, cityId: null });
+
+      // A Save that sets the area passes on the area, not the guessed project.
+      await reviewUnitDetailed(
+        testDb.database,
+        first?.id ?? 0,
+        { action: 'save', changes: { cityId: mivida.cityId }, siblings: apply },
+        null,
+      );
+      expect(await unitById(second?.id ?? 0)).toMatchObject({
+        projectId: null,
+        cityId: mivida.cityId,
+      });
+
+      // Approving confirms the unit's names, so all of them are passed on.
+      const approved = await reviewUnitDetailed(
+        testDb.database,
+        first?.id ?? 0,
+        { action: 'approve', siblings: apply },
+        null,
+      );
+      expect(approved.siblings).toBe(1);
+      expect(await unitById(second?.id ?? 0)).toMatchObject({
+        projectId: mivida.id,
+        cityId: mivida.cityId,
+      });
     });
   });
 

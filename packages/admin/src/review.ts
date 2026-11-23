@@ -532,11 +532,24 @@ export async function reviewUnitDetailed(
 
     // The other listings from this message. Rejecting a unit says nothing
     // about its siblings' names, so only a save or an approve passes them on.
+    // Which names: on Approve all of the unit's names (approving confirms
+    // them); on a Save only the names the reviewer changed in this save, so
+    // a name the pipeline guessed is never stamped on the siblings as if a
+    // person had chosen it.
     let siblings = 0;
     if (input.siblings?.apply && input.action !== 'reject' && source) {
       const approve = input.siblings.approve && input.action === 'approve';
+      const fields = SIBLING_FIELDS.filter(
+        ([field]) => input.action === 'approve' || changed.includes(field),
+      );
       for (const sibling of await siblingsOf(tx, saved, true)) {
-        if (await passNamesOn(tx, saved, sibling, source.messageId, approve, reviewerId)) {
+        const passed = await passNamesOn(tx, saved, sibling, {
+          fields,
+          messageId: source.messageId,
+          approve,
+          reviewerId,
+        });
+        if (passed) {
           siblings += 1;
         }
       }
@@ -546,10 +559,10 @@ export async function reviewUnitDetailed(
 }
 
 /**
- * Gives one sibling the reviewed unit's names, recorded as review
- * corrections so the name re-check leaves it alone afterwards. Only the
- * names change (never prices, areas or plans): each name the reviewed unit
- * has and the sibling lacks or has differently. The sibling's name reasons
+ * Gives one sibling the reviewed unit's names (those in `fields`), recorded
+ * as review corrections so the name re-check leaves it alone afterwards.
+ * Only the names change (never prices, areas or plans): each name the
+ * reviewed unit has and the sibling lacks or has differently. The sibling's name reasons
  * for those names go; with no reason left it no longer waits for review.
  * `approve` approves it outright, like the reviewed unit. Returns whether
  * anything changed, so running the same review twice changes nothing more.
@@ -558,14 +571,18 @@ async function passNamesOn(
   tx: Db,
   reviewed: UnitRow,
   sibling: UnitRow,
-  messageId: number,
-  approve: boolean,
-  reviewerId: string | null,
+  options: {
+    fields: readonly (typeof SIBLING_FIELDS)[number][];
+    messageId: number;
+    approve: boolean;
+    reviewerId: string | null;
+  },
 ): Promise<boolean> {
+  const { fields, messageId, approve, reviewerId } = options;
   const update: Partial<typeof units.$inferInsert> = {};
   const corrections: (typeof reviewCorrections.$inferInsert)[] = [];
   const settled = new Set<string>();
-  for (const [field, kind] of SIBLING_FIELDS) {
+  for (const [field, kind] of fields) {
     const value = reviewed[field];
     if (value === null || value === sibling[field]) continue;
     update[field] = value;
