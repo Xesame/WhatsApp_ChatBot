@@ -134,11 +134,41 @@ const ORDINALS: Record<string, number> = {
   تاسع: 9,
   العاشر: 10,
   عاشر: 10,
+  first: 1,
+  second: 2,
+  third: 3,
+  fourth: 4,
+  fifth: 5,
+  sixth: 6,
+  seventh: 7,
+  eighth: 8,
+  ninth: 9,
+  tenth: 10,
 };
 
 /**
- * Floor in the template's form: "Ground", "Roof", "3", or a range "1-5".
- * "أرضي بجاردن" → Ground; "الدور التالت" → 3; "3rd floor" → 3.
+ * The floor numbers named in a phrase, in order: digits ("5th", "6") and
+ * ordinal words ("first", "التالت"). Words are split on spaces and list
+ * separators (",", "&", "/", "+"); an Arabic "و" ("and") stuck to a number
+ * ("و4") is dropped.
+ */
+function floorNumbers(t: string): number[] {
+  const found: number[] = [];
+  for (const token of t.split(/[\s,&/+،]+/)) {
+    const word = token.replace(/^و(?=\d)/, '');
+    const digits = /^(\d+)(?:st|nd|rd|th)?$/.exec(word)?.[1];
+    const n = digits !== undefined ? Number(digits) : ORDINALS[word];
+    if (n !== undefined) found.push(n);
+  }
+  return found;
+}
+
+/**
+ * Floor in the template's form: "Ground", "Roof", "3", a range "1-5", or a
+ * list "2, 5".
+ * "أرضي بجاردن" → Ground; "الدور التالت" → 3; "3rd floor" → 3;
+ * "First Floor" → 1; "5th & 6 & 7" → 5-7 (consecutive floors read as a
+ * range); "2 & 5" → "2, 5" (not consecutive, so each floor is kept).
  */
 export function parseFloor(text: string | null | undefined): string | null {
   if (!text) return null;
@@ -147,6 +177,15 @@ export function parseFloor(text: string | null | undefined): string | null {
   if (/(روف|roof|سطح)/.test(t)) return 'Roof';
   const range = /(\d+)\s*(?:-|–|to|الى|إلى|ل)\s*(\d+)/.exec(t);
   if (range?.[1] && range[2]) return `${range[1]}-${range[2]}`;
+  // Several floors listed: sorted and de-duplicated; a run with no gaps
+  // (5, 6, 7) becomes "5-7", anything else stays a list.
+  const listed = [...new Set(floorNumbers(t))].sort((a, b) => a - b);
+  const first = listed[0];
+  const last = listed[listed.length - 1];
+  if (first !== undefined && last !== undefined) {
+    if (listed.length === 1) return String(first);
+    return last - first === listed.length - 1 ? `${first}-${last}` : listed.join(', ');
+  }
   const number = /(\d+)(?:st|nd|rd|th)?/.exec(t);
   if (number?.[1]) return number[1];
   for (const word of t.split(/\s+/)) {

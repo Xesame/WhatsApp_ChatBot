@@ -69,6 +69,20 @@ describe('parseFloor', () => {
     ['1-5', '1-5'],
     ['من 1 الى 5', '1-5'],
     ['', null],
+    // English ordinal words, as written under a heading.
+    ['First Floor', '1'],
+    ['second floor', '2'],
+    ['Third', '3'],
+    ['TENTH FLOOR', '10'],
+    ['Ground Floor', 'Ground'],
+    // Lists of floors: consecutive → a range, otherwise each number.
+    ['5th & 6 & 7', '5-7'],
+    ['5, 6 and 7', '5-7'],
+    ['5/6/7', '5-7'],
+    ['2 & 5', '2, 5'],
+    ['first & second', '1-2'],
+    ['الدور 3 و 4', '3-4'],
+    ['3 و4 و 7', '3, 4, 7'],
   ])('%s → %s', (input, expected) => {
     expect(parseFloor(input)).toBe(expected);
   });
