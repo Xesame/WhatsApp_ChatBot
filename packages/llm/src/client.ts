@@ -102,6 +102,11 @@ export interface SearchResult<T> {
   searched: { provider: SearchProvider; model: string } | null;
   /** Up to 3 pages the search used. */
   sources: SearchSource[];
+  /**
+   * Without an answer: the last model that did search but whose answer could
+   * not be read (not the JSON asked for). Null when no model got to search.
+   */
+  unusable: { provider: SearchProvider; model: string } | null;
   attempts: Attempt[];
 }
 
@@ -229,6 +234,7 @@ export class LlmClient {
   async callSearch<T>(models: ModelRef[], call: SearchCall<T>): Promise<SearchResult<T>> {
     this.refusePersonalData(call.messages);
     const attempts: Attempt[] = [];
+    let unusable: SearchResult<T>['unusable'] = null;
     for (const ref of models) {
       if (!this.options.apiKeys[ref.provider] || !canSearch(ref.provider)) continue;
       const { attempt, reading } = await this.search(ref, ref.provider, call);
@@ -247,16 +253,18 @@ export class LlmClient {
       if (!checked.ok) {
         attempt.status = 'invalid';
         attempt.error = checked.error;
+        unusable = { provider: ref.provider, model: ref.model };
         continue;
       }
       return {
         data: checked.data,
         searched: { provider: ref.provider, model: ref.model },
         sources: reading.sources,
+        unusable: null,
         attempts,
       };
     }
-    return { data: null, searched: null, sources: [], attempts };
+    return { data: null, searched: null, sources: [], unusable, attempts };
   }
 
   private async search<T>(

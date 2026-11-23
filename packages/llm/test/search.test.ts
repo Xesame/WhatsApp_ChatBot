@@ -216,6 +216,29 @@ describe('LlmClient.callSearch', () => {
     expect(result.searched).toBeNull();
     expect(result.sources).toEqual([]);
     expect(result.attempts.map((a) => a.error)).toEqual(['no web search', 'no web search']);
+    expect(result.unusable).toBeNull();
+  });
+
+  it('says which model searched when its answer could not be read', async () => {
+    const { fetchFn } = fakeFetch([
+      geminiGrounded('The developer is {"known": true, "developer": "X"'),
+      { status: 429, body: {} },
+    ]);
+    const result = await client(fetchFn).callSearch(models, call);
+    expect(result.data).toBeNull();
+    expect(result.searched).toBeNull();
+    expect(result.unusable).toEqual({ provider: 'gemini', model: 'gemini-flash-latest' });
+    expect(result.attempts[0]).toMatchObject({ status: 'invalid', error: 'not valid JSON' });
+  });
+
+  it('remembers the last model whose search answer was unusable', async () => {
+    const { fetchFn } = fakeFetch([
+      { status: 503, body: {} },
+      groqAnswer('{"wrong": 1}', [groqSearch([{ url: 'https://example.com', title: 'x' }])]),
+    ]);
+    const result = await client(fetchFn).callSearch(models, call);
+    expect(result.data).toBeNull();
+    expect(result.unusable).toEqual({ provider: 'groq', model: 'openai/gpt-oss-120b' });
   });
 
   it('gives no answer when both fail, and never asks without search', async () => {
